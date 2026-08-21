@@ -537,7 +537,7 @@ function FlowCanvasInner() {
           onEdgesDelete={handleEdgesDelete}
           // Default is "Backspace" only — accept both so Mac users
           // hitting Delete (Fn+Backspace) get the same behavior.
-          deleteKeyCode={['Backspace', 'Delete']}
+          deleteKeyCode={['Backspace', 'Excluir']}
           nodesConnectable={true}
           edgesFocusable={true}
           elementsSelectable={true}

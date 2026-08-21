@@ -67,8 +67,8 @@ export default function NewBroadcastPage() {
     } catch (err) {
       // Previously swallowed with console.error — the wizard would
       // just no-op, leaving the user confused. Surface the reason.
-      const message = err instanceof Error ? err.message : 'Broadcast failed';
-      console.error('Broadcast failed:', err);
+      const message = err instanceof Error ? err.message : 'Falha no disparo';
+      console.error('Falha no disparo:', err);
       toast.error(message);
     }
   }

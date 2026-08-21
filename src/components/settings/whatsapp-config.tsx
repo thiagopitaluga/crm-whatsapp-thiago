@@ -180,7 +180,7 @@ export function WhatsAppConfig() {
       }
     } catch (err) {
       console.error('fetchConfig error:', err);
-      toast.error('Failed to load WhatsApp configuration');
+      toast.error('Falha ao carregar a configuração do WhatsApp');
     } finally {
       setLoading(false);
     }
@@ -260,7 +260,7 @@ export function WhatsAppConfig() {
         // server. But our POST handler requires an access_token to verify
         // with Meta. If the user didn't change the token, we need to signal
         // that. Simplest: require token re-entry if they're updating.
-        toast.error('Please re-enter the Access Token to save changes');
+        toast.error('Digite novamente o token de acesso para salvar as alterações');
         setSaving(false);
         return;
       }
@@ -274,7 +274,7 @@ export function WhatsAppConfig() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to save configuration');
+        toast.error(data.error || 'Falha ao salvar a configuração');
         setSaving(false);
         return;
       }
@@ -315,7 +315,7 @@ export function WhatsAppConfig() {
       if (accountId) await fetchConfig(accountId);
     } catch (err) {
       console.error('Save error:', err);
-      toast.error('Failed to save configuration');
+      toast.error('Falha ao salvar a configuração');
     } finally {
       setSaving(false);
     }
@@ -340,12 +340,12 @@ export function WhatsAppConfig() {
         setConnectionStatus('disconnected');
         setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
         setStatusMessage(payload.message || '');
-        toast.error(payload.message || 'API connection failed');
+        toast.error(payload.message || 'Falha na conexão com a API');
       }
     } catch (err) {
       console.error('Test connection error:', err);
       setConnectionStatus('disconnected');
-      toast.error('Connection test failed. Check network and try again.');
+      toast.error('O teste de conexão falhou. Verifique a rede e tente novamente.');
     } finally {
       setTesting(false);
     }
@@ -364,21 +364,21 @@ export function WhatsAppConfig() {
         toast.success('Number is fully wired — Meta is delivering events.');
       } else {
         toast.error(
-          'Number is not fully registered. See the checks below for which step failed.',
+          'O número ainda não está totalmente registrado. Veja abaixo qual etapa falhou.',
           { duration: 8000 },
         );
       }
       if (accountId) await fetchConfig(accountId);
     } catch (err) {
       console.error('verify-registration failed:', err);
-      toast.error('Could not reach the verification endpoint.');
+      toast.error('Não foi possível acessar o serviço de verificação.');
     } finally {
       setVerifyingRegistration(false);
     }
   }
 
   async function handleReset() {
-    if (!confirm('This will delete the current WhatsApp config so you can re-enter it. Continue?')) {
+    if (!confirm('A configuração atual do WhatsApp será excluída para que você possa informá-la novamente. Continuar?')) {
       return;
     }
 
@@ -388,11 +388,11 @@ export function WhatsAppConfig() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to reset configuration');
+        toast.error(data.error || 'Falha ao redefinir a configuração');
         return;
       }
 
-      toast.success('Configuration cleared. You can now re-enter your credentials.');
+      toast.success('Configuração limpa. Agora você pode informar novamente suas credenciais.');
       setConfig(null);
       setPhoneNumberId('');
       setWabaId('');
@@ -404,7 +404,7 @@ export function WhatsAppConfig() {
       setStatusMessage('');
     } catch (err) {
       console.error('Reset error:', err);
-      toast.error('Failed to reset configuration');
+      toast.error('Falha ao redefinir a configuração');
     } finally {
       setResetting(false);
     }
@@ -447,7 +447,7 @@ export function WhatsAppConfig() {
               <AlertTriangle className="size-5 text-amber-400 mt-0.5 shrink-0" />
               <div className="flex-1">
                 <AlertTitle className="text-amber-200 mb-1">
-                  Stored token can&apos;t be decrypted
+                  O token armazenado não pode ser descriptografado
                 </AlertTitle>
                 <AlertDescription className="text-amber-100/80 text-sm">
                   {statusMessage}
