@@ -65,6 +65,52 @@ export async function verifyPhoneNumber(
   return response.json()
 }
 
+/**
+ * Exchanges the short-lived authorization code returned by Meta Embedded
+ * Signup for the system-user token scoped to the selected WhatsApp account.
+ * The app secret is intentionally used only here, on the server.
+ */
+export async function exchangeEmbeddedSignupCode(args: {
+  code: string
+  appId: string
+  appSecret: string
+}): Promise<string> {
+  const params = new URLSearchParams({
+    client_id: args.appId,
+    client_secret: args.appSecret,
+    code: args.code,
+  })
+  const response = await fetch(`${META_API_BASE}/oauth/access_token?${params.toString()}`, {
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = (await response.json()) as { access_token?: string }
+  if (!data.access_token) {
+    throw new Error('Meta did not return an access token for this signup.')
+  }
+  return data.access_token
+}
+
+/** Confirm that the phone selected by signup really belongs to its WABA. */
+export async function wabaContainsPhoneNumber(args: {
+  wabaId: string
+  phoneNumberId: string
+  accessToken: string
+}): Promise<boolean> {
+  const url = `${META_API_BASE}/${args.wabaId}/phone_numbers?fields=id&limit=500`
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${args.accessToken}` },
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = (await response.json()) as { data?: Array<{ id?: string }> }
+  return data.data?.some((phone) => phone.id === args.phoneNumberId) ?? false
+}
+
 // ============================================================
 // Cloud API registration (subscription for inbound webhooks)
 // ============================================================

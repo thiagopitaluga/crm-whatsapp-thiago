@@ -30,6 +30,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from '@/components/ui/accordion';
+import { EmbeddedWhatsAppSignup } from './embedded-whatsapp-signup';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
 
 const MASKED_TOKEN = '••••••••••••••••';
@@ -440,6 +441,12 @@ export function WhatsAppConfig() {
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
       {/* Main config form */}
       <div className="space-y-6">
+        <EmbeddedWhatsAppSignup
+          disabled={!canEditSettings}
+          onConnected={() => {
+            if (accountId) void fetchConfig(accountId)
+          }}
+        />
         {/* Corrupted-token reset banner */}
         {showResetBanner && (
           <Alert className="bg-amber-950/40 border-amber-600/40">
