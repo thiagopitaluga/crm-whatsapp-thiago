@@ -528,6 +528,7 @@
     },
     "card": {
       "noContact": "Sem contato",
+      "openWhatsApp": "Chamar no WhatsApp",
       "won": "Ganhou",
       "lost": "Perdido"
     },

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, X } from "lucide-react";
+import { Calendar, Check, MessageCircle, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 
@@ -30,10 +30,13 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const t = useTranslations("Pipelines.card");
   const contactLabel = deal.contact?.name || deal.contact?.phone || t("noContact");
   const assigneeLabel = deal.assignee?.full_name || null;
+  const whatsappPhone = deal.contact?.phone?.replace(/\D/g, "");
+  const whatsappUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}` : null;
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={isOverlay ? -1 : 0}
       onClick={(e) => {
         // `onClick` still fires after a non-drag tap because the PointerSensor
         // requires 5px movement before it counts as a drag.
@@ -41,7 +44,14 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         e.stopPropagation();
         onEdit(deal);
       }}
-      className={`group relative w-full cursor-pointer rounded-xl border border-border/50 bg-muted/70 pl-4 pr-3 py-3 text-left shadow-sm transition-all ${
+      onKeyDown={(e) => {
+        if (isOverlay || e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onEdit(deal);
+        }
+      }}
+      className={`group relative w-full cursor-pointer rounded-xl border border-border/50 bg-muted/70 pl-4 pr-3 py-3 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
         isOverlay
           ? "shadow-xl"
           : "hover:-translate-y-0.5 hover:border-border hover:bg-muted hover:shadow-lg"
@@ -92,6 +102,22 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         )}
       </div>
 
+      {whatsappUrl && !isOverlay && (
+        <a
+          href={whatsappUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${t("openWhatsApp")} — ${contactLabel}`}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#25D366] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#20bd5b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366] focus-visible:ring-offset-2"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+          {t("openWhatsApp")}
+        </a>
+      )}
+
       {assigneeLabel && (
         <div className="mt-2 flex items-center justify-end">
           <span
@@ -102,6 +128,6 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           </span>
         </div>
       )}
-    </button>
+    </div>
   );
 }

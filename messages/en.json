@@ -528,6 +528,7 @@
     },
     "card": {
       "noContact": "No contact",
+      "openWhatsApp": "Open in WhatsApp",
       "won": "Won",
       "lost": "Lost"
     },
