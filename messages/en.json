@@ -60,6 +60,11 @@
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"
   },
+  "LanguageToggle": {
+    "menuLabel": "Change language",
+    "portuguese": "Português (Brasil)",
+    "english": "English"
+  },
   "AccountAccess": {
     "unlinkedTitle": "This user is not linked to an account",
     "unlinkedBody": "Nothing you change will be saved while this is unresolved — the database rejects every write from a user with no account or role. If you were invited to a team, ask the owner to re-send the invitation. On a self-hosted install, check that the account-bootstrap migration ran for this user.",

@@ -1,8 +1,17 @@
 import { getRequestConfig } from 'next-intl/server';
+import { cookies } from 'next/headers';
+
+const SUPPORTED_LOCALES = new Set(['pt-BR', 'en']);
+const LOCALE_COOKIE = 'wacrm.locale';
 
 export default getRequestConfig(async () => {
-  // This customized deployment is Brazilian Portuguese by default.
-  const locale = process.env.NEXT_PUBLIC_APP_LOCALE || 'pt-BR';
+  // The workspace default is configured at deploy time, while each user can
+  // override it from the header. A cookie keeps that choice across reloads.
+  const configuredLocale = process.env.NEXT_PUBLIC_APP_LOCALE || 'pt-BR';
+  const cookieLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
+  const locale = SUPPORTED_LOCALES.has(cookieLocale ?? '')
+    ? cookieLocale!
+    : configuredLocale;
 
   let messages;
   try {
