@@ -143,7 +143,7 @@ function SignupPageInner() {
           <CardDescription className="text-muted-foreground">
             {inviteToken
               ? "Confirme seu e-mail e aceite o convite para entrar na equipe."
-              : "Comece a usar o CRM para WhatsApp"}
+              : "Comece a usar o OrganiZAP"}
           </CardDescription>
         </CardHeader>
         <CardContent>
