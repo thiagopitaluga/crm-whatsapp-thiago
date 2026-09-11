@@ -8,12 +8,12 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OrganiZAPLogo } from "@/components/brand/organizap-logo";
 import {
   ArrowRight,
   Eye,
   EyeOff,
   LockKeyhole,
-  MessageSquareText,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -28,17 +28,6 @@ export default function LoginPage() {
     <Suspense fallback={null}>
       <LoginPageInner />
     </Suspense>
-  );
-}
-
-function BrandMark({ className = "" }: { className?: string }) {
-  return (
-    <span
-      className={`flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400 text-slate-950 shadow-[0_12px_30px_rgba(52,211,153,0.22)] ${className}`}
-      aria-hidden="true"
-    >
-      <MessageSquareText className="h-5 w-5 stroke-[2.5]" />
-    </span>
   );
 }
 
@@ -83,14 +72,23 @@ function LoginPageInner() {
 
   return (
     <main className="relative isolate flex min-h-[100svh] overflow-hidden bg-[#020706] px-5 py-6 text-white sm:px-8 sm:py-10 lg:items-center lg:px-12 xl:px-16">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-50"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(110, 231, 183, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(110, 231, 183, 0.055) 1px, transparent 1px)",
+          backgroundSize: "46px 46px",
+          maskImage: "radial-gradient(ellipse at center, black 10%, transparent 74%)",
+        }}
+      />
       <div className="pointer-events-none absolute -left-32 top-[14%] -z-10 h-80 w-80 rounded-full bg-emerald-400/20 blur-[110px]" />
       <div className="pointer-events-none absolute -right-20 bottom-[-12%] -z-10 h-96 w-96 rounded-full bg-lime-300/10 blur-[130px]" />
 
       <section className="mx-auto grid w-full max-w-7xl gap-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.72fr)] lg:items-center lg:gap-20">
         <div className="hidden max-w-xl lg:block">
-          <div className="flex items-center gap-3">
-            <BrandMark />
-            <span className="text-xl font-semibold tracking-tight">OrganiZAP</span>
+          <div className="inline-flex rounded-xl bg-white px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
+            <OrganiZAPLogo className="h-9 w-36" priority />
           </div>
 
           <div className="mt-20">
@@ -122,8 +120,9 @@ function LoginPageInner() {
 
           <div className="relative">
             <div className="flex items-center gap-3 lg:hidden">
-              <BrandMark className="h-10 w-10 rounded-xl" />
-              <span className="text-lg font-semibold tracking-tight">OrganiZAP</span>
+              <span className="rounded-xl bg-white px-2.5 py-1.5 shadow-[0_10px_22px_rgba(0,0,0,0.18)]">
+                <OrganiZAPLogo className="h-7 w-28" priority />
+              </span>
             </div>
 
             <div className="mt-7 flex items-center gap-2 text-xs font-semibold tracking-[0.16em] text-emerald-300 lg:mt-0">

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OrganiZAPLogo } from "@/components/brand/organizap-logo";
 import {
   Card,
   CardContent,
@@ -13,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MessageSquare, CheckCircle, ArrowLeft } from "lucide-react";
+import { CheckCircle, ArrowLeft } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -46,6 +47,9 @@ export default function ForgotPasswordPage() {
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <Card className="w-full max-w-md border-border bg-card">
           <CardHeader className="items-center text-center">
+            <span className="mb-3 rounded-xl bg-white px-2.5 py-1.5 shadow-sm">
+              <OrganiZAPLogo className="h-7 w-28" priority />
+            </span>
             <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
               <CheckCircle className="h-6 w-6 text-primary" />
             </div>
@@ -76,9 +80,9 @@ export default function ForgotPasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <MessageSquare className="h-6 w-6 text-primary" />
-          </div>
+          <span className="mb-3 rounded-xl bg-white px-2.5 py-1.5 shadow-sm">
+            <OrganiZAPLogo className="h-7 w-28" priority />
+          </span>
           <CardTitle className="text-xl text-foreground">Redefinir senha</CardTitle>
           <CardDescription className="text-muted-foreground">
             Digite seu e-mail e enviaremos um link de redefinição
