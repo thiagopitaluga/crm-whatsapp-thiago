@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Pipeline, PipelineStage, Deal } from "@/types";
+import type { Pipeline, PipelineStage, Deal, DealStatus, Profile } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { GitBranch, Plus, ChevronDown, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
@@ -43,6 +44,7 @@ const SPEC_DEFAULT_STAGES = [
   { name: "Proposal Sent", color: "#f97316", position: 2 }, // orange
   { name: "Negotiation", color: "#8b5cf6", position: 3 }, // purple
   { name: "Won", color: "#22c55e", position: 4 }, // green
+  { name: "Lost", color: "#ef4444", position: 5 }, // red
 ];
 
 export default function PipelinesPage() {
@@ -56,6 +58,7 @@ export default function PipelinesPage() {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [members, setMembers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Dialog / sheet state
@@ -69,6 +72,9 @@ export default function PipelinesPage() {
   const [dealFormOpen, setDealFormOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [defaultStageId, setDefaultStageId] = useState<string>("");
+  const [quickNoteDeal, setQuickNoteDeal] = useState<Deal | null>(null);
+  const [quickNote, setQuickNote] = useState("");
+  const [savingQuickNote, setSavingQuickNote] = useState(false);
 
   // Guard against double-seeding (React StrictMode double-effect in dev).
   const seedAttempted = useRef(false);
@@ -101,13 +107,32 @@ export default function PipelinesPage() {
     async (pipelineId: string) => {
       const { data } = await supabase
         .from("deals")
-        .select("*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*)")
+        .select("*, contact:contacts(*, conversations(last_message_text,last_message_at)), assignee:profiles!deals_assigned_to_fkey(*)")
         .eq("pipeline_id", pipelineId)
         .order("created_at", { ascending: false });
       return (data ?? []) as Deal[];
     },
     [supabase],
   );
+
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("account_id", accountId)
+        .order("full_name");
+
+      if (!cancelled && !error) setMembers((data ?? []) as Profile[]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, supabase]);
 
   const seedDefaultPipeline = useCallback(async (): Promise<Pipeline | null> => {
     const {
@@ -246,6 +271,123 @@ export default function PipelinesPage() {
     setDefaultStageId(deal.stage_id);
     setDealFormOpen(true);
   }, []);
+
+  const handleQuickValue = useCallback(
+    async (deal: Deal, value: number) => {
+      setDeals((previous) =>
+        previous.map((item) => (item.id === deal.id ? { ...item, value } : item)),
+      );
+      const { error } = await supabase.from("deals").update({ value }).eq("id", deal.id);
+      if (error) {
+        toast.error(t("toastFailedQuickUpdate"));
+        void refreshDeals();
+        return;
+      }
+      toast.success(t("toastValueUpdated"));
+    },
+    [refreshDeals, supabase, t],
+  );
+
+  const handleQuickAssign = useCallback(
+    async (deal: Deal, assigneeId: string | null) => {
+      const assignee = assigneeId ? members.find((member) => member.id === assigneeId) : undefined;
+      setDeals((previous) =>
+        previous.map((item) =>
+          item.id === deal.id
+            ? { ...item, assigned_to: assigneeId ?? undefined, assignee }
+            : item,
+        ),
+      );
+      const { error } = await supabase
+        .from("deals")
+        .update({ assigned_to: assigneeId })
+        .eq("id", deal.id);
+      if (error) {
+        toast.error(t("toastFailedQuickUpdate"));
+        void refreshDeals();
+        return;
+      }
+      toast.success(t("toastLeadAssigned"));
+    },
+    [members, refreshDeals, supabase, t],
+  );
+
+  const handleQuickStatus = useCallback(
+    async (deal: Deal, status: DealStatus) => {
+      const matchingNames = status === "won" ? ["won", "ganho", "ganhou"] : ["lost", "perdido"];
+      let targetStage = stages.find((stage) =>
+        matchingNames.includes(stage.name.trim().toLowerCase()),
+      );
+
+      if (!targetStage) {
+        const position = Math.max(-1, ...stages.map((stage) => stage.position)) + 1;
+        const { data, error } = await supabase
+          .from("pipeline_stages")
+          .insert({
+            pipeline_id: deal.pipeline_id,
+            name: status === "won" ? "Ganho" : "Perdido",
+            color: status === "won" ? "#22c55e" : "#ef4444",
+            position,
+          })
+          .select()
+          .single();
+        if (error || !data) {
+          toast.error(t("toastFailedQuickUpdate"));
+          return;
+        }
+        targetStage = data as PipelineStage;
+        setStages((previous) => [...previous, targetStage as PipelineStage]);
+      }
+
+      setDeals((previous) =>
+        previous.map((item) =>
+          item.id === deal.id
+            ? { ...item, status, stage_id: targetStage.id }
+            : item,
+        ),
+      );
+      const { error } = await supabase
+        .from("deals")
+        .update({ status, stage_id: targetStage.id })
+        .eq("id", deal.id);
+      if (error) {
+        toast.error(t("toastFailedQuickUpdate"));
+        void refreshDeals();
+        return;
+      }
+      toast.success(status === "won" ? t("toastMarkedWon") : t("toastMarkedLost"));
+    },
+    [refreshDeals, stages, supabase, t],
+  );
+
+  const saveQuickNote = useCallback(async () => {
+    if (!quickNoteDeal?.contact_id || !quickNote.trim() || !accountId) return;
+    setSavingQuickNote(true);
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) {
+      toast.error(t("toastNotSignedIn"));
+      setSavingQuickNote(false);
+      return;
+    }
+
+    const { error } = await supabase.from("contact_notes").insert({
+      contact_id: quickNoteDeal.contact_id,
+      account_id: accountId,
+      user_id: user.id,
+      note_text: quickNote.trim(),
+    });
+    setSavingQuickNote(false);
+    if (error) {
+      toast.error(t("toastFailedQuickUpdate"));
+      return;
+    }
+    setQuickNote("");
+    setQuickNoteDeal(null);
+    toast.success(t("toastNoteAdded"));
+  }, [accountId, quickNote, quickNoteDeal, supabase, t]);
 
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();
@@ -419,6 +561,11 @@ export default function PipelinesPage() {
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
+            members={members}
+            onValueChange={handleQuickValue}
+            onStatusChange={handleQuickStatus}
+            onAddNote={(deal) => setQuickNoteDeal(deal)}
+            onAssign={handleQuickAssign}
           />
         </>
       )}
@@ -478,6 +625,53 @@ export default function PipelinesPage() {
           }}
         />
       )}
+
+      <Dialog
+        open={Boolean(quickNoteDeal)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQuickNoteDeal(null);
+            setQuickNote("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-popover border-border">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">{t("quickNoteTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label className="text-muted-foreground">
+              {quickNoteDeal?.contact?.name || quickNoteDeal?.contact?.phone || quickNoteDeal?.title}
+            </Label>
+            <Textarea
+              autoFocus
+              value={quickNote}
+              onChange={(event) => setQuickNote(event.target.value)}
+              placeholder={t("quickNotePlaceholder")}
+              className="min-h-28 bg-muted border-border text-foreground"
+            />
+          </div>
+          <DialogFooter className="bg-popover/50 border-border">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setQuickNoteDeal(null);
+                setQuickNote("");
+              }}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={() => void saveQuickNote()}
+              disabled={savingQuickNote || !quickNote.trim()}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {savingQuickNote ? t("savingNote") : t("saveNote")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Deal Form (Sheet) */}
       <DealForm

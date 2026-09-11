@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import type { Deal, PipelineStage } from "@/types";
+import type { Deal, DealStatus, PipelineStage, Profile } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -28,6 +28,11 @@ interface PipelineBoardProps {
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  members: Profile[];
+  onValueChange: (deal: Deal, value: number) => Promise<void>;
+  onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
+  onAddNote: (deal: Deal) => void;
+  onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
 }
 
 export function PipelineBoard({
@@ -36,6 +41,11 @@ export function PipelineBoard({
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  members,
+  onValueChange,
+  onStatusChange,
+  onAddNote,
+  onAssign,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -119,6 +129,11 @@ export function PipelineBoard({
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              members={members}
+              onValueChange={onValueChange}
+              onStatusChange={onStatusChange}
+              onAddNote={onAddNote}
+              onAssign={onAssign}
             />
           );
         })}
@@ -139,6 +154,11 @@ export function PipelineBoard({
               }
               onEdit={() => {}}
               isOverlay
+              members={[]}
+              onValueChange={async () => {}}
+              onStatusChange={async () => {}}
+              onAddNote={() => {}}
+              onAssign={async () => {}}
             />
           </div>
         ) : null}
@@ -193,6 +213,11 @@ function StageColumn({
   currency,
   onAddDeal,
   onEditDeal,
+  members,
+  onValueChange,
+  onStatusChange,
+  onAddNote,
+  onAssign,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -200,6 +225,11 @@ function StageColumn({
   currency: string;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  members: Profile[];
+  onValueChange: (deal: Deal, value: number) => Promise<void>;
+  onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
+  onAddNote: (deal: Deal) => void;
+  onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -248,6 +278,11 @@ function StageColumn({
               deal={deal}
               stage={stage}
               onEdit={onEditDeal}
+              members={members}
+              onValueChange={onValueChange}
+              onStatusChange={onStatusChange}
+              onAddNote={onAddNote}
+              onAssign={onAssign}
             />
           ))
         )}
@@ -270,10 +305,20 @@ function DraggableDealCard({
   deal,
   stage,
   onEdit,
+  members,
+  onValueChange,
+  onStatusChange,
+  onAddNote,
+  onAssign,
 }: {
   deal: Deal;
   stage: PipelineStage;
   onEdit: (deal: Deal) => void;
+  members: Profile[];
+  onValueChange: (deal: Deal, value: number) => Promise<void>;
+  onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
+  onAddNote: (deal: Deal) => void;
+  onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -286,7 +331,16 @@ function DraggableDealCard({
       {...attributes}
       style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
     >
-      <DealCard deal={deal} stage={stage} onEdit={onEdit} />
+      <DealCard
+        deal={deal}
+        stage={stage}
+        onEdit={onEdit}
+        members={members}
+        onValueChange={onValueChange}
+        onStatusChange={onStatusChange}
+        onAddNote={onAddNote}
+        onAssign={onAssign}
+      />
     </div>
   );
 }

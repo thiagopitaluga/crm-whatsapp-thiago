@@ -386,7 +386,10 @@ export interface Deal {
   status?: DealStatus;
   created_at: string;
   updated_at?: string;
-  contact?: Contact;
+  /** Hydrated by the Kanban query to show a contact's latest message. */
+  contact?: Contact & {
+    conversations?: Pick<Conversation, 'last_message_text' | 'last_message_at'>[];
+  };
   stage?: PipelineStage;
   assignee?: Profile;
 }

@@ -1,131 +1,246 @@
 "use client";
 
-import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, MessageCircle, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { Deal, DealStatus, PipelineStage, Profile } from "@/types";
+import {
+  CheckCircle2,
+  CircleX,
+  MessageCircle,
+  Phone,
+  Save,
+  StickyNote,
+  UserRound,
+} from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface DealCardProps {
   deal: Deal;
   stage: PipelineStage | null;
   onEdit: (deal: Deal) => void;
+  members: Profile[];
+  onValueChange: (deal: Deal, value: number) => Promise<void>;
+  onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
+  onAddNote: (deal: Deal) => void;
+  onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   isOverlay?: boolean;
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function stopCardInteraction(event: React.SyntheticEvent) {
+  event.stopPropagation();
 }
 
-function initials(name?: string, fallback?: string) {
-  const source = (name || fallback || "?").trim();
-  if (!source) return "?";
-  return source.charAt(0).toUpperCase();
-}
-
-export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
+export function DealCard({
+  deal,
+  stage,
+  onEdit,
+  members,
+  onValueChange,
+  onStatusChange,
+  onAddNote,
+  onAssign,
+  isOverlay,
+}: DealCardProps) {
   const t = useTranslations("Pipelines.card");
-  const contactLabel = deal.contact?.name || deal.contact?.phone || t("noContact");
-  const assigneeLabel = deal.assignee?.full_name || null;
+  const [editingValue, setEditingValue] = useState(false);
+  const [value, setValue] = useState(String(deal.value ?? 0));
+  const [savingValue, setSavingValue] = useState(false);
+
+  useEffect(() => setValue(String(deal.value ?? 0)), [deal.id, deal.value]);
+
+  const contactName = deal.contact?.name?.trim() || deal.title || t("noContact");
+  const phone = deal.contact?.phone || t("noPhone");
+  const lastMessage = deal.contact?.conversations?.[0]?.last_message_text;
   const whatsappPhone = deal.contact?.phone?.replace(/\D/g, "");
   const whatsappUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}` : null;
+
+  async function commitValue() {
+    const nextValue = Number(value);
+    if (!Number.isFinite(nextValue) || nextValue < 0) {
+      setValue(String(deal.value ?? 0));
+      setEditingValue(false);
+      return;
+    }
+    if (nextValue === Number(deal.value ?? 0)) {
+      setEditingValue(false);
+      return;
+    }
+    setSavingValue(true);
+    await onValueChange(deal, nextValue);
+    setSavingValue(false);
+    setEditingValue(false);
+  }
 
   return (
     <div
       role="button"
       tabIndex={isOverlay ? -1 : 0}
-      onClick={(e) => {
-        // `onClick` still fires after a non-drag tap because the PointerSensor
-        // requires 5px movement before it counts as a drag.
+      onClick={(event) => {
         if (isOverlay) return;
-        e.stopPropagation();
+        event.stopPropagation();
         onEdit(deal);
       }}
-      onKeyDown={(e) => {
-        if (isOverlay || e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
+      onKeyDown={(event) => {
+        if (isOverlay || event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
           onEdit(deal);
         }
       }}
-      className={`group relative w-full cursor-pointer rounded-xl border border-border/50 bg-muted/70 pl-4 pr-3 py-3 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+      className={`group relative w-full cursor-pointer rounded-xl border border-border/50 bg-muted/70 px-3 py-3 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
         isOverlay
           ? "shadow-xl"
           : "hover:-translate-y-0.5 hover:border-border hover:bg-muted hover:shadow-lg"
       }`}
     >
-      {/* 4px left accent bar using stage color */}
       <span
         aria-hidden
         className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
         style={{ backgroundColor: stage?.color ?? "#94a3b8" }}
       />
 
-      <div className="flex items-start justify-between gap-2">
-        <h4 className="flex-1 text-sm font-semibold leading-snug text-foreground break-words">
-          {deal.title}
+      <div className="min-w-0 pl-1">
+        <h4 className="truncate text-sm font-semibold text-foreground" title={contactName}>
+          {contactName}
         </h4>
-        {deal.status === "won" && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            <Check className="h-3 w-3" />
-            {t("won")}
-          </span>
-        )}
-        {deal.status === "lost" && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-400">
-            <X className="h-3 w-3" />
-            {t("lost")}
-          </span>
+        <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+          <Phone className="size-3 shrink-0" />
+          {phone}
+        </p>
+      </div>
+
+      <div className="mt-3 pl-1">
+        {editingValue && !isOverlay ? (
+          <div className="flex items-center gap-1" onClick={stopCardInteraction} onPointerDown={stopCardInteraction}>
+            <input
+              autoFocus
+              type="number"
+              min="0"
+              step="0.01"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              onBlur={() => void commitValue()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void commitValue();
+                if (event.key === "Escape") {
+                  setValue(String(deal.value ?? 0));
+                  setEditingValue(false);
+                }
+              }}
+              aria-label={t("editValue")}
+              className="h-7 min-w-0 flex-1 rounded-md border border-primary bg-background px-2 text-sm font-semibold text-foreground outline-none"
+            />
+            <Save className={`size-3.5 text-primary ${savingValue ? "animate-pulse" : ""}`} />
+          </div>
+        ) : (
+          <button
+            type="button"
+            title={t("editValue")}
+            aria-label={t("editValue")}
+            disabled={isOverlay}
+            onClick={(event) => {
+              stopCardInteraction(event);
+              setEditingValue(true);
+            }}
+            onPointerDown={stopCardInteraction}
+            className="rounded-md text-sm font-bold text-primary outline-none transition-colors hover:text-primary/75 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+          >
+            {formatCurrency(deal.value, deal.currency)}
+          </button>
         )}
       </div>
 
-      {/* Contact row */}
-      <div className="mt-2 flex items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
-          {initials(deal.contact?.name, deal.contact?.phone)}
-        </span>
-        <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
-      </div>
-
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-sm font-bold text-primary">
-          {formatCurrency(deal.value, deal.currency)}
-        </span>
-        {deal.expected_close_date && (
-          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Calendar className="h-3 w-3" />
-            {formatDate(deal.expected_close_date)}
-          </span>
-        )}
-      </div>
+      <p className="mt-3 line-clamp-2 min-h-10 border-l-2 border-border pl-2 text-xs leading-5 text-muted-foreground" title={lastMessage || undefined}>
+        {lastMessage || t("noRecentMessage")}
+      </p>
 
       {whatsappUrl && !isOverlay && (
         <a
           href={whatsappUrl}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`${t("openWhatsApp")} — ${contactLabel}`}
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
+          aria-label={`${t("openWhatsApp")} — ${contactName}`}
+          onClick={stopCardInteraction}
+          onPointerDown={stopCardInteraction}
+          onKeyDown={stopCardInteraction}
           className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#25D366] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#20bd5b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366] focus-visible:ring-offset-2"
         >
-          <MessageCircle className="h-3.5 w-3.5" />
+          <MessageCircle className="size-3.5" />
           {t("openWhatsApp")}
         </a>
       )}
 
-      {assigneeLabel && (
-        <div className="mt-2 flex items-center justify-end">
-          <span
-            title={assigneeLabel}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary"
+      {!isOverlay && (
+        <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-2" onPointerDown={stopCardInteraction}>
+          <button
+            type="button"
+            title={t("markWon")}
+            aria-label={t("markWon")}
+            onClick={(event) => {
+              stopCardInteraction(event);
+              void onStatusChange(deal, "won");
+            }}
+            className="rounded-md p-1.5 text-emerald-600 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
           >
-            {initials(assigneeLabel)}
-          </span>
+            <CheckCircle2 className="size-4" />
+          </button>
+          <button
+            type="button"
+            title={t("markLost")}
+            aria-label={t("markLost")}
+            onClick={(event) => {
+              stopCardInteraction(event);
+              void onStatusChange(deal, "lost");
+            }}
+            className="rounded-md p-1.5 text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400"
+          >
+            <CircleX className="size-4" />
+          </button>
+          <button
+            type="button"
+            title={t("addNote")}
+            aria-label={t("addNote")}
+            disabled={!deal.contact_id}
+            onClick={(event) => {
+              stopCardInteraction(event);
+              onAddNote(deal);
+            }}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <StickyNote className="size-4" />
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              title={t("assignLead")}
+              aria-label={t("assignLead")}
+              onClick={stopCardInteraction}
+              onPointerDown={stopCardInteraction}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <UserRound className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem onSelect={() => void onAssign(deal, null)}>
+                {t("unassigned")}
+              </DropdownMenuItem>
+              {members.length > 0 && <DropdownMenuSeparator />}
+              {members.map((member) => (
+                <DropdownMenuItem
+                  key={member.id}
+                  onSelect={() => void onAssign(deal, member.id)}
+                >
+                  {member.full_name || member.email}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </div>
