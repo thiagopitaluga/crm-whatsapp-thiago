@@ -567,7 +567,7 @@
       "value": "Valor",
       "currency": "Moeda",
       "expectedCloseDate": "Data de fechamento prevista",
-      "stage": "Palco",
+      "stage": "Etapa",
       "assignedTo": "Atribuído a",
       "unassigned": "Não atribuído",
       "notes": "Notas",
