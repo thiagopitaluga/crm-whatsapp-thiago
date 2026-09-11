@@ -8,6 +8,15 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 
+// libsignal can write complete encrypted session objects directly to stdout.
+// Those objects are not useful operational logs and must never end up in a
+// container log collector or support transcript.
+const originalConsoleLog = console.log.bind(console)
+console.log = (...args) => {
+  if (args.some((arg) => typeof arg === 'string' && arg.startsWith('Closing session:'))) return
+  originalConsoleLog(...args)
+}
+
 const port = Number(process.env.PORT ?? 3001)
 const authDir = process.env.AUTH_DIR ?? '/app/data/auth'
 const crmBaseUrl = required('CRM_BASE_URL').replace(/\/$/, '')
