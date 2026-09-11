@@ -82,19 +82,22 @@ export default function PipelinesPage() {
   const [taskDeal, setTaskDeal] = useState<Deal | null>(null);
 
   // Guard against double-seeding (React StrictMode double-effect in dev).
-  const seedAttempted = useRef(false);
+  const seedAttemptedForAccount = useRef<string | null>(null);
 
   const loadPipelines = useCallback(async () => {
+    if (!accountId) return [];
+
     const { data, error } = await supabase
       .from("pipelines")
       .select("*")
+      .eq("account_id", accountId)
       .order("created_at");
     if (error) {
       console.error("Failed to load pipelines:", error.message);
       return [];
     }
     return data ?? [];
-  }, [supabase]);
+  }, [accountId, supabase]);
 
   const loadStages = useCallback(
     async (pipelineId: string) => {
@@ -110,10 +113,13 @@ export default function PipelinesPage() {
 
   const loadDeals = useCallback(
     async (pipelineId: string) => {
+      if (!accountId) return [];
+
       const { data } = await supabase
         .from("deals")
         .select("*, contact:contacts(*, conversations(last_message_text,last_message_at), contact_tags(tags(*))), assignee:profiles!deals_assigned_to_fkey(*)")
         .eq("pipeline_id", pipelineId)
+        .eq("account_id", accountId)
         .order("created_at", { ascending: false });
       return (data ?? []).map((row) => {
         const contact = row.contact as
@@ -132,7 +138,7 @@ export default function PipelinesPage() {
         } as Deal;
       });
     },
-    [supabase],
+    [accountId, supabase],
   );
 
   useEffect(() => {
@@ -188,13 +194,22 @@ export default function PipelinesPage() {
 
   // Initial load + seed-if-empty
   useEffect(() => {
+    if (!accountId) {
+      setPipelines([]);
+      setSelectedPipelineId("");
+      setStages([]);
+      setDeals([]);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       setLoading(true);
       let list = await loadPipelines();
 
-      if (list.length === 0 && !seedAttempted.current) {
-        seedAttempted.current = true;
+      if (list.length === 0 && seedAttemptedForAccount.current !== accountId) {
+        seedAttemptedForAccount.current = accountId;
         const seeded = await seedDefaultPipeline();
         if (seeded) list = await loadPipelines();
       }
@@ -213,7 +228,7 @@ export default function PipelinesPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadPipelines, seedDefaultPipeline]);
+  }, [accountId, loadPipelines, seedDefaultPipeline]);
 
   // Load stages + deals whenever selected pipeline changes.
   // Clearing on no-selection is a legitimate sync with URL/prop
