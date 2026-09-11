@@ -1,16 +1,14 @@
 // ============================================================
 // POST /api/invitations/[token]/redeem
 //
-// Authenticated. Caller atomically moves from their personal
-// account (created at signup) to the inviter's account with the
-// invite's role. Heavy lifting lives in the SECURITY DEFINER
+// Authenticated. Caller receives a membership in the inviter's
+// account and it becomes their active workspace. Existing accounts
+// remain available through the account switcher. Heavy lifting lives in the SECURITY DEFINER
 // `redeem_invitation` RPC from migration 019.
 //
 // Refusal contract (from the RPC)
 //   - SQLSTATE 42501 → 401 (caller not authenticated)
 //   - SQLSTATE 22023 → 400 (invitation not_found / used / expired)
-//   - SQLSTATE 23505 → 409 (caller's account already has data /
-//     they're already in this or another shared account)
 //
 // Rate limit (per IP) is the same shape as peek but tighter —
 // a successful redeem changes data, and the RPC's data-loss
@@ -42,9 +40,6 @@ function rpcErrorToResponse(err: PostgrestError): NextResponse {
   }
   if (err.code === "22023") {
     return NextResponse.json({ error: err.message }, { status: 400 });
-  }
-  if (err.code === "23505") {
-    return NextResponse.json({ error: err.message }, { status: 409 });
   }
   console.error("[redeem] unexpected RPC error:", err);
   return NextResponse.json(

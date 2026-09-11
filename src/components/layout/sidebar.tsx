@@ -10,6 +10,7 @@ import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
   Bot,
+  Check,
   CalendarDays,
   Crown,
   GitBranch,
@@ -118,7 +119,7 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, accountRole, accounts, switchAccount, signOut } = useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Only surface the account-name strip when it actually carries
@@ -371,6 +372,38 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               sideOffset={6}
               className="min-w-56 bg-popover text-popover-foreground ring-border"
             >
+              {accounts.length > 1 && (
+                <>
+                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                    {t("switchAccount")}
+                  </div>
+                  {accounts.map((availableAccount) => (
+                    <DropdownMenuItem
+                      key={availableAccount.id}
+                      onClick={() => {
+                        void switchAccount(availableAccount.id).catch((error) => {
+                          console.error("[Sidebar] account switch failed:", error);
+                        });
+                      }}
+                      className="gap-2 text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+                    >
+                      <Avatar className="size-5 rounded-sm">
+                        {availableAccount.logo_url ? (
+                          <AvatarImage src={availableAccount.logo_url} alt="" />
+                        ) : null}
+                        <AvatarFallback className="rounded-sm bg-primary/10 text-[10px] text-primary">
+                          {availableAccount.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 flex-1 truncate">{availableAccount.name}</span>
+                      {availableAccount.id === account?.id ? (
+                        <Check className="size-4 text-primary" aria-label={t("activeAccount")} />
+                      ) : null}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator className="bg-border" />
+                </>
+              )}
               <DropdownMenuItem
                 render={
                   <Link

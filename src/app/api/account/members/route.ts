@@ -23,7 +23,12 @@ interface ProfileRow {
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
-  account_role: string;
+  created_at: string;
+}
+
+interface MembershipRow {
+  user_id: string;
+  role: string;
   created_at: string;
 }
 
@@ -31,16 +36,34 @@ export async function GET() {
   try {
     const ctx = await getCurrentAccount();
 
-    // RLS on profiles allows reading any row whose account matches
-    // the caller's, so this query is naturally account-scoped.
-    const { data, error } = await ctx.supabase
-      .from("profiles")
-      .select("user_id, full_name, email, avatar_url, account_role, created_at")
+    // A profile only keeps its *active* account. Memberships are the
+    // source of truth, so a teammate remains in this roster even while
+    // they are currently working in another company.
+    const { data: membershipRows, error: membershipsError } = await ctx.supabase
+      .from("account_memberships")
+      .select("user_id, role, created_at")
       .eq("account_id", ctx.accountId)
       .order("created_at", { ascending: true });
 
-    if (error) {
-      console.error("[GET /api/account/members] fetch error:", error);
+    if (membershipsError) {
+      console.error("[GET /api/account/members] membership fetch error:", membershipsError);
+      return NextResponse.json(
+        { error: "Failed to load members" },
+        { status: 500 },
+      );
+    }
+
+    const memberships = (membershipRows ?? []) as MembershipRow[];
+    const userIds = memberships.map((membership) => membership.user_id);
+    const { data: profileRows, error: profilesError } = userIds.length
+      ? await ctx.supabase
+        .from("profiles")
+        .select("user_id, full_name, email, avatar_url, created_at")
+        .in("user_id", userIds)
+      : { data: [], error: null };
+
+    if (profilesError) {
+      console.error("[GET /api/account/members] profile fetch error:", profilesError);
       return NextResponse.json(
         { error: "Failed to load members" },
         { status: 500 },
@@ -48,20 +71,25 @@ export async function GET() {
     }
 
     const canSeeEmails = canManageMembers(ctx.role);
+    const profilesByUser = new Map(
+      ((profileRows ?? []) as ProfileRow[]).map((profile) => [profile.user_id, profile]),
+    );
 
-    const members: AccountMember[] = (data as ProfileRow[]).flatMap((row) => {
+    const members: AccountMember[] = memberships.flatMap((membership) => {
       // Defensive: the DB enum should never let an unknown role
       // through, but if a migration ever broadens the enum without
       // updating TS, skip the row rather than crash the page.
-      if (!isAccountRole(row.account_role)) return [];
+      if (!isAccountRole(membership.role)) return [];
+      const profile = profilesByUser.get(membership.user_id);
+      if (!profile) return [];
       return [
         {
-          user_id: row.user_id,
-          full_name: row.full_name ?? "",
-          email: canSeeEmails ? row.email : null,
-          avatar_url: row.avatar_url,
-          role: row.account_role,
-          joined_at: row.created_at,
+          user_id: membership.user_id,
+          full_name: profile.full_name ?? "",
+          email: canSeeEmails ? profile.email : null,
+          avatar_url: profile.avatar_url,
+          role: membership.role,
+          joined_at: membership.created_at,
         },
       ];
     });

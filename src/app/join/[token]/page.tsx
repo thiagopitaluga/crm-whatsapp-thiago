@@ -102,10 +102,9 @@ export default function JoinPage() {
     undefined, // undefined = unknown / still loading; null = signed out
   );
   const [accepting, setAccepting] = useState(false);
-  // `redeem_invitation` returns 409 when the caller's current account
-  // has domain data, or they're already a member of a shared account.
-  // A transient toast wasn't enough — the user has no actionable next
-  // step. Surface a blocking modal that walks them through it.
+  // Older deployments returned 409 when a person already belonged to
+  // another account. Multi-account memberships no longer conflict, but
+  // keep this UI state for a meaningful server-side conflict response.
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -175,15 +174,13 @@ export default function JoinPage() {
         const payload = (await res.json().catch(() => ({}))) as {
           error?: string;
         };
-        // 409 = caller already has data / is in another shared
-        // account. The redeem RPC's error message is descriptive
-        // enough to show directly; we open a modal so the user has
-        // a clear next-action (sign out → use different email)
-        // rather than a 3-second toast.
+        // A conflict is rare (for example, a stale client trying to
+        // redeem an account it already joined). Keep the actionable
+        // blocking state rather than hiding it in a transient toast.
         if (res.status === 409) {
           setConflictMessage(
             payload.error ||
-              'Você já participa de outra conta. Entre com outro e-mail para aceitar este convite.',
+              'Não foi possível concluir este convite. Atualize a página e tente novamente.',
           );
         } else {
           toast.error(payload.error || 'Falha ao aceitar o convite');
@@ -192,8 +189,8 @@ export default function JoinPage() {
         return;
       }
       toast.success('Bem-vindo à equipe');
-      // Full reload (not router.push) so AuthProvider re-fetches
-      // the profile with the new account_id and account_role.
+      // Full reload (not router.push) so AuthProvider re-fetches the
+      // membership and active account selected by the redemption RPC.
       window.location.href = '/dashboard';
     } catch (err) {
       console.error('[join] redeem error:', err);

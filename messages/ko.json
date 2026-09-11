@@ -37,6 +37,8 @@
     "closeMenu": "메뉴 닫기",
     "defaultUser": "사용자",
     "defaultAvatar": "아바타",
+    "switchAccount": "회사 전환",
+    "activeAccount": "활성 회사",
     "menuProfile": "프로필",
     "menuSettings": "설정",
     "menuSignOut": "로그아웃"

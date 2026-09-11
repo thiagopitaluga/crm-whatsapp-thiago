@@ -47,6 +47,11 @@ interface AccountSummary {
   default_currency: string;
 }
 
+/** An account the signed-in person can access, including their role in it. */
+interface AvailableAccount extends AccountSummary {
+  role: AccountRole;
+}
+
 /**
  * Whether we managed to establish what this user may do.
  *
@@ -114,6 +119,10 @@ interface AuthContextValue {
   accountRole: AccountRole | null;
   /** Lightweight account meta — id + name + default_currency. Null while loading. */
   account: AccountSummary | null;
+  /** Every company this login can access. The active one is `account`. */
+  accounts: AvailableAccount[];
+  /** Makes one of the caller's memberships active, then refreshes the app. */
+  switchAccount: (accountId: string) => Promise<void>;
   /** Account default deal currency. Falls back to DEFAULT_CURRENCY
    *  while loading or when no account is resolved, so callers can use
    *  it unconditionally. */
@@ -165,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
+  const [accounts, setAccounts] = useState<AvailableAccount[]>([]);
   const [loading, setLoading] = useState(true);
   // Why the account/role couldn't be established, when it couldn't.
   // Null on the happy path.
@@ -261,6 +271,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // `profiles.account_id` is the active account. The memberships
+        // table adds the account switcher without forcing every existing
+        // page and API route to carry a separate account selector.
+        let availableAccounts: AvailableAccount[] = [];
+        const { data: memberships, error: membershipsErr } = await supabase
+          .from("account_memberships")
+          .select("account_id, role")
+          .eq("user_id", userId);
+
+        if (membershipsErr) {
+          // Graceful fallback while an older database is still receiving
+          // the migration: the active-account experience remains usable.
+          console.error("[AuthProvider] fetchMemberships error:", membershipsErr.message);
+        } else if (memberships?.length) {
+          const accountIds = memberships.map((membership) => membership.account_id);
+          const { data: membershipAccounts, error: membershipAccountsErr } = await supabase
+            .from("accounts")
+            .select("id, name, logo_url, default_currency")
+            .in("id", accountIds);
+
+          if (membershipAccountsErr) {
+            console.error("[AuthProvider] fetchMembershipAccounts error:", membershipAccountsErr.message);
+          } else {
+            const roleByAccount = new Map(
+              memberships
+                .filter((membership) => isAccountRole(membership.role))
+                .map((membership) => [membership.account_id, membership.role as AccountRole]),
+            );
+            availableAccounts = (membershipAccounts ?? []).flatMap((membershipAccount) => {
+              const role = roleByAccount.get(membershipAccount.id);
+              if (!role) return [];
+              return [{
+                id: membershipAccount.id,
+                name: membershipAccount.name,
+                logo_url: membershipAccount.logo_url ?? null,
+                default_currency: membershipAccount.default_currency ?? DEFAULT_CURRENCY,
+                role,
+              }];
+            });
+          }
+        }
+
         // Narrow the DB enum into our AccountRole union. The DB
         // constraint should make this unconditional, but a future
         // migration that broadens the enum without updating TS would
@@ -285,6 +337,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_role: accountRole,
         });
         setAccount(accountRow);
+        // Keep a resilient one-account fallback for the brief window
+        // before migration 044 reaches a deployment.
+        setAccounts(
+          availableAccounts.length > 0
+            ? availableAccounts
+            : accountRow && accountRole
+              ? [{ ...accountRow, role: accountRole }]
+              : [],
+        );
         if (!data.account_id || !accountRole) {
           // The row exists but carries no tenancy. Migration 017 made
           // both columns NOT NULL for new signups, so this is a user
@@ -370,6 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedUserIdRef.current = null;
         setProfile(null);
         setAccount(null);
+        setAccounts([]);
         setProfileLoading(false);
       }
 
@@ -389,6 +451,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
+    setAccounts([]);
     window.location.href = "/login";
   }, []);
 
@@ -396,6 +459,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user?.id) return;
     await fetchProfile(user.id);
   }, [user?.id, fetchProfile]);
+
+  const switchAccount = useCallback(async (accountId: string) => {
+    if (!user?.id || accountId === profile?.account_id) return;
+    const supabase = createClient();
+    const { error } = await supabase.rpc("set_active_account", {
+      p_account_id: accountId,
+    });
+    if (error) throw new Error(error.message);
+
+    // A full navigation makes every existing account-scoped query reload
+    // together, avoiding stale inbox/Kanban data from the prior company.
+    window.location.assign("/dashboard");
+  }, [user?.id, profile?.account_id]);
 
   // Derive the role booleans once per profile change rather than on
   // every consumer render. Cheap regardless, but the memo also gives
@@ -438,6 +514,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         refreshProfile,
         account,
+        accounts,
+        switchAccount,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
         accountStatus,
         accountStatusDetail: statusDetail,
@@ -470,6 +548,8 @@ export function useAuth(): AuthContextValue {
       },
       refreshProfile: async () => {},
       account: null,
+      accounts: [],
+      switchAccount: async () => {},
       defaultCurrency: DEFAULT_CURRENCY,
       // Outside the provider there is nothing to resolve yet — 'loading'
       // keeps the access alert from firing on, say, the login page.

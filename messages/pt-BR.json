@@ -37,6 +37,8 @@
     "closeMenu": "Fechar menu",
     "defaultUser": "Usuário",
     "defaultAvatar": "Avatar",
+    "switchAccount": "Trocar empresa",
+    "activeAccount": "Empresa ativa",
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
     "menuSignOut": "Sair"

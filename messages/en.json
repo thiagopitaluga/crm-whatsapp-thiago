@@ -37,6 +37,8 @@
     "closeMenu": "Close menu",
     "defaultUser": "User",
     "defaultAvatar": "Avatar",
+    "switchAccount": "Switch company",
+    "activeAccount": "Active company",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
     "menuSignOut": "Sign out"
