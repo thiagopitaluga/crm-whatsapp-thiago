@@ -40,6 +40,7 @@ function SignupPageInner() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [emailAlreadyRegistered, setEmailAlreadyRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const supabase = createClient();
@@ -47,6 +48,7 @@ function SignupPageInner() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setEmailAlreadyRegistered(false);
 
     if (password !== confirmPassword) {
       setError("Passwords do not match");
@@ -80,7 +82,13 @@ function SignupPageInner() {
     });
 
     if (error) {
-      setError(error.message);
+      const isExistingEmail = /already registered|already exists|email.*exists/i.test(error.message);
+      setEmailAlreadyRegistered(isExistingEmail);
+      setError(
+        isExistingEmail
+          ? "Este e-mail já possui uma conta. Entre ou redefina a senha para continuar."
+          : error.message,
+      );
       setLoading(false);
       return;
     }
@@ -150,7 +158,27 @@ function SignupPageInner() {
           <form onSubmit={handleSignup} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                {error}
+                <p>{error}</p>
+                {emailAlreadyRegistered && (
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                    <Link
+                      href={
+                        inviteToken
+                          ? `/login?invite=${encodeURIComponent(inviteToken)}`
+                          : "/login"
+                      }
+                      className="font-medium text-primary hover:text-primary/80"
+                    >
+                      Entrar na conta
+                    </Link>
+                    <Link
+                      href="/forgot-password"
+                      className="font-medium text-primary hover:text-primary/80"
+                    >
+                      Redefinir senha
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 
