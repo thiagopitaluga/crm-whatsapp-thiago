@@ -454,9 +454,15 @@ async function ingestInboundMessage(accountId, message, session) {
   }
 
   const remoteJid = message.key.remoteJid;
-  const jid = remoteJid?.endsWith('@lid')
+  // Recent WhatsApp clients may use a private LID instead of the phone-number
+  // JID. Baileys v7 exposes the matching phone-number JID in remoteJidAlt.
+  // Prefer it, so a new lead is always created with a usable WhatsApp number.
+  const alternateJid = message.key.remoteJidAlt;
+  const jid = [remoteJid, alternateJid].find((candidate) =>
+    candidate?.endsWith('@s.whatsapp.net')
+  ) ?? (remoteJid?.endsWith('@lid')
     ? session.phoneJidsByLid.get(remoteJid)
-    : remoteJid;
+    : remoteJid);
   if (
     !jid ||
     jid.endsWith('@g.us') ||
