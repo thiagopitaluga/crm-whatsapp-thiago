@@ -87,9 +87,7 @@ function LoginPageInner() {
 
       <section className="mx-auto grid w-full max-w-7xl gap-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.72fr)] lg:items-center lg:gap-20">
         <div className="hidden max-w-xl lg:block">
-          <div className="inline-flex rounded-xl bg-white px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
-            <OrganiZAPLogo className="h-9 w-36" priority />
-          </div>
+          <OrganiZAPLogo className="h-10 w-40" priority />
 
           <div className="mt-20">
             <p className="text-xs font-semibold tracking-[0.18em] text-emerald-300">
@@ -120,9 +118,7 @@ function LoginPageInner() {
 
           <div className="relative">
             <div className="flex items-center gap-3 lg:hidden">
-              <span className="rounded-xl bg-white px-2.5 py-1.5 shadow-[0_10px_22px_rgba(0,0,0,0.18)]">
-                <OrganiZAPLogo className="h-7 w-28" priority />
-              </span>
+              <OrganiZAPLogo className="h-8 w-32" priority />
             </div>
 
             <div className="mt-7 flex items-center gap-2 text-xs font-semibold tracking-[0.16em] text-emerald-300 lg:mt-0">

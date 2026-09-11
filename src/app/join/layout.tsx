@@ -52,8 +52,8 @@ export default function JoinLayout({ children }: { children: ReactNode }) {
       />
       <div className="pointer-events-none absolute -left-32 top-[14%] -z-10 h-80 w-80 rounded-full bg-emerald-400/20 blur-[110px]" />
       <div className="pointer-events-none absolute -right-20 bottom-[-12%] -z-10 h-96 w-96 rounded-full bg-lime-300/10 blur-[130px]" />
-      <Link href="/login" className="absolute left-5 top-5 rounded-xl bg-white px-2.5 py-1.5 shadow-[0_10px_22px_rgba(0,0,0,0.18)] sm:left-8 sm:top-8">
-        <OrganiZAPLogo className="h-7 w-28" priority />
+      <Link href="/login" className="absolute left-5 top-5 sm:left-8 sm:top-8">
+        <OrganiZAPLogo className="h-8 w-32" priority />
       </Link>
       {children}
     </main>

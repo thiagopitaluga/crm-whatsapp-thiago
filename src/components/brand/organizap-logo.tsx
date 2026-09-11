@@ -11,7 +11,7 @@ export function OrganiZAPLogo({ className, priority = false }: OrganiZAPLogoProp
   return (
     <div className={cn("relative h-8 w-32 shrink-0", className)}>
       <Image
-        src="/organizap-logo.png"
+        src="/organizap-logo-light.png"
         alt="OrganiZAP"
         fill
         priority={priority}

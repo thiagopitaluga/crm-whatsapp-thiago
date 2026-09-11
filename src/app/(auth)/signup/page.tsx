@@ -121,9 +121,7 @@ function SignupPageInner() {
         <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-[28px] border border-white/[0.13] bg-[#07100c]/80 p-6 shadow-[0_32px_100px_rgba(0,0,0,0.48)] backdrop-blur-2xl sm:p-8">
           <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-emerald-400/10 blur-3xl" />
           <div className="relative text-center">
-            <span className="inline-flex rounded-xl bg-white px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
-              <OrganiZAPLogo className="h-8 w-32" priority />
-            </span>
+            <OrganiZAPLogo className="mx-auto h-9 w-36" priority />
             <div className="mx-auto mt-7 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-300 text-slate-950">
               <CheckCircle className="h-6 w-6" />
             </div>
@@ -155,9 +153,7 @@ function SignupPageInner() {
     <AuthBackground>
       <section className="mx-auto grid w-full max-w-7xl gap-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.72fr)] lg:items-center lg:gap-20">
         <div className="hidden max-w-xl lg:block">
-          <div className="inline-flex rounded-xl bg-white px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
-            <OrganiZAPLogo className="h-9 w-36" priority />
-          </div>
+          <OrganiZAPLogo className="h-10 w-40" priority />
           <div className="mt-20">
             <p className="text-xs font-semibold tracking-[0.18em] text-emerald-300">COMECE COM O CRM</p>
             <h1 className="mt-5 max-w-lg text-4xl font-semibold leading-[1.08] tracking-[-0.04em] text-white xl:text-5xl">
@@ -183,9 +179,7 @@ function SignupPageInner() {
           <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-emerald-400/10 blur-3xl" />
           <div className="relative">
             <div className="lg:hidden">
-              <span className="inline-flex rounded-xl bg-white px-2.5 py-1.5 shadow-[0_10px_22px_rgba(0,0,0,0.18)]">
-                <OrganiZAPLogo className="h-7 w-28" priority />
-              </span>
+              <OrganiZAPLogo className="h-8 w-32" priority />
             </div>
 
             <div className="mt-7 flex items-center gap-2 text-xs font-semibold tracking-[0.16em] text-emerald-300 lg:mt-0">
