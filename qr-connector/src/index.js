@@ -483,11 +483,27 @@ async function ingestInboundMessage(accountId, message, session) {
     return;
   }
   const name = message.pushName?.trim() || null;
+  const lastMessagePreview = getMessagePreview(message);
 
-  await sendLeadToCrm(accountId, phone, name);
+  await sendLeadToCrm(accountId, phone, name, lastMessagePreview);
 }
 
-async function sendLeadToCrm(accountId, phone, name) {
+function getMessagePreview(message) {
+  const content = message.message || {};
+  const text = content.conversation || content.extendedTextMessage?.text;
+  if (typeof text === 'string' && text.trim()) return text.trim();
+  if (content.imageMessage) return content.imageMessage.caption?.trim() || '[Imagem]';
+  if (content.videoMessage) return content.videoMessage.caption?.trim() || '[Vídeo]';
+  if (content.documentMessage)
+    return content.documentMessage.fileName?.trim() || '[Documento]';
+  if (content.audioMessage) return '[Áudio]';
+  if (content.stickerMessage) return '[Figurinha]';
+  if (content.locationMessage) return '[Localização]';
+  if (content.contactMessage) return '[Contato]';
+  return '[Mensagem recebida]';
+}
+
+async function sendLeadToCrm(accountId, phone, name, lastMessagePreview = null) {
   const endpoint = crmConnectorSecret
     ? `${crmBaseUrl}/api/internal/qr-ingest`
     : `${crmBaseUrl}/api/v1/ingest/whatsapp`;
@@ -502,7 +518,12 @@ async function sendLeadToCrm(accountId, phone, name) {
         ...authorizationHeaders,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ account_id: accountId, phone, name }),
+      body: JSON.stringify({
+        account_id: accountId,
+        phone,
+        name,
+        last_message_preview: lastMessagePreview,
+      }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {

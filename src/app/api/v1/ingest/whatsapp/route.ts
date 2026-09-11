@@ -7,8 +7,8 @@ import { ingestLead } from '@/lib/leads/ingest';
  * POST /api/v1/ingest/whatsapp
  *
  * A narrowly-scoped, capture-only endpoint for a trusted QR connector.
- * It never sends a WhatsApp message and deliberately stores no inbound
- * message body. A new phone becomes a contact, a lightweight
+ * It never sends a WhatsApp message. It stores only an optional, short
+ * preview of the latest inbound message; a new phone becomes a contact, a lightweight
  * conversation record, and (when a pipeline exists) a deal in its first
  * stage. The connector must use an API key with only `ingest:write`.
  */
@@ -24,7 +24,15 @@ export async function POST(request: Request) {
     if (!phone) return fail('bad_request', "'phone' is required", 400);
 
     const name = typeof body.name === 'string' ? body.name.trim() : null;
-    const result = await ingestLead(ctx.supabase, ctx.accountId, { phone, name });
+    const lastMessagePreview =
+      typeof body.last_message_preview === 'string'
+        ? body.last_message_preview
+        : null;
+    const result = await ingestLead(ctx.supabase, ctx.accountId, {
+      phone,
+      name,
+      lastMessagePreview,
+    });
 
     return ok({
       contact_id: result.contactId,

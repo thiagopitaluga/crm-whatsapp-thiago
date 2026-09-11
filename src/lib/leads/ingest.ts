@@ -7,6 +7,8 @@ import { DEFAULT_CURRENCY } from '@/lib/currency';
 export interface IngestLeadInput {
   phone: string;
   name?: string | null;
+  /** Most recent inbound WhatsApp text preview from the QR connector. */
+  lastMessagePreview?: string | null;
 }
 
 export interface IngestLeadResult {
@@ -35,7 +37,8 @@ export async function ingestLead(
     db,
     accountId,
     auditUserId,
-    contact.id
+    contact.id,
+    input.lastMessagePreview
   );
 
   const dealId = contact.created
@@ -54,8 +57,11 @@ async function findOrCreateConversation(
   db: SupabaseClient,
   accountId: string,
   userId: string,
-  contactId: string
+  contactId: string,
+  lastMessagePreview?: string | null
 ): Promise<string> {
+  const lastMessageText = normalizeMessagePreview(lastMessagePreview);
+  const now = new Date().toISOString();
   const { data: existing, error: lookupError } = await db
     .from('conversations')
     .select('id')
@@ -65,11 +71,32 @@ async function findOrCreateConversation(
     .limit(1);
 
   if (lookupError) throw new Error('Failed to find the lead conversation');
-  if (existing?.[0]?.id) return existing[0].id as string;
+  if (existing?.[0]?.id) {
+    if (lastMessageText) {
+      const { error: updateError } = await db
+        .from('conversations')
+        .update({
+          last_message_text: lastMessageText,
+          last_message_at: now,
+          updated_at: now,
+        })
+        .eq('id', existing[0].id)
+        .eq('account_id', accountId);
+      if (updateError) throw new Error('Failed to update the lead conversation');
+    }
+    return existing[0].id as string;
+  }
 
   const { data: created, error: createError } = await db
     .from('conversations')
-    .insert({ account_id: accountId, user_id: userId, contact_id: contactId })
+    .insert({
+      account_id: accountId,
+      user_id: userId,
+      contact_id: contactId,
+      ...(lastMessageText
+        ? { last_message_text: lastMessageText, last_message_at: now }
+        : {}),
+    })
     .select('id')
     .single();
 
@@ -86,6 +113,11 @@ async function findOrCreateConversation(
   }
 
   throw new Error('Failed to create the lead conversation');
+}
+
+function normalizeMessagePreview(value?: string | null): string | null {
+  const preview = value?.replace(/\s+/g, ' ').trim().slice(0, 500);
+  return preview || null;
 }
 
 async function createDefaultDeal(

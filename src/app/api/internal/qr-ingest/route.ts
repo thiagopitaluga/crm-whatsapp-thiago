@@ -20,6 +20,10 @@ export async function POST(request: Request) {
     typeof body?.account_id === 'string' ? body.account_id.trim() : '';
   const phone = typeof body?.phone === 'string' ? body.phone.trim() : '';
   const name = typeof body?.name === 'string' ? body.name.trim() : null;
+  const lastMessagePreview =
+    typeof body?.last_message_preview === 'string'
+      ? body.last_message_preview
+      : null;
 
   if (!/^[0-9a-f-]{36}$/i.test(accountId) || !phone) {
     return NextResponse.json(
@@ -42,7 +46,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await ingestLead(supabase, accountId, { phone, name });
+    const result = await ingestLead(supabase, accountId, {
+      phone,
+      name,
+      lastMessagePreview,
+    });
     return NextResponse.json(
       {
         contact_id: result.contactId,
