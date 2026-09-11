@@ -12,7 +12,16 @@
     "signingIn": "로그인 중...",
     "signIn": "로그인",
     "noAccount": "계정이 없으신가요?",
-    "createAccount": "계정 만들기"
+    "createAccount": "계정 만들기",
+    "portalLabel": "CRM 포털",
+    "heroTitle": "대화와 영업을 한곳에서 관리하세요.",
+    "heroDescription": "모든 단계에서 명확하게 연락처, 기회, WhatsApp 응대를 정리하세요.",
+    "benefitSecure": "회사를 위한 안전한 액세스",
+    "benefitFocused": "더 나은 영업을 위한 준비",
+    "secureAccess": "안전한 액세스",
+    "formDescription": "응대, 거래 및 다음 단계를 확인하려면 로그인하세요.",
+    "showPassword": "비밀번호 표시",
+    "hidePassword": "비밀번호 숨기기"
   },
   "Sidebar": {
     "title": "OrganiZAP",

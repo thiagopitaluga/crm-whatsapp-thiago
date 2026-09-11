@@ -12,7 +12,16 @@
     "signingIn": "Signing in...",
     "signIn": "Sign in",
     "noAccount": "Don't have an account?",
-    "createAccount": "Create account"
+    "createAccount": "Create account",
+    "portalLabel": "CRM PORTAL",
+    "heroTitle": "Your conversations and sales, in one place.",
+    "heroDescription": "Organize contacts, opportunities, and WhatsApp support with clarity at every step.",
+    "benefitSecure": "Secure access to your company",
+    "benefitFocused": "Everything ready to sell better",
+    "secureAccess": "SECURE ACCESS",
+    "formDescription": "Sign in to follow your support, deals, and next steps.",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "Sidebar": {
     "title": "OrganiZAP",

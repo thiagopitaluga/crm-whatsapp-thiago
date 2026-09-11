@@ -12,7 +12,16 @@
     "signingIn": "Fazendo login...",
     "signIn": "Entrar",
     "noAccount": "Não tem uma conta?",
-    "createAccount": "Criar conta"
+    "createAccount": "Criar conta",
+    "portalLabel": "PORTAL DO CRM",
+    "heroTitle": "Suas conversas e vendas, no mesmo lugar.",
+    "heroDescription": "Organize contatos, oportunidades e atendimento pelo WhatsApp com clareza em cada etapa.",
+    "benefitSecure": "Acesso seguro à sua empresa",
+    "benefitFocused": "Tudo pronto para vender melhor",
+    "secureAccess": "ACESSO SEGURO",
+    "formDescription": "Entre para acompanhar seu atendimento, negociações e próximos passos.",
+    "showPassword": "Mostrar senha",
+    "hidePassword": "Ocultar senha"
   },
   "Sidebar": {
     "title": "OrganiZAP",

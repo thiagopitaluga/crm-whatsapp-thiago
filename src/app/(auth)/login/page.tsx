@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { MessageSquare, UsersRound } from "lucide-react";
+  ArrowRight,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  MessageSquareText,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 
 // `useSearchParams` opts the component out of static prerendering
 // unless it sits under a Suspense boundary. We split the form into
@@ -30,6 +31,17 @@ export default function LoginPage() {
   );
 }
 
+function BrandMark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400 text-slate-950 shadow-[0_12px_30px_rgba(52,211,153,0.22)] ${className}`}
+      aria-hidden="true"
+    >
+      <MessageSquareText className="h-5 w-5 stroke-[2.5]" />
+    </span>
+  );
+}
+
 function LoginPageInner() {
   const searchParams = useSearchParams();
   // Forwarded from `/join/<token>` when the visitor already has an
@@ -40,6 +52,7 @@ function LoginPageInner() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
@@ -60,14 +73,8 @@ function LoginPageInner() {
       return;
     }
 
-    // Full-page navigation (not router.push) so the browser issues a
-    // fresh top-level request that carries the just-written Supabase
-    // auth cookies to the middleware gating /dashboard. A soft
-    // client-side navigation can reach the protected route before the
-    // server observes the new session, so the middleware bounces it
-    // back to /login — which looks like the page "just refreshing"
-    // instead of signing in (issue #365). Mirrors the deliberate full
-    // reload the invite-accept flow already uses in join/[token].
+    // Full-page navigation so the fresh Supabase session cookies reach
+    // middleware before the protected dashboard is requested.
     const destination = inviteToken
       ? `/join/${encodeURIComponent(inviteToken)}`
       : "/dashboard";
@@ -75,95 +82,144 @@ function LoginPageInner() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            {inviteToken ? (
-              <UsersRound className="h-6 w-6 text-primary" />
-            ) : (
-              <MessageSquare className="h-6 w-6 text-primary" />
-            )}
+    <main className="relative isolate flex min-h-[100svh] overflow-hidden bg-[#020706] px-5 py-6 text-white sm:px-8 sm:py-10 lg:items-center lg:px-12 xl:px-16">
+      <div className="pointer-events-none absolute -left-32 top-[14%] -z-10 h-80 w-80 rounded-full bg-emerald-400/20 blur-[110px]" />
+      <div className="pointer-events-none absolute -right-20 bottom-[-12%] -z-10 h-96 w-96 rounded-full bg-lime-300/10 blur-[130px]" />
+
+      <section className="mx-auto grid w-full max-w-7xl gap-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.72fr)] lg:items-center lg:gap-20">
+        <div className="hidden max-w-xl lg:block">
+          <div className="flex items-center gap-3">
+            <BrandMark />
+            <span className="text-xl font-semibold tracking-tight">OrganiZAP</span>
           </div>
-          <CardTitle className="text-xl text-foreground">
-            {inviteToken ? t('titleAccept') : t('titleWelcome')}
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            {inviteToken
-              ? t('descAccept')
-              : t('descWelcome')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                {error}
-              </div>
-            )}
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email" className="text-muted-foreground">
-                {t('emailLabel')}
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder={t('emailPlaceholder')}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-              />
+          <div className="mt-20">
+            <p className="text-xs font-semibold tracking-[0.18em] text-emerald-300">
+              {t("portalLabel")}
+            </p>
+            <h1 className="mt-5 max-w-lg text-4xl font-semibold leading-[1.08] tracking-[-0.04em] text-white xl:text-5xl">
+              {t("heroTitle")}
+            </h1>
+            <p className="mt-6 max-w-md text-base leading-7 text-slate-300">
+              {t("heroDescription")}
+            </p>
+          </div>
+
+          <div className="mt-10 grid max-w-lg gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-4 backdrop-blur-sm">
+              <ShieldCheck className="h-5 w-5 text-emerald-300" aria-hidden="true" />
+              <p className="mt-3 text-sm font-medium text-white">{t("benefitSecure")}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-4 backdrop-blur-sm">
+              <Sparkles className="h-5 w-5 text-lime-200" aria-hidden="true" />
+              <p className="mt-3 text-sm font-medium text-white">{t("benefitFocused")}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative mx-auto w-full max-w-[30rem] overflow-hidden rounded-[28px] border border-white/[0.13] bg-[#07100c]/80 p-5 shadow-[0_32px_100px_rgba(0,0,0,0.48),0_8px_30px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:p-8">
+          <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-emerald-400/10 blur-3xl" />
+
+          <div className="relative">
+            <div className="flex items-center gap-3 lg:hidden">
+              <BrandMark className="h-10 w-10 rounded-xl" />
+              <span className="text-lg font-semibold tracking-tight">OrganiZAP</span>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-muted-foreground">
-                  {t('passwordLabel')}
+            <div className="mt-7 flex items-center gap-2 text-xs font-semibold tracking-[0.16em] text-emerald-300 lg:mt-0">
+              <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("secureAccess")}
+            </div>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.035em] text-white">
+              {inviteToken ? t("titleAccept") : t("titleWelcome")}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              {inviteToken ? t("descAccept") : t("formDescription")}
+            </p>
+
+            <form onSubmit={handleLogin} className="mt-8 flex flex-col gap-5">
+              {error && (
+                <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
+                  {error}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="email" className="text-sm font-medium text-slate-200">
+                  {t("emailLabel")}
                 </Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-sm text-primary hover:text-primary/80"
-                >
-                  {t('forgotPassword')}
-                </Link>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder={t("emailPlaceholder")}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="h-12 border-white/10 bg-white/[0.055] px-4 text-base text-white placeholder:text-slate-500 focus-visible:border-emerald-300 focus-visible:ring-emerald-300/20"
+                />
               </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder={t('passwordPlaceholder')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-              />
-            </div>
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {loading ? t('signingIn') : t('signIn')}
-            </Button>
-          </form>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="password" className="text-sm font-medium text-slate-200">
+                    {t("passwordLabel")}
+                  </Label>
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm font-medium text-emerald-300 transition-colors hover:text-emerald-200"
+                  >
+                    {t("forgotPassword")}
+                  </Link>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    placeholder={t("passwordPlaceholder")}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="h-12 border-white/10 bg-white/[0.055] px-4 pr-12 text-base text-white placeholder:text-slate-500 focus-visible:border-emerald-300 focus-visible:ring-emerald-300/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    aria-label={showPassword ? t("hidePassword") : t("showPassword")}
+                    className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-400 transition-colors hover:text-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {t('noAccount')}{" "}
-            <Link
-              href={
-                inviteToken
-                  ? `/signup?invite=${encodeURIComponent(inviteToken)}`
-                  : "/signup"
-              }
-              className="text-primary hover:text-primary/80"
-            >
-              {t('createAccount')}
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+              <Button
+                type="submit"
+                disabled={loading}
+                className="group mt-1 h-12 w-full bg-emerald-300 text-base font-semibold text-slate-950 shadow-[0_12px_28px_rgba(52,211,153,0.16)] transition-all hover:bg-emerald-200 hover:shadow-[0_16px_34px_rgba(52,211,153,0.24)] disabled:opacity-50"
+              >
+                {loading ? t("signingIn") : t("signIn")}
+                {!loading && <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />}
+              </Button>
+            </form>
+
+            <p className="mt-7 text-center text-sm text-slate-400">
+              {t("noAccount")} {" "}
+              <Link
+                href={
+                  inviteToken
+                    ? `/signup?invite=${encodeURIComponent(inviteToken)}`
+                    : "/signup"
+                }
+                className="font-semibold text-emerald-300 transition-colors hover:text-emerald-200"
+              >
+                {t("createAccount")}
+              </Link>
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
