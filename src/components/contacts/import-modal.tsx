@@ -36,11 +36,18 @@ import {
   XCircle,
   AlertTriangle,
   Tag,
+  Download,
+  BriefcaseBusiness,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 const DEFAULT_TAG_COLOR = '#3b82f6';
 const PREVIEW_LIMIT = 5;
+
+interface ImportDealAssignment {
+  contactId: string;
+  source: ParsedContactRow;
+}
 
 function truncateFilename(name: string, max = 48): string {
   if (name.length <= max) return name;
@@ -135,6 +142,8 @@ export function ImportModal({
   const [parsedRows, setParsedRows] = useState<ParsedContactRow[]>([]);
   const [hasTagsColumn, setHasTagsColumn] = useState(false);
   const [hasCompanyColumn, setHasCompanyColumn] = useState(false);
+  const [hasPipelineColumn, setHasPipelineColumn] = useState(false);
+  const [hasStageColumn, setHasStageColumn] = useState(false);
   const [tagColorByKey, setTagColorByKey] = useState<Map<string, string>>(
     new Map()
   );
@@ -144,6 +153,8 @@ export function ImportModal({
     skipped: number;
     failed: number;
     tagsAssigned: number;
+    dealsCreated: number;
+    dealsSkipped: number;
   } | null>(null);
 
   function reset() {
@@ -151,6 +162,8 @@ export function ImportModal({
     setParsedRows([]);
     setHasTagsColumn(false);
     setHasCompanyColumn(false);
+    setHasPipelineColumn(false);
+    setHasStageColumn(false);
     setTagColorByKey(new Map());
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -173,6 +186,8 @@ export function ImportModal({
       rows,
       hasTagsColumn: csvHasTags,
       hasCompanyColumn: csvHasCompany,
+      hasPipelineColumn: csvHasPipeline,
+      hasStageColumn: csvHasStage,
     } = parseContactCsv(text);
 
     if (rows.length === 0) {
@@ -180,6 +195,8 @@ export function ImportModal({
       setParsedRows([]);
       setHasTagsColumn(false);
       setHasCompanyColumn(false);
+      setHasPipelineColumn(false);
+      setHasStageColumn(false);
       setTagColorByKey(new Map());
       return;
     }
@@ -187,6 +204,8 @@ export function ImportModal({
     setParsedRows(rows);
     setHasTagsColumn(csvHasTags);
     setHasCompanyColumn(csvHasCompany);
+    setHasPipelineColumn(csvHasPipeline);
+    setHasStageColumn(csvHasStage);
 
     if (csvHasTags && accountId) {
       const { data: tags } = await supabase
@@ -263,6 +282,7 @@ export function ImportModal({
       }
 
       const tagAssignments: ContactTagAssignment[] = [];
+      const dealAssignments: ImportDealAssignment[] = [];
 
       // 4) Batch insert the genuinely-new rows in chunks of 50. The DB
       //    unique index is the backstop: a 23505 (race, or a format
@@ -305,6 +325,9 @@ export function ImportModal({
                   tagNames: source.tagNames,
                 });
               }
+              if (source.pipeline?.trim()) {
+                dealAssignments.push({ contactId: singleData.id, source });
+              }
             } else if (isUniqueViolation(singleErr)) {
               skipped++;
             } else {
@@ -319,11 +342,16 @@ export function ImportModal({
           // parallel inserts, zip by phone or returned id instead.
           for (let j = 0; j < inserted.length; j++) {
             const source = chunk[j];
-            if (!source || source.tagNames.length === 0) continue;
-            tagAssignments.push({
-              contactId: inserted[j].id,
-              tagNames: source.tagNames,
-            });
+            if (!source) continue;
+            if (source.tagNames.length > 0) {
+              tagAssignments.push({
+                contactId: inserted[j].id,
+                tagNames: source.tagNames,
+              });
+            }
+            if (source.pipeline?.trim()) {
+              dealAssignments.push({ contactId: inserted[j].id, source });
+            }
           }
         }
       }
@@ -341,13 +369,112 @@ export function ImportModal({
         toast.warning(t('toastTagsWarning'));
       }
 
-      setResult({ imported, skipped, failed, tagsAssigned });
+      let dealsCreated = 0;
+      let dealsSkipped = 0;
+      if (dealAssignments.length > 0) {
+        const [pipelinesRes, stagesRes] = await Promise.all([
+          supabase
+            .from('pipelines')
+            .select('id, name')
+            .eq('account_id', accountId),
+          supabase
+            .from('pipeline_stages')
+            .select('id, pipeline_id, name, position')
+            .order('position', { ascending: true }),
+        ]);
+
+        if (pipelinesRes.error || stagesRes.error) {
+          dealsSkipped = dealAssignments.length;
+        } else {
+          const pipelineByName = new Map<string, { id: string; name: string }>(
+            (pipelinesRes.data ?? []).map((pipeline) => [
+              pipeline.name.trim().toLocaleLowerCase(),
+              { id: pipeline.id, name: pipeline.name },
+            ])
+          );
+          const stagesByPipeline = new Map<
+            string,
+            { id: string; pipeline_id: string; name: string; position: number }[]
+          >();
+          for (const stage of stagesRes.data ?? []) {
+            const current = stagesByPipeline.get(stage.pipeline_id) ?? [];
+            current.push(stage);
+            stagesByPipeline.set(stage.pipeline_id, current);
+          }
+
+          const dealRows: {
+            user_id: string;
+            account_id: string;
+            pipeline_id: string;
+            stage_id: string;
+            contact_id: string;
+            title: string;
+            value: number;
+            currency: string;
+            status: 'open';
+          }[] = [];
+
+          for (const { contactId, source } of dealAssignments) {
+            const pipeline = pipelineByName.get(
+              source.pipeline!.trim().toLocaleLowerCase()
+            );
+            if (!pipeline) {
+              dealsSkipped++;
+              continue;
+            }
+            const stages = stagesByPipeline.get(pipeline.id) ?? [];
+            const stage = source.stage?.trim()
+              ? stages.find(
+                  (item) =>
+                    item.name.trim().toLocaleLowerCase() ===
+                    source.stage!.trim().toLocaleLowerCase()
+                )
+              : stages[0];
+            if (!stage) {
+              dealsSkipped++;
+              continue;
+            }
+            dealRows.push({
+              user_id: user.id,
+              account_id: accountId,
+              pipeline_id: pipeline.id,
+              stage_id: stage.id,
+              contact_id: contactId,
+              title: source.name?.trim() || source.phone,
+              value: 0,
+              currency: 'BRL',
+              status: 'open',
+            });
+          }
+
+          if (dealRows.length > 0) {
+            const { error: dealsError } = await supabase.from('deals').insert(dealRows);
+            if (!dealsError) {
+              dealsCreated = dealRows.length;
+            } else {
+              for (const row of dealRows) {
+                const { error } = await supabase.from('deals').insert(row);
+                if (error) dealsSkipped++;
+                else dealsCreated++;
+              }
+            }
+          }
+        }
+      }
+
+      setResult({ imported, skipped, failed, tagsAssigned, dealsCreated, dealsSkipped });
       if (imported > 0) {
         toast.success(t('toastImported', { count: imported }));
         onImported();
       }
       if (tagsAssigned > 0) {
         toast.success(t('toastTagsAssigned', { count: tagsAssigned }));
+      }
+      if (dealsCreated > 0) {
+        toast.success(t('toastDealsCreated', { count: dealsCreated }));
+      }
+      if (dealsSkipped > 0) {
+        toast.warning(t('toastDealsSkipped', { count: dealsSkipped }));
       }
       if (skippedNames.length > 0) {
         const sample = skippedNames.slice(0, 3).join(', ');
@@ -378,6 +505,10 @@ export function ImportModal({
   // avoiding an all-dash column that wastes horizontal space.
   const previewHasCompany =
     hasCompanyColumn && preview.some((row) => row.company?.trim());
+  const previewHasPipeline =
+    hasPipelineColumn || preview.some((row) => row.pipeline?.trim());
+  const previewHasStage =
+    hasStageColumn || preview.some((row) => row.stage?.trim());
 
   const tagStats = useMemo(() => {
     const names = new Set<string>();
@@ -389,6 +520,21 @@ export function ImportModal({
     }
     return { unique: names.size, rowsWithTags };
   }, [parsedRows]);
+
+  function downloadTemplate() {
+    const csv = [
+      'telefone,nome,email,empresa,etiquetas,funil,etapa',
+      '+5511999999999,Ana Silva,ana@exemplo.com,Empresa Exemplo,"Quente, Indicação",Vendas,Novos leads',
+      '+5511888888888,Bruno Lima,bruno@exemplo.com,,,,Vendas,',
+      '+5511777777777,,,,,,',
+    ].join('\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'modelo-importacao-contatos.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -406,10 +552,20 @@ export function ImportModal({
                   emailCode: (chunks) => `<code class="rounded bg-muted px-1 py-0.5 text-[11px] text-muted-foreground">${chunks}</code>`,
                   companyCode: (chunks) => `<code class="rounded bg-muted px-1 py-0.5 text-[11px] text-muted-foreground">${chunks}</code>`,
                   tagsCode: (chunks) => `<code class="rounded bg-muted px-1 py-0.5 text-[11px] text-muted-foreground">${chunks}</code>`,
+                  pipelineCode: (chunks) => `<code class="rounded bg-muted px-1 py-0.5 text-[11px] text-muted-foreground">${chunks}</code>`,
+                  stageCode: (chunks) => `<code class="rounded bg-muted px-1 py-0.5 text-[11px] text-muted-foreground">${chunks}</code>`,
                 })
               }}
             />
           </DialogHeader>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/80 bg-background/45 px-3 py-2.5">
+            <p className="text-xs leading-relaxed text-muted-foreground">{t('pipelineRule')}</p>
+            <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+              <Download className="size-3.5" />
+              {t('downloadTemplate')}
+            </Button>
+          </div>
 
           <div
             role="button"
@@ -484,7 +640,7 @@ export function ImportModal({
 
               <div className="overflow-hidden rounded-xl border border-border ring-1 ring-border/50">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[32rem] text-xs">
+                  <table className="w-full min-w-[40rem] text-xs">
                     <thead>
                       <tr className="border-b border-border bg-background/60">
                         <th className="px-3 py-2 text-left font-medium whitespace-nowrap text-muted-foreground">
@@ -504,6 +660,16 @@ export function ImportModal({
                         {previewHasTags && (
                           <th className="px-3 py-2 text-left font-medium whitespace-nowrap text-muted-foreground">
                             {t('columns.tags')}
+                          </th>
+                        )}
+                        {previewHasPipeline && (
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap text-muted-foreground">
+                            {t('columns.pipeline')}
+                          </th>
+                        )}
+                        {previewHasStage && (
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap text-muted-foreground">
+                            {t('columns.stage')}
                           </th>
                         )}
                       </tr>
@@ -549,6 +715,19 @@ export function ImportModal({
                               />
                             </td>
                           )}
+                          {previewHasPipeline && (
+                            <td className="px-3 py-2 text-muted-foreground">
+                              <PreviewCell value={row.pipeline || '—'} maxWidth="max-w-[8rem]" />
+                            </td>
+                          )}
+                          {previewHasStage && (
+                            <td className="px-3 py-2 text-muted-foreground">
+                              <PreviewCell
+                                value={row.stage || (row.pipeline ? t('firstStage') : '—')}
+                                maxWidth="max-w-[8rem]"
+                              />
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -578,6 +757,18 @@ export function ImportModal({
                   <div className="flex items-center gap-1.5 text-sm text-cyan-400">
                     <CheckCircle className="size-4 shrink-0" />
                     {t('resultTags', { count: result.tagsAssigned })}
+                  </div>
+                )}
+                {result.dealsCreated > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm text-violet-400">
+                    <BriefcaseBusiness className="size-4 shrink-0" />
+                    {t('resultDeals', { count: result.dealsCreated })}
+                  </div>
+                )}
+                {result.dealsSkipped > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm text-amber-400">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    {t('resultDealsSkipped', { count: result.dealsSkipped })}
                   </div>
                 )}
                 {result.skipped > 0 && (

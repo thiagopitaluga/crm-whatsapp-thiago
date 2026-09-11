@@ -10,6 +10,10 @@ export interface ParsedContactRow {
   company?: string;
   /** Tag names from the optional `tags` column (comma/semicolon separated). */
   tagNames: string[];
+  /** Optional sales pipeline name. A deal is created only when this exists. */
+  pipeline?: string;
+  /** Optional stage name within `pipeline`; blank uses that pipeline's first stage. */
+  stage?: string;
 }
 
 /** Split a CSV cell into unique tag names (case-insensitive de-dupe). */
@@ -37,27 +41,51 @@ export interface ParseContactCsvResult {
   hasTagsColumn: boolean;
   /** True when the CSV header includes a `company` column. */
   hasCompanyColumn: boolean;
+  /** True when the CSV header includes `pipeline` or `funil`. */
+  hasPipelineColumn: boolean;
+  /** True when the CSV header includes `stage` or `etapa`. */
+  hasStageColumn: boolean;
+}
+
+function headerIndex(headers: string[], ...aliases: string[]) {
+  return headers.findIndex((header) => aliases.includes(header));
 }
 
 export function parseContactCsv(text: string): ParseContactCsvResult {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) {
-    return { rows: [], hasTagsColumn: false, hasCompanyColumn: false };
+    return {
+      rows: [],
+      hasTagsColumn: false,
+      hasCompanyColumn: false,
+      hasPipelineColumn: false,
+      hasStageColumn: false,
+    };
   }
 
   const headers = lines[0]
     .split(',')
     .map((h) => h.trim().toLowerCase().replace(/["']/g, ''));
 
-  const phoneIdx = headers.indexOf('phone');
+  // Accept both the downloadable Portuguese template and the original
+  // English column names, so existing imports continue to work.
+  const phoneIdx = headerIndex(headers, 'phone', 'telefone');
   if (phoneIdx === -1) {
-    return { rows: [], hasTagsColumn: false, hasCompanyColumn: false };
+    return {
+      rows: [],
+      hasTagsColumn: false,
+      hasCompanyColumn: false,
+      hasPipelineColumn: false,
+      hasStageColumn: false,
+    };
   }
 
-  const nameIdx = headers.indexOf('name');
-  const emailIdx = headers.indexOf('email');
-  const companyIdx = headers.indexOf('company');
-  const tagsIdx = headers.indexOf('tags');
+  const nameIdx = headerIndex(headers, 'name', 'nome');
+  const emailIdx = headerIndex(headers, 'email', 'e-mail');
+  const companyIdx = headerIndex(headers, 'company', 'empresa');
+  const tagsIdx = headerIndex(headers, 'tags', 'tag', 'etiquetas', 'etiqueta');
+  const pipelineIdx = headerIndex(headers, 'pipeline', 'funil');
+  const stageIdx = headerIndex(headers, 'stage', 'etapa');
 
   const rows: ParsedContactRow[] = [];
 
@@ -85,6 +113,14 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
           : undefined,
       tagNames:
         tagsIdx >= 0 ? parseTagCell(values[tagsIdx]?.replace(/["']/g, '')) : [],
+      pipeline:
+        pipelineIdx >= 0
+          ? values[pipelineIdx]?.replace(/["']/g, '').trim() || undefined
+          : undefined,
+      stage:
+        stageIdx >= 0
+          ? values[stageIdx]?.replace(/["']/g, '').trim() || undefined
+          : undefined,
     });
   }
 
@@ -92,6 +128,8 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     rows,
     hasTagsColumn: tagsIdx >= 0,
     hasCompanyColumn: companyIdx >= 0,
+    hasPipelineColumn: pipelineIdx >= 0,
+    hasStageColumn: stageIdx >= 0,
   };
 }
 

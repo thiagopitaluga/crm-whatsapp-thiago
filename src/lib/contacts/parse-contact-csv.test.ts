@@ -33,6 +33,8 @@ describe('parseContactCsv', () => {
     expect(parseContactCsv(csv)).toEqual({
       hasTagsColumn: true,
       hasCompanyColumn: false,
+      hasPipelineColumn: false,
+      hasStageColumn: false,
       rows: [
         {
           phone: '+15551234567',
@@ -40,6 +42,8 @@ describe('parseContactCsv', () => {
           email: undefined,
           company: undefined,
           tagNames: ['VIP', 'Lead'],
+          pipeline: undefined,
+          stage: undefined,
         },
         {
           phone: '+15559876543',
@@ -47,6 +51,8 @@ describe('parseContactCsv', () => {
           email: undefined,
           company: undefined,
           tagNames: ['Customer'],
+          pipeline: undefined,
+          stage: undefined,
         },
       ],
     });
@@ -59,6 +65,8 @@ describe('parseContactCsv', () => {
     expect(parseContactCsv(csv)).toEqual({
       hasTagsColumn: false,
       hasCompanyColumn: false,
+      hasPipelineColumn: false,
+      hasStageColumn: false,
       rows: [
         {
           phone: '+15551234567',
@@ -66,7 +74,24 @@ describe('parseContactCsv', () => {
           email: undefined,
           company: undefined,
           tagNames: [],
+          pipeline: undefined,
+          stage: undefined,
         },
+      ],
+    });
+  });
+
+  it('parses Portuguese pipeline and stage headers', () => {
+    const csv = `telefone,nome,funil,etapa
++5511999999999,Ana,Vendas,Qualificação
++5511888888888,Bruno,Vendas,`;
+
+    expect(parseContactCsv(csv)).toMatchObject({
+      hasPipelineColumn: true,
+      hasStageColumn: true,
+      rows: [
+        { phone: '+5511999999999', pipeline: 'Vendas', stage: 'Qualificação' },
+        { phone: '+5511888888888', pipeline: 'Vendas', stage: undefined },
       ],
     });
   });
