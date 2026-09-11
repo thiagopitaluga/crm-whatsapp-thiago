@@ -4,20 +4,39 @@ import { cn } from "@/lib/utils";
 interface OrganiZAPLogoProps {
   className?: string;
   priority?: boolean;
+  size?: "sm" | "md" | "lg";
 }
 
-/** The product mark used for OrganiZAP-owned screens and navigation. */
-export function OrganiZAPLogo({ className, priority = false }: OrganiZAPLogoProps) {
+const sizeClasses = {
+  sm: { mark: "size-6", text: "text-base" },
+  md: { mark: "size-8", text: "text-xl" },
+  lg: { mark: "size-10", text: "text-2xl" },
+};
+
+/** The consistent product mark used across OrganiZAP-owned screens and navigation. */
+export function OrganiZAPLogo({
+  className,
+  priority = false,
+  size = "md",
+}: OrganiZAPLogoProps) {
+  const classes = sizeClasses[size];
+
   return (
-    <div className={cn("relative h-8 w-32 shrink-0", className)}>
-      <Image
-        src="/organizap-logo-official.png"
-        alt="OrganiZAP"
-        fill
-        priority={priority}
-        sizes="(max-width: 640px) 128px, 160px"
-        className="object-contain"
-      />
+    <div aria-label="OrganiZAP" className={cn("flex shrink-0 items-center gap-2.5", className)}>
+      <span className={cn("relative shrink-0", classes.mark)}>
+        <Image
+          src="/organizap-mark.png"
+          alt=""
+          fill
+          priority={priority}
+          sizes="40px"
+          className="object-contain"
+        />
+      </span>
+      <span className={cn("font-bold leading-none tracking-[-0.055em]", classes.text)}>
+        <span className="text-white">Organi</span>
+        <span className="text-emerald-300">ZAP</span>
+      </span>
     </div>
   );
 }
