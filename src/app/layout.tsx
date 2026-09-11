@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     follow: false,
   },
   icons: {
-    icon: [{ url: "/icon" }],
+    icon: [{ url: "/organizap-mark.png", type: "image/png" }],
   },
   formatDetection: {
     email: false,
