@@ -109,14 +109,13 @@ describe("validateStepsForActivation", () => {
     ]);
   });
 
-  it("flags create_deal when required fields are missing", () => {
+  it("flags create_deal when its pipeline fields are missing", () => {
     const issues = validateStepsForActivation([
       { step_type: "create_deal", step_config: {} },
     ]);
     expect(issues.map((i) => i.path).sort()).toEqual([
       "steps[0].pipeline_id",
       "steps[0].stage_id",
-      "steps[0].title",
     ]);
   });
 

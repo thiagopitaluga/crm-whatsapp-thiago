@@ -1403,6 +1403,7 @@ function StepEditor({
             <Input
               value={(cfg.title as string) ?? ""}
               onChange={(e) => set({ title: e.target.value })}
+              placeholder="Novo negócio"
               className="bg-muted text-foreground"
             />
           </FieldBlock>

@@ -560,6 +560,12 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'create_deal': {
       const cfg = step.step_config as CreateDealStepConfig
       if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('create_deal needs pipeline + stage')
+      // A title is helpful but should not make an otherwise configured
+      // automation impossible to activate. Older automations may not have
+      // stored one, so give every generated deal a stable, readable name.
+      const title = cfg.title?.trim()
+        ? interpolate(cfg.title, args)
+        : 'Novo negócio'
       // Match the account's configured default currency rather than
       // the static `deals.currency` DB default — keeps automation-
       // created deals consistent with the one-currency-per-account
@@ -577,7 +583,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         pipeline_id: cfg.pipeline_id,
         stage_id: cfg.stage_id,
         contact_id: args.contactId,
-        title: interpolate(cfg.title, args),
+        title,
         value: cfg.value ?? 0,
         currency: acct?.default_currency ?? DEFAULT_CURRENCY,
         status: 'open',

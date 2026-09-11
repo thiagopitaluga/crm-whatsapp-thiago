@@ -103,9 +103,11 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (!nonEmpty(c.stage_id)) {
         issues.push({ path: `${path}.stage_id`, message: 'stage is required' })
       }
-      if (!nonEmpty(c.title)) {
-        issues.push({ path: `${path}.title`, message: 'title is required' })
-      }
+      // A deal can safely receive the product's standard name when an
+      // automation author leaves this optional label blank. This is
+      // especially useful for older automations created before the title
+      // field was shown in the builder. `engine.ts` owns the fallback used
+      // at execution time, so activation never creates an untitled deal.
       break
     case 'wait':
       if (typeof c.amount !== 'number' || !Number.isFinite(c.amount) || c.amount <= 0) {
