@@ -410,8 +410,10 @@ export interface Task {
   completed_at?: string | null;
   created_at: string;
   updated_at: string;
-  contact?: Pick<Contact, 'id' | 'name' | 'phone'>;
-  deal?: Pick<Deal, 'id' | 'title'> | null;
+  contact?: Pick<Contact, 'id' | 'name' | 'phone'> & { tags?: Tag[] };
+  deal?: (Pick<Deal, 'id' | 'title' | 'stage_id'> & {
+    stage?: Pick<PipelineStage, 'id' | 'name'> | null;
+  }) | null;
   assignee?: Pick<Profile, 'id' | 'full_name' | 'email'> | null;
 }
 

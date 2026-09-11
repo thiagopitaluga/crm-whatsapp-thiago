@@ -25,10 +25,11 @@ interface TaskFormProps {
   onOpenChange: (open: boolean) => void;
   task?: Task | null;
   defaultDeal?: Deal | null;
+  defaultDueAt?: string | Date | null;
   onSaved: () => void;
 }
 
-function toDateTimeInput(value: string | null | undefined) {
+function toDateTimeInput(value: string | Date | null | undefined) {
   const date = value ? new Date(value) : new Date(Date.now() + 60 * 60 * 1000);
   date.setSeconds(0, 0);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -41,6 +42,7 @@ export function TaskForm({
   onOpenChange,
   task,
   defaultDeal,
+  defaultDueAt,
   onSaved,
 }: TaskFormProps) {
   const t = useTranslations("Tasks.form");
@@ -63,8 +65,8 @@ export function TaskForm({
     setDescription(task?.description ?? "");
     setContactId(task?.contact_id ?? defaultDeal?.contact_id ?? "");
     setAssignedTo(task?.assigned_to ?? defaultDeal?.assigned_to ?? profile?.id ?? "");
-    setDueAt(toDateTimeInput(task?.due_at));
-  }, [defaultDeal, open, profile?.id, t, task]);
+    setDueAt(toDateTimeInput(task?.due_at ?? defaultDueAt));
+  }, [defaultDeal, defaultDueAt, open, profile?.id, t, task]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
