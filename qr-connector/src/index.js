@@ -448,6 +448,15 @@ async function importHistoryWorker(session, candidates) {
 async function ingestMessage(accountId, message, session) {
   const direction = message.key.fromMe ? 'outbound' : 'inbound';
   const remoteJid = message.key.remoteJid;
+  // Status posts can include a phone-number alternative JID in newer
+  // WhatsApp clients. Filter on the original destination first so that
+  // alternative identifier can never turn a status view into a CRM lead.
+  if (remoteJid === 'status@broadcast' || remoteJid?.endsWith('@broadcast')) {
+    console.log(
+      `[qr-connector] ignored ${direction} WhatsApp status for account ${accountId}`
+    );
+    return;
+  }
   // Recent WhatsApp clients may use a private LID instead of the phone-number
   // JID. Baileys v7 exposes the matching phone-number JID in remoteJidAlt.
   // Prefer it, so a new lead is always created with a usable WhatsApp number.

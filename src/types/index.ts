@@ -394,6 +394,27 @@ export interface Deal {
   assignee?: Profile;
 }
 
+export type TaskStatus = 'open' | 'completed' | 'cancelled';
+
+export interface Task {
+  id: string;
+  account_id: string;
+  user_id: string;
+  contact_id: string;
+  deal_id?: string | null;
+  assigned_to?: string | null;
+  title: string;
+  description?: string | null;
+  due_at: string;
+  status: TaskStatus;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  contact?: Pick<Contact, 'id' | 'name' | 'phone'>;
+  deal?: Pick<Deal, 'id' | 'title'> | null;
+  assignee?: Pick<Profile, 'id' | 'full_name' | 'email'> | null;
+}
+
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
 export type RecipientStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
 

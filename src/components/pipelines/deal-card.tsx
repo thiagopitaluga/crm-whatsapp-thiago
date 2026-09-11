@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Deal, DealStatus, PipelineStage, Profile, Tag } from "@/types";
 import {
+  CalendarPlus,
   CheckCircle2,
   CircleX,
   MessageCircle,
@@ -30,6 +31,7 @@ interface DealCardProps {
   onValueChange: (deal: Deal, value: number) => Promise<void>;
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
+  onScheduleTask: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
@@ -48,6 +50,7 @@ export function DealCard({
   onValueChange,
   onStatusChange,
   onAddNote,
+  onScheduleTask,
   onAssign,
   tags,
   onToggleTag,
@@ -231,6 +234,19 @@ export function DealCard({
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
             <StickyNote className="size-4" />
+          </button>
+          <button
+            type="button"
+            title={t("scheduleTask")}
+            aria-label={t("scheduleTask")}
+            disabled={!deal.contact_id}
+            onClick={(event) => {
+              stopCardInteraction(event);
+              onScheduleTask(deal);
+            }}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <CalendarPlus className="size-4" />
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger

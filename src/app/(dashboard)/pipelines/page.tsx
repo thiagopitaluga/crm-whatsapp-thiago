@@ -6,6 +6,7 @@ import type { Contact, Pipeline, PipelineStage, Deal, DealStatus, Profile, Tag }
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { TaskForm } from "@/components/tasks/task-form";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,6 +79,7 @@ export default function PipelinesPage() {
   const [quickNoteDeal, setQuickNoteDeal] = useState<Deal | null>(null);
   const [quickNote, setQuickNote] = useState("");
   const [savingQuickNote, setSavingQuickNote] = useState(false);
+  const [taskDeal, setTaskDeal] = useState<Deal | null>(null);
 
   // Guard against double-seeding (React StrictMode double-effect in dev).
   const seedAttempted = useRef(false);
@@ -723,6 +725,7 @@ export default function PipelinesPage() {
             onValueChange={handleQuickValue}
             onStatusChange={handleQuickStatus}
             onAddNote={(deal) => setQuickNoteDeal(deal)}
+            onScheduleTask={(deal) => setTaskDeal(deal)}
             onAssign={handleQuickAssign}
             tags={tags}
             onToggleTag={handleToggleTag}
@@ -842,6 +845,15 @@ export default function PipelinesPage() {
         stages={stages}
         defaultStageId={defaultStageId}
         onSaved={refreshDeals}
+      />
+
+      <TaskForm
+        open={Boolean(taskDeal)}
+        onOpenChange={(open) => {
+          if (!open) setTaskDeal(null);
+        }}
+        defaultDeal={taskDeal}
+        onSaved={() => setTaskDeal(null)}
       />
     </div>
   );

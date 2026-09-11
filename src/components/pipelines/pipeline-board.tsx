@@ -32,6 +32,7 @@ interface PipelineBoardProps {
   onValueChange: (deal: Deal, value: number) => Promise<void>;
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
+  onScheduleTask: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
@@ -47,6 +48,7 @@ export function PipelineBoard({
   onValueChange,
   onStatusChange,
   onAddNote,
+  onScheduleTask,
   onAssign,
   tags,
   onToggleTag,
@@ -137,6 +139,7 @@ export function PipelineBoard({
               onValueChange={onValueChange}
               onStatusChange={onStatusChange}
               onAddNote={onAddNote}
+              onScheduleTask={onScheduleTask}
               onAssign={onAssign}
               tags={tags}
               onToggleTag={onToggleTag}
@@ -164,6 +167,7 @@ export function PipelineBoard({
               onValueChange={async () => {}}
               onStatusChange={async () => {}}
               onAddNote={() => {}}
+              onScheduleTask={() => {}}
               onAssign={async () => {}}
               tags={[]}
               onToggleTag={async () => {}}
@@ -225,6 +229,7 @@ function StageColumn({
   onValueChange,
   onStatusChange,
   onAddNote,
+  onScheduleTask,
   onAssign,
   tags,
   onToggleTag,
@@ -239,6 +244,7 @@ function StageColumn({
   onValueChange: (deal: Deal, value: number) => Promise<void>;
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
+  onScheduleTask: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
@@ -294,6 +300,7 @@ function StageColumn({
               onValueChange={onValueChange}
               onStatusChange={onStatusChange}
               onAddNote={onAddNote}
+              onScheduleTask={onScheduleTask}
               onAssign={onAssign}
               tags={tags}
               onToggleTag={onToggleTag}
@@ -323,6 +330,7 @@ function DraggableDealCard({
   onValueChange,
   onStatusChange,
   onAddNote,
+  onScheduleTask,
   onAssign,
   tags,
   onToggleTag,
@@ -334,6 +342,7 @@ function DraggableDealCard({
   onValueChange: (deal: Deal, value: number) => Promise<void>;
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
+  onScheduleTask: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
@@ -357,6 +366,7 @@ function DraggableDealCard({
         onValueChange={onValueChange}
         onStatusChange={onStatusChange}
         onAddNote={onAddNote}
+        onScheduleTask={onScheduleTask}
         onAssign={onAssign}
         tags={tags}
         onToggleTag={onToggleTag}
