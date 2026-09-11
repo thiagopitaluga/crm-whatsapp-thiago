@@ -389,9 +389,9 @@
         "custom": "Custom Fields",
         "deals": "Deals",
         "tags": "Tags",
-      "noTags": "No tags",
-      "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+        "noTags": "No tags",
+        "noDeals": "No deals",
+        "addNotePlaceholder": "Add a note..."
       },
       "actions": {
         "edit": "Edit",
@@ -1375,13 +1375,13 @@
       "deleteLocallyAria": "Delete template locally",
       "deleteMetaLocallyTitle": "Delete from Meta and locally",
       "deleteLocallyTitle": "Delete locally",
-      
+
       "dialogEditTitle": "Edit Message Template",
       "dialogNewTitle": "New Message Template",
       "dialogEditDesc": "Save your changes to re-submit to Meta. Status will flip back to PENDING during review.",
       "dialogNewDesc": "Build a template and submit it to Meta for approval. Once approved, you can use it in broadcasts and the inbox.",
       "authWarning": "AUTHENTICATION templates have a fixed body + OTP button shape that needs a different builder. Create them in Meta WhatsApp Manager for now and use <bold>Sync from Meta</bold> to bring them in.",
-      
+
       "templateName": "Template Name",
       "namePlaceholder": "e.g. order_confirmation",
       "nameFixed": "Name is fixed once a template exists on Meta — create a new template to change it.",
@@ -1390,7 +1390,7 @@
       "language": "Language",
       "langFixed": "Language is fixed once a template exists on Meta.",
       "langHint": "Must match the exact code on Meta — <code>en_US</code> and <code>en</code> are distinct.",
-      
+
       "header": "Header",
       "headerNone": "None",
       "headerText": "Text",
@@ -1400,7 +1400,7 @@
       "headerTextPlaceholder": "Header text (max 60 chars, optional {{1}})",
       "headerSampleAria": "Sample value for header variable",
       "headerSamplePlaceholder": "Sample value for {{1}} (required for Meta review)",
-      
+
       "uploadImage": "Upload image",
       "uploadHint": "JPEG or PNG, ≤5 MB",
       "mediaUrlPlaceholder": "https://… (or paste a public {format} link)",
@@ -1408,17 +1408,17 @@
       "mediaHint": "Must be a publicly accessible HTTPS link. Meta fetches it once during review, so it needs to stay live for ~24 hrs.",
       "videoHint": " Recommended: MP4 / 3GPP, ≤16 MB, ≤60 seconds.",
       "documentHint": " Recommended: PDF, ≤100 MB.",
-      
+
       "bodyText": "Body Text",
       "bodyPlaceholder": "Hello {{1}}, your order {{2}} is confirmed.",
       "bodyHint": "Use {{1}}, {{2}} for variables (must be contiguous starting at {{1}}).",
       "sampleValues": "Sample values (Meta uses these to review your template)",
       "sampleAria": "Sample value for body variable {var}",
       "samplePlaceholder": "Sample for {var}",
-      
+
       "footer": "Footer (optional)",
       "footerPlaceholder": "Optional footer text (max 60 chars)",
-      
+
       "buttons": "Buttons (optional)",
       "addButton": "Add Button",
       "buttonsLimit": "Up to {max} buttons. QUICK_REPLY buttons must come before URL / phone / copy-code buttons.",
@@ -1431,19 +1431,19 @@
       "urlSamplePlaceholder": "Example value for {{1}} (required when URL has a variable)",
       "phonePlaceholder": "+15551234567",
       "codePlaceholder": "Example code (e.g. SUMMER20)",
-      
+
       "cancel": "Cancel",
       "saving": "Saving…",
       "submitting": "Submitting…",
       "saveResubmit": "Save & Resubmit",
       "submitApproval": "Submit for Approval",
-      
+
       "deleteDialogTitle": "Delete template?",
       "deleteMetaDesc": "\"{name}\" will be deleted from Meta and from wacrm. Active broadcasts using this template will start failing on their next send. This can't be undone.",
       "deleteLocalDesc": "\"{name}\" will be deleted from wacrm. It was never submitted to Meta, so no remote cleanup is needed.",
       "deleting": "Deleting…",
       "delete": "Delete",
-      
+
       "toastLoadFailed": "Failed to load templates",
       "toastSubmitFailed": "Failed to submit",
       "toastSubmitEditSuccess": "Edit submitted — Meta typically reviews within 24 hours.",
@@ -1475,6 +1475,8 @@
     "whatsapp": {
       "title": "WhatsApp connection",
       "description": "Connect your Meta WhatsApp Business API. Credentials, webhook, and setup steps all live here.",
+      "methodOfficial": "Official Meta API",
+      "methodQr": "Connect with QR code",
       "tokenCorrupted": "Stored token can't be decrypted",
       "resetting": "Resetting...",
       "resetConfig": "Reset Configuration",
@@ -1542,7 +1544,38 @@
       "step4_3": "Paste the <strong class=\"text-foreground\">Webhook Callback URL</strong> from above",
       "step4_4": "Enter the same <strong class=\"text-foreground\">Verify Token</strong> you set here",
       "step4_5": "Subscribe to \"messages\" webhook field",
-      "metaDocs": "Meta WhatsApp API Documentation"
+      "metaDocs": "Meta WhatsApp API Documentation",
+      "qr": {
+        "title": "Connect WhatsApp with a QR code",
+        "description": "Scan the code with WhatsApp to bring new contacts into the CRM automatically.",
+        "connected": "Connected",
+        "connectedTitle": "WhatsApp connected",
+        "connectedDescription": "New contacts who message this number will be added to the CRM and the first stage of the pipeline.",
+        "disconnect": "Disconnect WhatsApp",
+        "disconnectConfirm": "Disconnect this WhatsApp account and delete its saved session? You will need to scan a new QR code to reconnect.",
+        "disconnectError": "Could not disconnect WhatsApp.",
+        "disconnectedToast": "WhatsApp disconnected.",
+        "qrAlt": "QR code to connect WhatsApp",
+        "scanTitle": "Scan this code in WhatsApp",
+        "scanInstructions": "On your phone, open WhatsApp → Linked devices → Link a device and point the camera at the code.",
+        "refreshQr": "Generate a new code",
+        "generating": "Preparing the QR code",
+        "generatingDescription": "This usually takes only a few seconds. The code will appear automatically.",
+        "readyTitle": "Connect your number",
+        "readyDescription": "Click below to generate a QR code exclusively for this company.",
+        "connectionProblem": "Could not reach the connector",
+        "generateQr": "Generate QR code",
+        "connectError": "Could not start the QR code connection.",
+        "statusError": "Could not check the connection status.",
+        "howToTitle": "How to connect",
+        "step1": "Open WhatsApp on the phone that owns the number.",
+        "step2": "Open Linked devices and tap Link a device.",
+        "step3": "Scan the QR code shown in the dashboard and wait for confirmation.",
+        "privacyTitle": "One session per company",
+        "privacyDescription": "Each CRM account keeps its own session, preventing contacts from different clients from mixing.",
+        "unofficialTitle": "Unofficial integration",
+        "unofficialDescription": "The QR connection uses the WhatsApp Web protocol. It may disconnect and is subject to WhatsApp restrictions; for greater stability, prefer Meta's official API."
+      }
     },
     "sections": {
       "overview": "Overview",
@@ -1589,7 +1622,7 @@
       "profileSaved": "Profile saved",
       "emailChangeFailed": "Email change failed: {message}",
       "profileSavedEmailCheck": "Profile saved — check your email to confirm the address change",
-      
+
       "passwordTitle": "Password",
       "passwordDesc": "Use at least {min} characters. You will stay signed in on this device after changing it.",
       "currentPassword": "Current password",
@@ -1603,7 +1636,7 @@
       "currentPasswordIncorrect": "Current password is incorrect",
       "passwordUpdateFailed": "Password update failed: {message}",
       "passwordUpdated": "Password updated",
-      
+
       "sessionsTitle": "Active sessions",
       "sessionsDesc": "Sign out of every device where you're logged in — including this one. Useful if you lost a laptop or shared your password.",
       "signOutAll": "Sign out of all devices",
