@@ -382,6 +382,7 @@ export default function PipelinesPage() {
   const saveQuickNote = useCallback(async () => {
     if (!quickNoteDeal?.contact_id || !quickNote.trim() || !accountId) return;
     setSavingQuickNote(true);
+    const noteText = quickNote.trim();
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -396,13 +397,32 @@ export default function PipelinesPage() {
       contact_id: quickNoteDeal.contact_id,
       account_id: accountId,
       user_id: user.id,
-      note_text: quickNote.trim(),
+      note_text: noteText,
     });
-    setSavingQuickNote(false);
     if (error) {
+      setSavingQuickNote(false);
       toast.error(t("toastFailedQuickUpdate"));
       return;
     }
+
+    const nextDealNotes = [quickNoteDeal.notes?.trim(), noteText]
+      .filter(Boolean)
+      .join("\n\n");
+    const { error: dealError } = await supabase
+      .from("deals")
+      .update({ notes: nextDealNotes })
+      .eq("id", quickNoteDeal.id);
+    setSavingQuickNote(false);
+    if (dealError) {
+      toast.error(t("toastFailedQuickUpdate"));
+      return;
+    }
+
+    setDeals((previous) =>
+      previous.map((deal) =>
+        deal.id === quickNoteDeal.id ? { ...deal, notes: nextDealNotes } : deal,
+      ),
+    );
     setQuickNote("");
     setQuickNoteDeal(null);
     toast.success(t("toastNoteAdded"));
