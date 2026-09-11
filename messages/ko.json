@@ -1689,6 +1689,7 @@
     },
     "sections": {
       "overview": "개요",
+      "company": "회사",
       "profile": "내 프로필",
       "security": "로그인 & 보안",
       "appearance": "화면 설정",
@@ -1703,6 +1704,27 @@
     "groups": {
       "account": "계정",
       "workspace": "워크스페이스"
+    },
+    "company": {
+      "title": "회사",
+      "description": "CRM에서 이 계정을 나타내는 이름과 로고를 설정합니다.",
+      "nameLabel": "회사 이름",
+      "namePlaceholder": "예: Alma Soluções Imobiliárias",
+      "logoLabel": "로고",
+      "logoHint": "PNG, JPG, WebP, GIF. 최대 2MB.",
+      "uploadLogo": "로고 업로드",
+      "changeLogo": "로고 변경",
+      "removeLogo": "제거",
+      "ownerOnly": "계정 소유자만 회사 이름과 로고를 변경할 수 있습니다.",
+      "unsupportedImage": "지원되지 않는 이미지 형식입니다",
+      "unsupportedImageDesc": "PNG, JPG, WebP, GIF를 사용하세요.",
+      "imageTooLarge": "이미지가 너무 큽니다",
+      "imageTooLargeDesc": "최대 2MB.",
+      "nameRequired": "회사 이름은 필수입니다",
+      "save": "변경 사항 저장",
+      "saving": "저장 중…",
+      "saved": "회사 정보가 업데이트되었습니다",
+      "saveFailed": "변경 사항을 저장하지 못했습니다"
     },
     "profile": {
       "title": "내 프로필",

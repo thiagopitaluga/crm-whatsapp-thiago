@@ -132,7 +132,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const showAccountStrip =
     !profileLoading &&
     !!account?.name &&
-    account.name !== profile?.full_name;
+    (account.name !== profile?.full_name || !!account.logo_url);
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -305,7 +305,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               which account they're acting in. */}
           {showAccountStrip && account?.name ? (
             <div className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
-              <UsersRound className="size-3.5 shrink-0" />
+              {account.logo_url ? (
+                <Avatar className="size-4 shrink-0 rounded-sm">
+                  <AvatarImage src={account.logo_url} alt="" />
+                  <AvatarFallback className="rounded-sm bg-primary/10 text-[9px] text-primary">
+                    {account.name.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <UsersRound className="size-3.5 shrink-0" />
+              )}
               {/* `title=` exposes the full name on hover when it
                   gets truncated (long account names + narrow
                   sidebars). Cheap a11y win. */}

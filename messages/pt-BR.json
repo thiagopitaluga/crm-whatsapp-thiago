@@ -1705,6 +1705,7 @@
     },
     "sections": {
       "overview": "Visão geral",
+      "company": "Empresa",
       "profile": "Seu perfil",
       "security": "Login e segurança",
       "appearance": "Aparência",
@@ -1719,6 +1720,27 @@
     "groups": {
       "account": "Conta",
       "workspace": "Espaço de trabalho"
+    },
+    "company": {
+      "title": "Empresa",
+      "description": "Defina o nome e o logotipo que representam esta conta no CRM.",
+      "nameLabel": "Nome da empresa",
+      "namePlaceholder": "Ex.: Alma Soluções Imobiliárias",
+      "logoLabel": "Logotipo",
+      "logoHint": "PNG, JPG, WebP ou GIF. Até 2 MB.",
+      "uploadLogo": "Enviar logotipo",
+      "changeLogo": "Alterar logotipo",
+      "removeLogo": "Remover",
+      "ownerOnly": "Somente o proprietário da conta pode alterar o nome e o logotipo da empresa.",
+      "unsupportedImage": "Tipo de imagem não compatível",
+      "unsupportedImageDesc": "Use PNG, JPG, WebP ou GIF.",
+      "imageTooLarge": "A imagem é muito grande",
+      "imageTooLargeDesc": "Máximo 2 MB.",
+      "nameRequired": "O nome da empresa é obrigatório",
+      "save": "Salvar alterações",
+      "saving": "Salvando…",
+      "saved": "Identidade da empresa atualizada",
+      "saveFailed": "Não foi possível salvar as alterações"
     },
     "profile": {
       "title": "Seu perfil",

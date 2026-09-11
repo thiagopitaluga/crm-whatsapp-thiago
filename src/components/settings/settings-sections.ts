@@ -1,4 +1,5 @@
 import {
+  Building2,
   Coins,
   FileText,
   KeyRound,
@@ -23,6 +24,7 @@ import {
  */
 export const SETTINGS_SECTIONS = [
   'overview',
+  'company',
   'profile',
   'security',
   'appearance',
@@ -49,6 +51,7 @@ export interface SectionMeta {
 
 export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   overview: { id: 'overview', label: 'Overview', icon: LayoutGrid, group: 'top' },
+  company: { id: 'company', label: 'Company', icon: Building2, group: 'account' },
   profile: { id: 'profile', label: 'Your profile', icon: User, group: 'account' },
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },

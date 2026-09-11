@@ -1715,6 +1715,7 @@
     },
     "sections": {
       "overview": "Overview",
+      "company": "Company",
       "profile": "Your profile",
       "security": "Login & security",
       "appearance": "Appearance",
@@ -1729,6 +1730,27 @@
     "groups": {
       "account": "Account",
       "workspace": "Workspace"
+    },
+    "company": {
+      "title": "Company",
+      "description": "Set the name and logo that represent this account in the CRM.",
+      "nameLabel": "Company name",
+      "namePlaceholder": "E.g. Alma Soluções Imobiliárias",
+      "logoLabel": "Logo",
+      "logoHint": "PNG, JPG, WebP, or GIF. Up to 2 MB.",
+      "uploadLogo": "Upload logo",
+      "changeLogo": "Change logo",
+      "removeLogo": "Remove",
+      "ownerOnly": "Only the account owner can change the company name and logo.",
+      "unsupportedImage": "Unsupported image type",
+      "unsupportedImageDesc": "Use PNG, JPG, WebP, or GIF.",
+      "imageTooLarge": "Image is too large",
+      "imageTooLargeDesc": "Maximum 2 MB.",
+      "nameRequired": "Company name is required",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "saved": "Company identity updated",
+      "saveFailed": "Could not save changes"
     },
     "profile": {
       "title": "Your profile",

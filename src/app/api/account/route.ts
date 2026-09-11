@@ -2,7 +2,7 @@
 // /api/account
 //
 //   GET   — current caller's account + role. Any member.
-//   PATCH — rename the account.                  Admin+.
+//   PATCH — rename the account.                  Owner only.
 //
 // Why both verbs share a route file
 //   They speak about the same singular resource (the caller's
@@ -40,7 +40,7 @@ const MAX_NAME_LEN = 80;
 
 export async function PATCH(request: Request) {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireRole("owner");
 
     // Per-user limit on admin-class mutations. Bounds accidental
     // abuse (script run in a loop) and a compromised admin session
@@ -78,9 +78,9 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // RLS allows this UPDATE because accounts_update requires
-    // `is_account_member(id, 'admin')`, and requireRole already
-    // guaranteed the caller is admin+.
+    // RLS allows this UPDATE because owners are also account admins;
+    // the tighter route guard reserves workspace identity changes for
+    // the immutable account owner.
     const { data, error } = await ctx.supabase
       .from("accounts")
       .update({ name })
