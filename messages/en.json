@@ -536,7 +536,12 @@
       "toastMarkedWon": "Moved to won",
       "toastMarkedLost": "Moved to lost",
       "toastNoteAdded": "Note added",
-      "toastNotSignedIn": "You are not signed in"
+      "toastNotSignedIn": "You are not signed in",
+      "searchLeads": "Search lead",
+      "searchLeadsPlaceholder": "Search by name, phone, or email...",
+      "filterTags": "Tags",
+      "allTags": "All tags",
+      "clearFilters": "Clear filters"
     },
     "board": {
       "dropDealHere": "Drop a deal here",
@@ -552,6 +557,8 @@
       "markLost": "Mark as lost",
       "addNote": "Add note",
       "assignLead": "Assign lead",
+      "manageTags": "Manage tags",
+      "noTags": "No tags yet",
       "unassigned": "Unassigned",
       "won": "Won",
       "lost": "Lost"

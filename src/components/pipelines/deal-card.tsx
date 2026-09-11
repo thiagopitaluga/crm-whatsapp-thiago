@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Deal, DealStatus, PipelineStage, Profile } from "@/types";
+import type { Deal, DealStatus, PipelineStage, Profile, Tag } from "@/types";
 import {
   CheckCircle2,
   CircleX,
@@ -9,6 +9,7 @@ import {
   Phone,
   Save,
   StickyNote,
+  Tag as TagIcon,
   UserRound,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
@@ -30,6 +31,8 @@ interface DealCardProps {
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
+  tags: Tag[];
+  onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
   isOverlay?: boolean;
 }
 
@@ -46,6 +49,8 @@ export function DealCard({
   onStatusChange,
   onAddNote,
   onAssign,
+  tags,
+  onToggleTag,
   isOverlay,
 }: DealCardProps) {
   const t = useTranslations("Pipelines.card");
@@ -178,7 +183,7 @@ export function DealCard({
       )}
 
       {!isOverlay && (
-        <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-2" onPointerDown={stopCardInteraction}>
+        <div className="mt-3 flex items-center justify-between gap-0.5 border-t border-border/70 pt-2" onPointerDown={stopCardInteraction}>
           <button
             type="button"
             title={t("markWon")}
@@ -216,6 +221,36 @@ export function DealCard({
           >
             <StickyNote className="size-4" />
           </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              title={t("manageTags")}
+              aria-label={t("manageTags")}
+              onClick={stopCardInteraction}
+              onPointerDown={stopCardInteraction}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <TagIcon className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-48">
+              {tags.length === 0 ? (
+                <DropdownMenuItem disabled>{t("noTags")}</DropdownMenuItem>
+              ) : (
+                tags.map((tag) => {
+                  const selected = deal.contact?.tags?.some((currentTag) => currentTag.id === tag.id);
+                  return (
+                    <DropdownMenuItem
+                      key={tag.id}
+                      onSelect={() => void onToggleTag(deal, tag)}
+                    >
+                      <span className="size-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                      <span className="flex-1">{tag.name}</span>
+                      {selected && <span aria-hidden>✓</span>}
+                    </DropdownMenuItem>
+                  );
+                })
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger
               title={t("assignLead")}

@@ -536,7 +536,12 @@
       "toastMarkedWon": "Movido para ganho",
       "toastMarkedLost": "Movido para perdido",
       "toastNoteAdded": "Nota adicionada",
-      "toastNotSignedIn": "Você não está conectado"
+      "toastNotSignedIn": "Você não está conectado",
+      "searchLeads": "Buscar lead",
+      "searchLeadsPlaceholder": "Buscar por nome, telefone ou e-mail...",
+      "filterTags": "Etiquetas",
+      "allTags": "Todas as etiquetas",
+      "clearFilters": "Limpar filtros"
     },
     "board": {
       "dropDealHere": "Faça uma negócio aqui",
@@ -552,6 +557,8 @@
       "markLost": "Marcar como perdido",
       "addNote": "Adicionar nota",
       "assignLead": "Atribuir lead",
+      "manageTags": "Definir etiquetas",
+      "noTags": "Nenhuma etiqueta cadastrada",
       "unassigned": "Não atribuído",
       "won": "Ganhou",
       "lost": "Perdido"

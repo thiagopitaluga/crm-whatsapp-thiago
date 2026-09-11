@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import type { Deal, DealStatus, PipelineStage, Profile } from "@/types";
+import type { Deal, DealStatus, PipelineStage, Profile, Tag } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -33,6 +33,8 @@ interface PipelineBoardProps {
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
+  tags: Tag[];
+  onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
 }
 
 export function PipelineBoard({
@@ -46,6 +48,8 @@ export function PipelineBoard({
   onStatusChange,
   onAddNote,
   onAssign,
+  tags,
+  onToggleTag,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -134,6 +138,8 @@ export function PipelineBoard({
               onStatusChange={onStatusChange}
               onAddNote={onAddNote}
               onAssign={onAssign}
+              tags={tags}
+              onToggleTag={onToggleTag}
             />
           );
         })}
@@ -159,6 +165,8 @@ export function PipelineBoard({
               onStatusChange={async () => {}}
               onAddNote={() => {}}
               onAssign={async () => {}}
+              tags={[]}
+              onToggleTag={async () => {}}
             />
           </div>
         ) : null}
@@ -218,6 +226,8 @@ function StageColumn({
   onStatusChange,
   onAddNote,
   onAssign,
+  tags,
+  onToggleTag,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -230,6 +240,8 @@ function StageColumn({
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
+  tags: Tag[];
+  onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -283,6 +295,8 @@ function StageColumn({
               onStatusChange={onStatusChange}
               onAddNote={onAddNote}
               onAssign={onAssign}
+              tags={tags}
+              onToggleTag={onToggleTag}
             />
           ))
         )}
@@ -310,6 +324,8 @@ function DraggableDealCard({
   onStatusChange,
   onAddNote,
   onAssign,
+  tags,
+  onToggleTag,
 }: {
   deal: Deal;
   stage: PipelineStage;
@@ -319,6 +335,8 @@ function DraggableDealCard({
   onStatusChange: (deal: Deal, status: DealStatus) => Promise<void>;
   onAddNote: (deal: Deal) => void;
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
+  tags: Tag[];
+  onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -340,6 +358,8 @@ function DraggableDealCard({
         onStatusChange={onStatusChange}
         onAddNote={onAddNote}
         onAssign={onAssign}
+        tags={tags}
+        onToggleTag={onToggleTag}
       />
     </div>
   );

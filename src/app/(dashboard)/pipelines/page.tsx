@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Pipeline, PipelineStage, Deal, DealStatus, Profile } from "@/types";
+import type { Contact, Pipeline, PipelineStage, Deal, DealStatus, Profile, Tag } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
@@ -25,7 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GitBranch, Plus, ChevronDown, Settings } from "lucide-react";
+import { GitBranch, Plus, ChevronDown, Settings, Search, Tags, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
@@ -59,6 +59,9 @@ export default function PipelinesPage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Dialog / sheet state
@@ -107,10 +110,25 @@ export default function PipelinesPage() {
     async (pipelineId: string) => {
       const { data } = await supabase
         .from("deals")
-        .select("*, contact:contacts(*, conversations(last_message_text,last_message_at)), assignee:profiles!deals_assigned_to_fkey(*)")
+        .select("*, contact:contacts(*, conversations(last_message_text,last_message_at), contact_tags(tags(*))), assignee:profiles!deals_assigned_to_fkey(*)")
         .eq("pipeline_id", pipelineId)
         .order("created_at", { ascending: false });
-      return (data ?? []) as Deal[];
+      return (data ?? []).map((row) => {
+        const contact = row.contact as
+          | (Contact & { contact_tags?: { tags: Tag | null }[] })
+          | null;
+        return {
+          ...row,
+          contact: contact
+            ? {
+                ...contact,
+                tags: (contact.contact_tags ?? [])
+                  .map((link) => link.tags)
+                  .filter((tag): tag is Tag => Boolean(tag)),
+              }
+            : undefined,
+        } as Deal;
+      });
     },
     [supabase],
   );
@@ -120,13 +138,14 @@ export default function PipelinesPage() {
     let cancelled = false;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("account_id", accountId)
-        .order("full_name");
+      const [profilesResult, tagsResult] = await Promise.all([
+        supabase.from("profiles").select("*").eq("account_id", accountId).order("full_name"),
+        supabase.from("tags").select("*").eq("account_id", accountId).order("name"),
+      ]);
 
-      if (!cancelled && !error) setMembers((data ?? []) as Profile[]);
+      if (cancelled) return;
+      if (!profilesResult.error) setMembers((profilesResult.data ?? []) as Profile[]);
+      if (!tagsResult.error) setTags((tagsResult.data ?? []) as Tag[]);
     })();
 
     return () => {
@@ -389,6 +408,63 @@ export default function PipelinesPage() {
     toast.success(t("toastNoteAdded"));
   }, [accountId, quickNote, quickNoteDeal, supabase, t]);
 
+  const handleToggleTag = useCallback(
+    async (deal: Deal, tag: Tag) => {
+      if (!deal.contact_id) return;
+      const currentTags = deal.contact?.tags ?? [];
+      const hasTag = currentTags.some((currentTag) => currentTag.id === tag.id);
+      const { error } = hasTag
+        ? await supabase
+            .from("contact_tags")
+            .delete()
+            .eq("contact_id", deal.contact_id)
+            .eq("tag_id", tag.id)
+        : await supabase.from("contact_tags").insert({
+            contact_id: deal.contact_id,
+            tag_id: tag.id,
+          });
+
+      if (error) {
+        toast.error(t("toastFailedQuickUpdate"));
+        return;
+      }
+
+      setDeals((previous) =>
+        previous.map((item) => {
+          if (item.id !== deal.id || !item.contact) return item;
+          return {
+            ...item,
+            contact: {
+              ...item.contact,
+              tags: hasTag
+                ? (item.contact.tags ?? []).filter((currentTag) => currentTag.id !== tag.id)
+                : [...(item.contact.tags ?? []), tag],
+            },
+          };
+        }),
+      );
+    },
+    [supabase, t],
+  );
+
+  const filteredDeals = deals.filter((deal) => {
+    const search = leadSearch.trim().toLocaleLowerCase();
+    const haystack = [
+      deal.title,
+      deal.contact?.name,
+      deal.contact?.phone,
+      deal.contact?.email,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase();
+    const matchesSearch = !search || haystack.includes(search);
+    const matchesTags =
+      selectedTagIds.length === 0 ||
+      selectedTagIds.some((tagId) => deal.contact?.tags?.some((tag) => tag.id === tagId));
+    return matchesSearch && matchesTags;
+  });
+
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();
     if (!name) return;
@@ -533,6 +609,68 @@ export default function PipelinesPage() {
       </div>
 
       {/* Board */}
+      {pipelines.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-xl border border-border bg-card/60 p-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={leadSearch}
+              onChange={(event) => setLeadSearch(event.target.value)}
+              placeholder={t("searchLeadsPlaceholder")}
+              aria-label={t("searchLeads")}
+              className="border-border bg-muted pl-9 text-foreground"
+            />
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-muted px-3 text-sm font-medium text-foreground hover:bg-accent">
+              <Tags className="size-4" />
+              {t("filterTags")}
+              {selectedTagIds.length > 0 && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] text-primary-foreground">
+                  {selectedTagIds.length}
+                </span>
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-52">
+              <DropdownMenuItem onSelect={() => setSelectedTagIds([])}>
+                {t("allTags")}
+              </DropdownMenuItem>
+              {tags.length > 0 && <DropdownMenuSeparator />}
+              {tags.map((tag) => {
+                const selected = selectedTagIds.includes(tag.id);
+                return (
+                  <DropdownMenuItem
+                    key={tag.id}
+                    onSelect={() =>
+                      setSelectedTagIds((current) =>
+                        selected ? current.filter((id) => id !== tag.id) : [...current, tag.id],
+                      )
+                    }
+                  >
+                    <span className="size-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                    <span className="flex-1">{tag.name}</span>
+                    {selected && <span aria-hidden>✓</span>}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {(leadSearch || selectedTagIds.length > 0) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setLeadSearch("");
+                setSelectedTagIds([]);
+              }}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="mr-1 size-3.5" />
+              {t("clearFilters")}
+            </Button>
+          )}
+        </div>
+      )}
       {pipelines.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
           <GitBranch className="h-12 w-12 text-muted-foreground" />
@@ -554,10 +692,10 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={deals} />
+          <PipelineAnalytics stages={stages} deals={filteredDeals} />
           <PipelineBoard
             stages={stages}
-            deals={deals}
+            deals={filteredDeals}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
@@ -566,6 +704,8 @@ export default function PipelinesPage() {
             onStatusChange={handleQuickStatus}
             onAddNote={(deal) => setQuickNoteDeal(deal)}
             onAssign={handleQuickAssign}
+            tags={tags}
+            onToggleTag={handleToggleTag}
           />
         </>
       )}
