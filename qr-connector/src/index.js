@@ -60,12 +60,10 @@ app.get('/v1/sessions/:accountId/qr.svg', (req, res) => {
   if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
   const session = sessions.get(accountId);
   if (!session?.qrSvg) {
-    return res
-      .status(404)
-      .json({
-        error: 'qr_not_available',
-        status: session?.status ?? 'disconnected',
-      });
+    return res.status(404).json({
+      error: 'qr_not_available',
+      status: session?.status ?? 'disconnected',
+    });
   }
   res
     .set('cache-control', 'no-store, max-age=0')
@@ -84,6 +82,27 @@ app.post('/v1/sessions/:accountId/connect', async (req, res) => {
   } catch (error) {
     console.error('[qr-connector] failed to start session:', safeError(error));
     res.status(500).json({ error: 'session_start_failed' });
+  }
+});
+
+app.post('/v1/sessions/:accountId/import', async (req, res) => {
+  const accountId = parseAccountId(req.params.accountId);
+  if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
+
+  const session = sessions.get(accountId);
+  if (!session || session.status !== 'connected') {
+    return res.status(409).json({ error: 'whatsapp_not_connected' });
+  }
+
+  try {
+    await startHistoryImport(session);
+    res.status(202).json(publicSessionState(accountId));
+  } catch (error) {
+    console.error(
+      '[qr-connector] failed to start history import:',
+      safeError(error)
+    );
+    res.status(500).json({ error: 'history_import_start_failed' });
   }
 });
 
@@ -166,12 +185,18 @@ async function startSession(accountId) {
       version,
       logger: P({ level: 'silent' }),
       markOnlineOnConnect: false,
-      syncFullHistory: false,
+      syncFullHistory: session.historyImport?.status === 'preparing',
       generateHighQualityLinkPreview: false,
     });
     session.socket = socket;
 
     socket.ev.on('creds.update', saveCreds);
+
+    socket.ev.on('messaging-history.set', (history) => {
+      if (generation !== session.generation) return;
+      if (session.historyImport?.status !== 'preparing') return;
+      collectHistoryImport(session, history);
+    });
 
     socket.ev.on(
       'connection.update',
@@ -250,6 +275,10 @@ function createSession(accountId) {
     reconnectTimer: null,
     socket: null,
     phoneJidsByLid: new Map(),
+    historyImport: null,
+    historyCandidates: new Map(),
+    historyImportTimer: null,
+    historyImportTimeout: null,
     wasLoggedOut: false,
     generation: 0,
   };
@@ -270,6 +299,8 @@ async function removeSession(accountId) {
   session.generation += 1;
   clearTimeout(session.reconnectTimer);
   session.reconnectTimer = null;
+  clearTimeout(session.historyImportTimer);
+  clearTimeout(session.historyImportTimeout);
   try {
     await session.socket?.logout();
   } catch {
@@ -301,12 +332,124 @@ function publicSessionState(accountId) {
     status: session?.status ?? 'disconnected',
     qr_available: Boolean(session?.qrSvg),
     last_error: session?.lastError ?? null,
+    history_import: session?.historyImport
+      ? {
+          status: session.historyImport.status,
+          discovered: session.historyImport.discovered,
+          imported: session.historyImport.imported,
+          failed: session.historyImport.failed,
+          error: session.historyImport.error,
+        }
+      : null,
   };
+}
+
+async function startHistoryImport(session) {
+  if (
+    session.historyImport?.status === 'preparing' ||
+    session.historyImport?.status === 'running'
+  ) {
+    return;
+  }
+
+  session.historyImport = {
+    status: 'preparing',
+    discovered: 0,
+    imported: 0,
+    failed: 0,
+    error: null,
+  };
+  session.historyCandidates.clear();
+  clearTimeout(session.historyImportTimer);
+  clearTimeout(session.historyImportTimeout);
+  session.historyImportTimeout = setTimeout(() => {
+    if (session.historyImport?.status === 'preparing') {
+      session.historyImport.status = 'failed';
+      session.historyImport.error =
+        'O WhatsApp não enviou o histórico. Tente novamente.';
+      console.error('[qr-connector] history import timed out');
+    }
+  }, 60_000);
+
+  // Baileys only sends a history snapshot when a socket opens with this
+  // option. Restarting preserves the authenticated session and does not
+  // require reading a new QR code.
+  session.generation += 1;
+  clearTimeout(session.reconnectTimer);
+  session.reconnectTimer = null;
+  session.status = 'reconnecting';
+  session.socket?.end(new Error('Restarting to import historical chats'));
+  await startSession(session.accountId);
+}
+
+function collectHistoryImport(session, history) {
+  const contactsByJid = new Map();
+  for (const contact of Array.isArray(history.contacts)
+    ? history.contacts
+    : []) {
+    const jid = typeof contact?.id === 'string' ? contact.id : null;
+    if (!jid?.endsWith('@s.whatsapp.net')) continue;
+    const name = [contact.name, contact.notify, contact.verifiedName].find(
+      (value) => typeof value === 'string' && value.trim()
+    );
+    contactsByJid.set(jid, name?.trim() || null);
+  }
+
+  for (const chat of Array.isArray(history.chats) ? history.chats : []) {
+    const jid = typeof chat?.id === 'string' ? chat.id : null;
+    if (!jid?.endsWith('@s.whatsapp.net')) continue;
+    session.historyCandidates.set(jid, contactsByJid.get(jid) || null);
+  }
+
+  session.historyImport.discovered = session.historyCandidates.size;
+  clearTimeout(session.historyImportTimer);
+  session.historyImportTimer = setTimeout(
+    () => void flushHistoryImport(session),
+    2500
+  );
+}
+
+async function flushHistoryImport(session) {
+  if (session.historyImport?.status !== 'preparing') return;
+  clearTimeout(session.historyImportTimeout);
+  session.historyImport.status = 'running';
+  const candidates = [...session.historyCandidates.entries()];
+
+  // Keep the VPS and CRM responsive even for accounts with a long history.
+  const workers = Array.from({ length: Math.min(4, candidates.length) }, () =>
+    importHistoryWorker(session, candidates)
+  );
+  await Promise.all(workers);
+
+  session.historyImport.status = 'completed';
+  console.log(
+    `[qr-connector] history import completed for account ${session.accountId}: imported=${session.historyImport.imported}, failed=${session.historyImport.failed}`
+  );
+}
+
+async function importHistoryWorker(session, candidates) {
+  for (;;) {
+    const candidate = candidates.pop();
+    if (!candidate) return;
+    const [jid, name] = candidate;
+    const phone = `+${jid.slice(0, jid.indexOf('@')).replace(/\D/g, '')}`;
+    if (phone === '+') {
+      session.historyImport.failed += 1;
+      continue;
+    }
+    if (await sendLeadToCrm(session.accountId, phone, name)) {
+      session.historyImport.imported += 1;
+    } else {
+      session.historyImport.failed += 1;
+    }
+  }
 }
 
 async function ingestInboundMessage(accountId, message, session) {
   if (message.key.fromMe) {
-    console.log(`[qr-connector] ignored outbound message for account ${accountId}`);
+    console.log(
+      `[qr-connector] ignored outbound message for account ${accountId}`
+    );
     return;
   }
 
@@ -328,11 +471,17 @@ async function ingestInboundMessage(accountId, message, session) {
 
   const phone = `+${jid.slice(0, jid.indexOf('@')).replace(/\D/g, '')}`;
   if (phone === '+') {
-    console.log(`[qr-connector] ignored inbound message for account ${accountId}: invalid_phone`);
+    console.log(
+      `[qr-connector] ignored inbound message for account ${accountId}: invalid_phone`
+    );
     return;
   }
   const name = message.pushName?.trim() || null;
 
+  await sendLeadToCrm(accountId, phone, name);
+}
+
+async function sendLeadToCrm(accountId, phone, name) {
   const endpoint = crmConnectorSecret
     ? `${crmBaseUrl}/api/internal/qr-ingest`
     : `${crmBaseUrl}/api/v1/ingest/whatsapp`;
@@ -352,11 +501,16 @@ async function ingestInboundMessage(accountId, message, session) {
     });
     if (!response.ok) {
       console.error('[qr-connector] CRM ingest rejected:', response.status);
+      return false;
     } else {
-      console.log(`[qr-connector] CRM ingest accepted for account ${accountId}`);
+      console.log(
+        `[qr-connector] CRM ingest accepted for account ${accountId}`
+      );
+      return true;
     }
   } catch (error) {
     console.error('[qr-connector] CRM ingest failed:', safeError(error));
+    return false;
   }
 }
 

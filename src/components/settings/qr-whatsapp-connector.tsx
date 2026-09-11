@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  Download,
   Loader2,
   QrCode,
   RefreshCw,
@@ -40,6 +41,15 @@ type StatusPayload = {
   qr_available?: boolean;
   last_error?: string | null;
   error?: string;
+  history_import?: HistoryImport | null;
+};
+
+type HistoryImport = {
+  status: 'preparing' | 'running' | 'completed' | 'failed';
+  discovered: number;
+  imported: number;
+  failed: number;
+  error: string | null;
 };
 
 export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
@@ -49,6 +59,9 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
   const [qrVersion, setQrVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
+  const [historyImport, setHistoryImport] = useState<HistoryImport | null>(
+    null
+  );
   const initialized = useRef(false);
 
   const loadStatus = useCallback(async () => {
@@ -61,6 +74,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
       setStatus(nextStatus);
       setQrAvailable(data.qr_available === true);
       setError(data.last_error ?? null);
+      setHistoryImport(data.history_import ?? null);
       if (data.qr_available) setQrVersion(Date.now());
       return nextStatus;
     } catch (requestError) {
@@ -146,9 +160,34 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
     }
   }
 
+  async function importHistory() {
+    if (!confirm(t('importConfirm'))) return;
+    setActionPending(true);
+    try {
+      const response = await fetch(
+        '/api/whatsapp/qr?operation=import_history',
+        { method: 'POST' }
+      );
+      const data = (await response.json()) as StatusPayload;
+      if (!response.ok) throw new Error(data.error || t('importError'));
+      setHistoryImport(data.history_import ?? null);
+      toast.success(t('importStartedToast'));
+      await loadStatus();
+    } catch (requestError) {
+      toast.error(
+        requestError instanceof Error ? requestError.message : t('importError')
+      );
+    } finally {
+      setActionPending(false);
+    }
+  }
+
   const isBusy = ['loading', 'starting', 'connecting', 'reconnecting'].includes(
     status
   );
+  const historyImportRunning =
+    historyImport?.status === 'preparing' ||
+    historyImport?.status === 'running';
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -184,6 +223,51 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
               <p className="text-muted-foreground mt-2 text-base leading-relaxed">
                 {t('connectedDescription')}
               </p>
+              <div className="border-border bg-muted/30 mt-6 w-full rounded-xl border p-4 text-left">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="text-foreground text-sm font-semibold">
+                      {t('importTitle')}
+                    </h4>
+                    <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                      {historyImportRunning
+                        ? t('importRunning', {
+                            discovered: historyImport?.discovered ?? 0,
+                            imported: historyImport?.imported ?? 0,
+                          })
+                        : historyImport?.status === 'completed'
+                          ? t('importCompleted', {
+                              imported: historyImport.imported,
+                              failed: historyImport.failed,
+                            })
+                          : t('importDescription')}
+                    </p>
+                    {historyImport?.status === 'failed' &&
+                      historyImport.error && (
+                        <p className="text-destructive mt-2 text-sm">
+                          {historyImport.error}
+                        </p>
+                      )}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void importHistory()}
+                    disabled={disabled || actionPending || historyImportRunning}
+                  >
+                    {historyImportRunning || actionPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Download className="size-4" />
+                    )}
+                    {historyImport?.status === 'completed'
+                      ? t('importAgain')
+                      : t('importButton')}
+                  </Button>
+                </div>
+                <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+                  {t('importPrivacy')}
+                </p>
+              </div>
               <Button
                 className="mt-6"
                 variant="outline"

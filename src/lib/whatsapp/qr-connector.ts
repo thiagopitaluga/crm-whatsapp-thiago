@@ -29,7 +29,7 @@ export function isValidQrConnectorSecret(supplied: string | null): boolean {
 
 export async function fetchQrConnector(
   accountId: string,
-  suffix: 'status' | 'qr.svg' | 'connect' | '',
+  suffix: 'status' | 'qr.svg' | 'connect' | 'import' | '',
   init: RequestInit = {}
 ): Promise<Response> {
   if (!/^[0-9a-f-]{36}$/i.test(accountId)) {

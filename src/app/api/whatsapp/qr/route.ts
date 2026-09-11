@@ -12,6 +12,7 @@ type ConnectorStatus = {
   status?: unknown;
   qr_available?: unknown;
   last_error?: unknown;
+  history_import?: unknown;
 };
 
 export async function GET(request: Request) {
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
         qr_available: data.qr_available === true,
         last_error:
           typeof data.last_error === 'string' ? data.last_error : null,
+        history_import: normalizeHistoryImport(data.history_import),
       },
       { headers: { 'cache-control': 'no-store' } }
     );
@@ -57,18 +59,44 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const { accountId } = await requireRole('admin');
-    const upstream = await fetchQrConnector(accountId, 'connect', {
+    const operation = new URL(request.url).searchParams.get('operation');
+    const suffix = operation === 'import_history' ? 'import' : 'connect';
+    const upstream = await fetchQrConnector(accountId, suffix, {
       method: 'POST',
       body: '{}',
     });
-    if (!upstream.ok) return connectorUnavailable();
+    if (!upstream.ok) {
+      if (upstream.status === 409 && operation === 'import_history') {
+        return NextResponse.json(
+          { error: 'Conecte o WhatsApp antes de importar as conversas.' },
+          { status: 409 }
+        );
+      }
+      return connectorUnavailable();
+    }
     return NextResponse.json(await upstream.json(), { status: 202 });
   } catch (error) {
     return handleError(error);
   }
+}
+
+function normalizeHistoryImport(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const data = value as Record<string, unknown>;
+  const allowed = new Set(['preparing', 'running', 'completed', 'failed']);
+  return {
+    status:
+      typeof data.status === 'string' && allowed.has(data.status)
+        ? data.status
+        : 'failed',
+    discovered: typeof data.discovered === 'number' ? data.discovered : 0,
+    imported: typeof data.imported === 'number' ? data.imported : 0,
+    failed: typeof data.failed === 'number' ? data.failed : 0,
+    error: typeof data.error === 'string' ? data.error : null,
+  };
 }
 
 export async function DELETE() {
