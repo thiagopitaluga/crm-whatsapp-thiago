@@ -34,8 +34,8 @@ export function OrganiZAPLogo({
         />
       </span>
       <span className={cn("font-bold leading-none tracking-[-0.055em]", classes.text)}>
-        <span className="text-white">Organi</span>
-        <span className="text-emerald-300">ZAP</span>
+        <span className="text-foreground">Organi</span>
+        <span className="text-[#15AC5A]">ZAP</span>
       </span>
     </div>
   );
