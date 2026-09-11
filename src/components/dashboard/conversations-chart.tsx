@@ -68,7 +68,7 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {t('dias', { count: r })}
+              {t('days', { count: r })}
             </button>
           ))}
         </div>
