@@ -214,10 +214,21 @@ async function startSession(accountId) {
       }
     );
 
+    socket.ev.on('chats.phoneNumberShare', ({ lid, jid }) => {
+      if (generation !== session.generation) return;
+      if (lid?.endsWith('@lid') && jid?.endsWith('@s.whatsapp.net')) {
+        session.phoneJidsByLid.set(lid, jid);
+      }
+    });
+
     socket.ev.on('messages.upsert', ({ type, messages }) => {
-      if (generation !== session.generation || type !== 'notify') return;
+      if (generation !== session.generation) return;
+      console.log(
+        `[qr-connector] message event for account ${accountId}: type=${type}, count=${messages.length}`
+      );
+      if (type !== 'notify') return;
       for (const message of messages)
-        void ingestInboundMessage(accountId, message);
+        void ingestInboundMessage(accountId, message, session);
     });
   } catch (error) {
     session.lastError = safeError(error);
@@ -238,6 +249,7 @@ function createSession(accountId) {
     lastError: null,
     reconnectTimer: null,
     socket: null,
+    phoneJidsByLid: new Map(),
     wasLoggedOut: false,
     generation: 0,
   };
@@ -292,19 +304,33 @@ function publicSessionState(accountId) {
   };
 }
 
-async function ingestInboundMessage(accountId, message) {
-  if (message.key.fromMe) return;
-  const jid = message.key.remoteJid;
+async function ingestInboundMessage(accountId, message, session) {
+  if (message.key.fromMe) {
+    console.log(`[qr-connector] ignored outbound message for account ${accountId}`);
+    return;
+  }
+
+  const remoteJid = message.key.remoteJid;
+  const jid = remoteJid?.endsWith('@lid')
+    ? session.phoneJidsByLid.get(remoteJid)
+    : remoteJid;
   if (
     !jid ||
     jid.endsWith('@g.us') ||
     jid.endsWith('@broadcast') ||
     !jid.endsWith('@s.whatsapp.net')
-  )
+  ) {
+    console.log(
+      `[qr-connector] ignored inbound message for account ${accountId}: unsupported_sender_identifier`
+    );
     return;
+  }
 
   const phone = `+${jid.slice(0, jid.indexOf('@')).replace(/\D/g, '')}`;
-  if (phone === '+') return;
+  if (phone === '+') {
+    console.log(`[qr-connector] ignored inbound message for account ${accountId}: invalid_phone`);
+    return;
+  }
   const name = message.pushName?.trim() || null;
 
   const endpoint = crmConnectorSecret
@@ -326,6 +352,8 @@ async function ingestInboundMessage(accountId, message) {
     });
     if (!response.ok) {
       console.error('[qr-connector] CRM ingest rejected:', response.status);
+    } else {
+      console.log(`[qr-connector] CRM ingest accepted for account ${accountId}`);
     }
   } catch (error) {
     console.error('[qr-connector] CRM ingest failed:', safeError(error));
