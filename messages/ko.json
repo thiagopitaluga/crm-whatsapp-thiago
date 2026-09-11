@@ -375,6 +375,7 @@
       "create": "만들기",
       "toastSuccessAdd": "연락처가 생성되었습니다",
       "toastSuccessEdit": "연락처가 업데이트되었습니다",
+      "automationWarning": "연락처는 저장되었지만 자동화를 실행할 수 없습니다.",
       "toastError": "연락처를 저장하지 못했습니다",
       "toastConflict": "이 전화번호를 가진 연락처가 이미 있습니다",
       "viewExisting": "{name} 보기",

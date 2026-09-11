@@ -375,6 +375,7 @@
       "create": "Criar",
       "toastSuccessAdd": "Contato criado com sucesso",
       "toastSuccessEdit": "Contato atualizado com sucesso",
+      "automationWarning": "Contato salvo, mas não foi possível executar as automações.",
       "toastError": "Falha ao salvar contato",
       "toastConflict": "Já existe um contato com este número de telefone",
       "viewExisting": "Ver {name}",

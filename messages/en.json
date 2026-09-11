@@ -375,6 +375,7 @@
       "create": "Create",
       "toastSuccessAdd": "Contact created successfully",
       "toastSuccessEdit": "Contact updated successfully",
+      "automationWarning": "Contact saved, but the automations could not be run.",
       "toastError": "Failed to save contact",
       "toastConflict": "A contact with this phone number already exists",
       "viewExisting": "View {name}",

@@ -244,6 +244,32 @@ export function ContactForm({
         }
       }
 
+      // Contacts coming from the WhatsApp webhook already trigger this
+      // automation there. Manual creations use Supabase directly, so they
+      // must explicitly dispatch the same event after their tags are saved.
+      // Do not let a failed automation make the newly-created contact look
+      // unsaved; it is still available to the user and can be retried later.
+      if (!isEdit && contactId) {
+        try {
+          const response = await fetch('/api/automations/engine', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trigger_type: 'new_contact_created',
+              contact_id: contactId,
+            }),
+          });
+
+          if (!response.ok) {
+            console.error('Could not trigger new-contact automations', await response.text());
+            toast.warning(t('automationWarning'));
+          }
+        } catch (automationError) {
+          console.error('Could not trigger new-contact automations', automationError);
+          toast.warning(t('automationWarning'));
+        }
+      }
+
       toast.success(isEdit ? t('toastSuccessEdit') : t('toastSuccessAdd'));
       onOpenChange(false);
       onSaved();
