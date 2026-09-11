@@ -20,7 +20,7 @@ import {
 
 import { createClient } from "@/lib/supabase/client"
 import { useCan } from "@/hooks/use-can"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import type { Automation } from "@/types"
 import { Button } from "@/components/ui/button"
 import { GatedButton } from "@/components/ui/gated-button"
@@ -40,7 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
+import { type TemplateSlug } from "@/lib/automations/templates"
 import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
 
@@ -62,6 +62,7 @@ export default function AutomationsPage() {
   const router = useRouter()
   const canCreate = useCan("send-messages")
   const t = useTranslations("Automations.list")
+  const locale = useLocale()
   const [automations, setAutomations] = useState<Automation[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
@@ -183,7 +184,6 @@ export default function AutomationsPage() {
           <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t("templatesTitle")}</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {TEMPLATE_ORDER.map((slug) => {
-              const t = AUTOMATION_TEMPLATES[slug]
               const Icon = TEMPLATE_ICON[slug]
               return (
                 <button
@@ -194,8 +194,12 @@ export default function AutomationsPage() {
                   <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <div className="text-sm font-semibold text-foreground">{t.name}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+                  <div className="text-sm font-semibold text-foreground">
+                    {t(`templates.${slug}.name`)}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t(`templates.${slug}.description`)}
+                  </p>
                 </button>
               )
             })}
@@ -225,6 +229,7 @@ export default function AutomationsPage() {
               onLogs={() => router.push(`/automations/${a.id}/logs`)}
               onDelete={() => setPendingDelete(a)}
               t={t}
+              locale={locale}
             />
           ))}
         </ul>
@@ -269,6 +274,7 @@ function AutomationCard({
   onLogs,
   onDelete,
   t,
+  locale,
 }: {
   automation: Automation
   onToggle: (next: boolean) => void
@@ -277,8 +283,14 @@ function AutomationCard({
   onLogs: () => void
   onDelete: () => void
   t: ReturnType<typeof useTranslations>
+  locale: string
 }) {
   const meta = triggerMeta(automation.trigger_type)
+  const lastRun = formatRelative(
+    automation.last_executed_at,
+    locale,
+    t("never"),
+  )
   return (
     <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
       <div className="flex items-center gap-4 p-4">
@@ -315,7 +327,9 @@ function AutomationCard({
                 meta.pillClass,
               )}
             >
-              {meta.label}
+              {t(`triggerLabels.${automation.trigger_type}`, {
+                defaultValue: meta.label,
+              })}
             </span>
             <span className="tabular-nums">
               {automation.execution_count === 1
@@ -323,7 +337,7 @@ function AutomationCard({
                 : t("runsPlural", { count: automation.execution_count })}
             </span>
             <span aria-hidden>·</span>
-            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at) })}</span>
+            <span>{t("lastRun", { time: lastRun })}</span>
           </div>
         </button>
 

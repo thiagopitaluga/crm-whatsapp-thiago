@@ -25,7 +25,51 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertTriangle } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+
+const PHONE_COUNTRIES = [
+  { region: 'BR', code: '55', flag: '🇧🇷' },
+  { region: 'PT', code: '351', flag: '🇵🇹' },
+  { region: 'AR', code: '54', flag: '🇦🇷' },
+  { region: 'MX', code: '52', flag: '🇲🇽' },
+  { region: 'CO', code: '57', flag: '🇨🇴' },
+  { region: 'CL', code: '56', flag: '🇨🇱' },
+  { region: 'US', code: '1', flag: '🇺🇸' },
+  { region: 'GB', code: '44', flag: '🇬🇧' },
+  { region: 'ES', code: '34', flag: '🇪🇸' },
+  { region: 'FR', code: '33', flag: '🇫🇷' },
+  { region: 'DE', code: '49', flag: '🇩🇪' },
+  { region: 'IT', code: '39', flag: '🇮🇹' },
+  { region: 'JP', code: '81', flag: '🇯🇵' },
+  { region: 'KR', code: '82', flag: '🇰🇷' },
+] as const;
+
+function normalizeNationalNumber(value: string, countryCode: string) {
+  const digits = value.replace(/\D/g, '');
+  const includesCountryCode = value.trim().startsWith('+') || value.trim().startsWith('00');
+  return includesCountryCode && digits.startsWith(countryCode) && digits.length > countryCode.length + 7
+    ? digits.slice(countryCode.length)
+    : digits;
+}
+
+function splitPhone(value: string) {
+  const digits = value.replace(/\D/g, '');
+  const isClearlyInternational = value.trim().startsWith('+') || digits.startsWith('55');
+  const country = isClearlyInternational
+    ? [...PHONE_COUNTRIES]
+        .sort((a, b) => b.code.length - a.code.length)
+        .find((item) => digits.startsWith(item.code) && digits.length > item.code.length + 7)
+    : undefined;
+  return {
+    countryCode: country?.code ?? '55',
+    nationalNumber: country ? digits.slice(country.code.length) : digits,
+  };
+}
+
+function toInternationalPhone(countryCode: string, nationalNumber: string) {
+  const digits = nationalNumber.replace(/\D/g, '');
+  return digits ? `+${countryCode}${digits}` : '';
+}
 
 interface ContactFormProps {
   open: boolean;
@@ -47,12 +91,14 @@ export function ContactForm({
   onViewExisting,
 }: ContactFormProps) {
   const t = useTranslations('Contacts.form');
+  const locale = useLocale();
   const supabase = createClient();
   const { accountId } = useAuth();
   const isEdit = !!contact;
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('55');
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
   const [saving, setSaving] = useState(false);
@@ -72,8 +118,10 @@ export function ContactForm({
 
   useEffect(() => {
     if (open) {
+      const phoneParts = splitPhone(contact?.phone ?? '');
       setName(contact?.name ?? '');
-      setPhone(contact?.phone ?? '');
+      setCountryCode(phoneParts.countryCode);
+      setPhone(phoneParts.nationalNumber);
       setEmail(contact?.email ?? '');
       setCompany(contact?.company ?? '');
       setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
@@ -82,11 +130,14 @@ export function ContactForm({
     }
   }, [open, contact]);
 
+  const fullPhone = toInternationalPhone(countryCode, phone);
+  const countryNames = new Intl.DisplayNames([locale], { type: 'region' });
+
   // Look up an existing contact with this number (new contacts only).
   // Runs on blur so we don't query on every keystroke.
   async function checkDuplicate() {
     if (isEdit || !accountId) return;
-    const value = phone.trim();
+    const value = fullPhone;
     if (!value) {
       setDupMatch(null);
       return;
@@ -125,7 +176,7 @@ export function ContactForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!phone.trim()) {
+    if (!fullPhone) {
       toast.error(t('phoneRequired'));
       return;
     }
@@ -154,7 +205,7 @@ export function ContactForm({
           .from('contacts')
           .update({
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: fullPhone,
             email: email.trim() || null,
             company: company.trim() || null,
             updated_at: new Date().toISOString(),
@@ -168,7 +219,7 @@ export function ContactForm({
             user_id: user.id,
             account_id: accountId,
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: fullPhone,
             email: email.trim() || null,
             company: company.trim() || null,
           })
@@ -207,7 +258,7 @@ export function ContactForm({
           const existing = await findExistingContact(
             supabase,
             accountId,
-            phone.trim(),
+            fullPhone,
           );
           if (existing) setDupMatch({ contact: existing, exact: true });
         }
@@ -252,17 +303,36 @@ export function ContactForm({
             <Label htmlFor="cf-phone" className="text-muted-foreground">
               {t('phoneLabel')} <span className="text-red-400">*</span>
             </Label>
-            <Input
-              id="cf-phone"
-              value={phone}
-              onChange={(e) => {
-                setPhone(e.target.value);
-                if (dupMatch) setDupMatch(null);
-              }}
-              onBlur={checkDuplicate}
-              placeholder={t('phonePlaceholder')}
-              className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-            />
+            <div className="grid grid-cols-[minmax(9rem,0.8fr)_minmax(0,1.2fr)] gap-2">
+              <select
+                aria-label={t('countryLabel')}
+                value={countryCode}
+                onChange={(e) => {
+                  setCountryCode(e.target.value);
+                  if (dupMatch) setDupMatch(null);
+                }}
+                className="h-10 rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              >
+                {PHONE_COUNTRIES.map((country) => (
+                  <option key={`${country.region}-${country.code}`} value={country.code}>
+                    {country.flag} {countryNames.of(country.region)} (+{country.code})
+                  </option>
+                ))}
+              </select>
+              <Input
+                id="cf-phone"
+                value={phone}
+                inputMode="tel"
+                autoComplete="tel-national"
+                onChange={(e) => {
+                  setPhone(normalizeNationalNumber(e.target.value, countryCode));
+                  if (dupMatch) setDupMatch(null);
+                }}
+                onBlur={checkDuplicate}
+                placeholder={t('phonePlaceholder')}
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
             {dupMatch ? (
               <div
                 className={`flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${
