@@ -24,25 +24,36 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Loader2, AlertTriangle } from 'lucide-react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 
 const PHONE_COUNTRIES = [
-  { region: 'BR', code: '55', flag: '🇧🇷' },
-  { region: 'PT', code: '351', flag: '🇵🇹' },
-  { region: 'AR', code: '54', flag: '🇦🇷' },
-  { region: 'MX', code: '52', flag: '🇲🇽' },
-  { region: 'CO', code: '57', flag: '🇨🇴' },
-  { region: 'CL', code: '56', flag: '🇨🇱' },
-  { region: 'US', code: '1', flag: '🇺🇸' },
-  { region: 'GB', code: '44', flag: '🇬🇧' },
-  { region: 'ES', code: '34', flag: '🇪🇸' },
-  { region: 'FR', code: '33', flag: '🇫🇷' },
-  { region: 'DE', code: '49', flag: '🇩🇪' },
-  { region: 'IT', code: '39', flag: '🇮🇹' },
-  { region: 'JP', code: '81', flag: '🇯🇵' },
-  { region: 'KR', code: '82', flag: '🇰🇷' },
+  { region: 'BR', code: '55' },
+  { region: 'PT', code: '351' },
+  { region: 'AR', code: '54' },
+  { region: 'MX', code: '52' },
+  { region: 'CO', code: '57' },
+  { region: 'CL', code: '56' },
+  { region: 'US', code: '1' },
+  { region: 'GB', code: '44' },
+  { region: 'ES', code: '34' },
+  { region: 'FR', code: '33' },
+  { region: 'DE', code: '49' },
+  { region: 'IT', code: '39' },
+  { region: 'JP', code: '81' },
+  { region: 'KR', code: '82' },
 ] as const;
+
+function countryFlagUrl(region: string) {
+  return `https://flagcdn.com/w40/${region.toLowerCase()}.png`;
+}
 
 function normalizeNationalNumber(value: string, countryCode: string) {
   const digits = value.replace(/\D/g, '');
@@ -91,7 +102,6 @@ export function ContactForm({
   onViewExisting,
 }: ContactFormProps) {
   const t = useTranslations('Contacts.form');
-  const locale = useLocale();
   const supabase = createClient();
   const { accountId } = useAuth();
   const isEdit = !!contact;
@@ -131,7 +141,8 @@ export function ContactForm({
   }, [open, contact]);
 
   const fullPhone = toInternationalPhone(countryCode, phone);
-  const countryNames = new Intl.DisplayNames([locale], { type: 'region' });
+  const selectedCountry = PHONE_COUNTRIES.find((country) => country.code === countryCode)
+    ?? PHONE_COUNTRIES[0];
 
   // Look up an existing contact with this number (new contacts only).
   // Runs on blur so we don't query on every keystroke.
@@ -329,22 +340,44 @@ export function ContactForm({
             <Label htmlFor="cf-phone" className="text-muted-foreground">
               {t('phoneLabel')} <span className="text-red-400">*</span>
             </Label>
-            <div className="grid grid-cols-[minmax(9rem,0.8fr)_minmax(0,1.2fr)] gap-2">
-              <select
-                aria-label={t('countryLabel')}
+            <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
+              <Select
                 value={countryCode}
-                onChange={(e) => {
-                  setCountryCode(e.target.value);
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setCountryCode(value);
                   if (dupMatch) setDupMatch(null);
                 }}
-                className="h-10 rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               >
-                {PHONE_COUNTRIES.map((country) => (
-                  <option key={`${country.region}-${country.code}`} value={country.code}>
-                    {country.flag} {countryNames.of(country.region)} (+{country.code})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-label={t('countryLabel')}
+                  className="h-10 w-full rounded-md border-border bg-muted px-2 text-foreground"
+                >
+                  <SelectValue>
+                    <img
+                      src={countryFlagUrl(selectedCountry.region)}
+                      alt=""
+                      aria-hidden="true"
+                      className="size-5 rounded-sm object-cover"
+                    />
+                    <span>+{selectedCountry.code}</span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="start" className="w-28 border-border bg-popover">
+                  {PHONE_COUNTRIES.map((country) => (
+                    <SelectItem key={`${country.region}-${country.code}`} value={country.code}>
+                      <img
+                        src={countryFlagUrl(country.region)}
+                        alt=""
+                        aria-hidden="true"
+                        className="size-5 rounded-sm object-cover"
+                      />
+                      <span>+{country.code}</span>
+                      <span className="sr-only">{country.region}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
                 id="cf-phone"
                 value={phone}
