@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findOrCreateContact, resolveAuditUserId } from '@/lib/api/v1/contacts';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { DEFAULT_CURRENCY } from '@/lib/currency';
 
 export interface IngestLeadInput {
   phone: string;
@@ -128,7 +129,7 @@ async function createDefaultDeal(
       contact_id: contactId,
       title: name?.trim() || 'Lead do WhatsApp',
       value: 0,
-      currency: account?.default_currency ?? 'USD',
+      currency: account?.default_currency ?? DEFAULT_CURRENCY,
       status: 'open',
     })
     .select('id')
