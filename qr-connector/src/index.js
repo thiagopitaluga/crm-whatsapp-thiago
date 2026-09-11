@@ -253,7 +253,7 @@ async function startSession(accountId) {
       );
       if (type !== 'notify') return;
       for (const message of messages)
-        void ingestInboundMessage(accountId, message, session);
+        void ingestMessage(accountId, message, session);
     });
   } catch (error) {
     session.lastError = safeError(error);
@@ -445,14 +445,8 @@ async function importHistoryWorker(session, candidates) {
   }
 }
 
-async function ingestInboundMessage(accountId, message, session) {
-  if (message.key.fromMe) {
-    console.log(
-      `[qr-connector] ignored outbound message for account ${accountId}`
-    );
-    return;
-  }
-
+async function ingestMessage(accountId, message, session) {
+  const direction = message.key.fromMe ? 'outbound' : 'inbound';
   const remoteJid = message.key.remoteJid;
   // Recent WhatsApp clients may use a private LID instead of the phone-number
   // JID. Baileys v7 exposes the matching phone-number JID in remoteJidAlt.
@@ -470,7 +464,7 @@ async function ingestInboundMessage(accountId, message, session) {
     !jid.endsWith('@s.whatsapp.net')
   ) {
     console.log(
-      `[qr-connector] ignored inbound message for account ${accountId}: unsupported_sender_identifier`
+      `[qr-connector] ignored ${direction} message for account ${accountId}: unsupported_contact_identifier`
     );
     return;
   }
@@ -478,14 +472,17 @@ async function ingestInboundMessage(accountId, message, session) {
   const phone = `+${jid.slice(0, jid.indexOf('@')).replace(/\D/g, '')}`;
   if (phone === '+') {
     console.log(
-      `[qr-connector] ignored inbound message for account ${accountId}: invalid_phone`
+      `[qr-connector] ignored ${direction} message for account ${accountId}: invalid_phone`
     );
     return;
   }
-  const name = message.pushName?.trim() || null;
+  // WhatsApp does not reliably include the recipient name on a message sent
+  // from this account. Outbound events only update existing CRM contacts, so
+  // there is no need to infer or overwrite a name here.
+  const name = direction === 'inbound' ? message.pushName?.trim() || null : null;
   const lastMessagePreview = getMessagePreview(message);
 
-  await sendLeadToCrm(accountId, phone, name, lastMessagePreview);
+  await sendLeadToCrm(accountId, phone, name, lastMessagePreview, direction);
 }
 
 function getMessagePreview(message) {
@@ -500,10 +497,16 @@ function getMessagePreview(message) {
   if (content.stickerMessage) return '[Figurinha]';
   if (content.locationMessage) return '[Localização]';
   if (content.contactMessage) return '[Contato]';
-  return '[Mensagem recebida]';
+  return '[Mensagem]';
 }
 
-async function sendLeadToCrm(accountId, phone, name, lastMessagePreview = null) {
+async function sendLeadToCrm(
+  accountId,
+  phone,
+  name,
+  lastMessagePreview = null,
+  direction = 'inbound'
+) {
   const endpoint = crmConnectorSecret
     ? `${crmBaseUrl}/api/internal/qr-ingest`
     : `${crmBaseUrl}/api/v1/ingest/whatsapp`;
@@ -523,6 +526,7 @@ async function sendLeadToCrm(accountId, phone, name, lastMessagePreview = null) 
         phone,
         name,
         last_message_preview: lastMessagePreview,
+        direction,
       }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -531,7 +535,7 @@ async function sendLeadToCrm(accountId, phone, name, lastMessagePreview = null) 
       return false;
     } else {
       console.log(
-        `[qr-connector] CRM ingest accepted for account ${accountId}`
+        `[qr-connector] CRM ${direction} message accepted for account ${accountId}`
       );
       return true;
     }

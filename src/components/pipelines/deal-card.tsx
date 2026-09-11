@@ -62,7 +62,18 @@ export function DealCard({
 
   const contactName = deal.contact?.name?.trim() || deal.title || t("noContact");
   const phone = deal.contact?.phone || t("noPhone");
-  const lastMessage = deal.contact?.conversations?.[0]?.last_message_text;
+  const latestConversation = deal.contact?.conversations?.reduce<
+    (typeof deal.contact.conversations)[number] | undefined
+  >(
+    (latest, conversation) =>
+      !latest ||
+      new Date(conversation.last_message_at ?? 0).getTime() >
+        new Date(latest.last_message_at ?? 0).getTime()
+        ? conversation
+        : latest,
+    undefined
+  );
+  const lastMessage = latestConversation?.last_message_text;
   const whatsappPhone = deal.contact?.phone?.replace(/\D/g, "");
   const whatsappUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}` : null;
 
@@ -231,7 +242,12 @@ export function DealCard({
             >
               <TagIcon className="size-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-48">
+            <DropdownMenuContent
+              align="end"
+              className="min-w-48"
+              onClick={stopCardInteraction}
+              onPointerDown={stopCardInteraction}
+            >
               {tags.length === 0 ? (
                 <DropdownMenuItem disabled>{t("noTags")}</DropdownMenuItem>
               ) : (
@@ -240,7 +256,10 @@ export function DealCard({
                   return (
                     <DropdownMenuItem
                       key={tag.id}
-                      onSelect={() => void onToggleTag(deal, tag)}
+                      onSelect={(event) => {
+                        event.stopPropagation();
+                        void onToggleTag(deal, tag);
+                      }}
                     >
                       <span className="size-2 rounded-full" style={{ backgroundColor: tag.color }} />
                       <span className="flex-1">{tag.name}</span>
@@ -261,15 +280,28 @@ export function DealCard({
             >
               <UserRound className="size-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem onSelect={() => void onAssign(deal, null)}>
+            <DropdownMenuContent
+              align="end"
+              className="min-w-44"
+              onClick={stopCardInteraction}
+              onPointerDown={stopCardInteraction}
+            >
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.stopPropagation();
+                  void onAssign(deal, null);
+                }}
+              >
                 {t("unassigned")}
               </DropdownMenuItem>
               {members.length > 0 && <DropdownMenuSeparator />}
               {members.map((member) => (
                 <DropdownMenuItem
                   key={member.id}
-                  onSelect={() => void onAssign(deal, member.id)}
+                  onSelect={(event) => {
+                    event.stopPropagation();
+                    void onAssign(deal, member.id);
+                  }}
                 >
                   {member.full_name || member.email}
                 </DropdownMenuItem>

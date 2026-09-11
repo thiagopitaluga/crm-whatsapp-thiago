@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 import { ContactError } from '@/lib/api/v1/contacts';
-import { ingestLead } from '@/lib/leads/ingest';
+import { ingestLead, updateExistingLeadConversation } from '@/lib/leads/ingest';
 import { isValidQrConnectorSecret } from '@/lib/whatsapp/qr-connector';
 
 export const runtime = 'nodejs';
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     typeof body?.last_message_preview === 'string'
       ? body.last_message_preview
       : null;
+  const direction = body?.direction === 'outbound' ? 'outbound' : 'inbound';
 
   if (!/^[0-9a-f-]{36}$/i.test(accountId) || !phone) {
     return NextResponse.json(
@@ -46,6 +47,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (direction === 'outbound') {
+      const updated = await updateExistingLeadConversation(supabase, accountId, {
+        phone,
+        lastMessagePreview,
+      });
+      return NextResponse.json({ updated });
+    }
+
     const result = await ingestLead(supabase, accountId, {
       phone,
       name,

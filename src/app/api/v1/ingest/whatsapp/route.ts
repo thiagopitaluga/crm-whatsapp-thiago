@@ -1,7 +1,7 @@
 import { requireApiKey } from '@/lib/auth/api-context';
 import { fail, ok, toApiErrorResponse } from '@/lib/api/v1/respond';
 import { ContactError } from '@/lib/api/v1/contacts';
-import { ingestLead } from '@/lib/leads/ingest';
+import { ingestLead, updateExistingLeadConversation } from '@/lib/leads/ingest';
 
 /**
  * POST /api/v1/ingest/whatsapp
@@ -28,6 +28,16 @@ export async function POST(request: Request) {
       typeof body.last_message_preview === 'string'
         ? body.last_message_preview
         : null;
+    const direction = body.direction === 'outbound' ? 'outbound' : 'inbound';
+
+    if (direction === 'outbound') {
+      const updated = await updateExistingLeadConversation(ctx.supabase, ctx.accountId, {
+        phone,
+        lastMessagePreview,
+      });
+      return ok({ updated });
+    }
+
     const result = await ingestLead(ctx.supabase, ctx.accountId, {
       phone,
       name,

@@ -7,7 +7,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { CURRENCIES } from "@/lib/currency";
 import type {
   Contact,
-  Conversation,
   Deal,
   DealStatus,
   PipelineStage,
@@ -63,13 +62,10 @@ export function DealForm({
   const [contactId, setContactId] = useState("");
   const [stageId, setStageId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
-  const [expectedCloseDate, setExpectedCloseDate] = useState("");
   const [notes, setNotes] = useState("");
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [linkedConversation, setLinkedConversation] =
-    useState<Conversation | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
@@ -92,7 +88,6 @@ export function DealForm({
       setContactId(deal.contact_id ?? "");
       setStageId(deal.stage_id);
       setAssignedTo(deal.assigned_to ?? "");
-      setExpectedCloseDate(deal.expected_close_date ?? "");
       setNotes(deal.notes ?? "");
     } else {
       setTitle("");
@@ -101,7 +96,6 @@ export function DealForm({
       setContactId("");
       setStageId(defaultStageId || stages[0]?.id || "");
       setAssignedTo("");
-      setExpectedCloseDate("");
       setNotes("");
     }
   }, [open, deal, defaultStageId, stages, defaultCurrency]);
@@ -125,31 +119,10 @@ export function DealForm({
     };
   }, [open, supabase]);
 
-  // Fetch linked conversation for the selected contact (newest open one).
-  // Clearing on no-selection is sync with prop state; the populated
-  // case runs setLinkedConversation inside the async fetch callback.
-  useEffect(() => {
-    if (!open || !contactId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLinkedConversation(null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from("conversations")
-        .select("*")
-        .eq("contact_id", contactId)
-        .order("last_message_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (cancelled) return;
-      setLinkedConversation((data as Conversation | null) ?? null);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, contactId, supabase]);
+  const selectedContact = contacts.find((contact) => contact.id === contactId);
+  const whatsappUrl = selectedContact?.phone
+    ? `https://wa.me/${selectedContact.phone.replace(/\D/g, "")}`
+    : null;
 
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
@@ -167,7 +140,6 @@ export function DealForm({
       stage_id: stageId,
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
-      expected_close_date: expectedCloseDate || null,
     };
 
     if (deal) {
@@ -281,13 +253,15 @@ export function DealForm({
                 ))}
               </select>
 
-              {linkedConversation && (
+              {whatsappUrl && (
                 <Link
-                  href="/inbox"
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
                 >
                   <MessageSquare className="h-3 w-3" />
-                  {t("linkToConversation")}
+                  {t("callOnWhatsApp")}
                 </Link>
               )}
             </div>
@@ -320,16 +294,6 @@ export function DealForm({
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">{t("expectedCloseDate")}</Label>
-              <Input
-                type="date"
-                value={expectedCloseDate}
-                onChange={(e) => setExpectedCloseDate(e.target.value)}
-                className="border-border bg-muted text-foreground"
-              />
             </div>
 
             <div className="grid gap-2">

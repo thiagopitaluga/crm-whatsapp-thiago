@@ -1,13 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findOrCreateContact, resolveAuditUserId } from '@/lib/api/v1/contacts';
-import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
+import { isValidE164, sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
 
 export interface IngestLeadInput {
   phone: string;
   name?: string | null;
-  /** Most recent inbound WhatsApp text preview from the QR connector. */
+  /** Most recent WhatsApp message preview from the QR connector. */
   lastMessagePreview?: string | null;
 }
 
@@ -51,6 +52,53 @@ export async function ingestLead(
     conversationId,
     dealId,
   };
+}
+
+/**
+ * Update the preview of an existing QR-mode conversation without creating
+ * anything. This is used for messages sent by the connected WhatsApp account:
+ * an outbound message must never create a contact or a deal on its own.
+ */
+export async function updateExistingLeadConversation(
+  db: SupabaseClient,
+  accountId: string,
+  input: Pick<IngestLeadInput, 'phone' | 'lastMessagePreview'>
+): Promise<boolean> {
+  const sanitizedPhone = sanitizePhoneForMeta(input.phone);
+  if (!isValidE164(sanitizedPhone)) {
+    throw new Error('Invalid phone number');
+  }
+
+  const lastMessageText = normalizeMessagePreview(input.lastMessagePreview);
+  if (!lastMessageText) return false;
+
+  const contact = await findExistingContact(db, accountId, sanitizedPhone);
+  if (!contact) return false;
+
+  const { data: conversation, error: lookupError } = await db
+    .from('conversations')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('contact_id', contact.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (lookupError) throw new Error('Failed to find the lead conversation');
+  if (!conversation?.id) return false;
+
+  const now = new Date().toISOString();
+  const { error: updateError } = await db
+    .from('conversations')
+    .update({
+      last_message_text: lastMessageText,
+      last_message_at: now,
+      updated_at: now,
+    })
+    .eq('id', conversation.id)
+    .eq('account_id', accountId);
+  if (updateError) throw new Error('Failed to update the lead conversation');
+
+  return true;
 }
 
 async function findOrCreateConversation(
