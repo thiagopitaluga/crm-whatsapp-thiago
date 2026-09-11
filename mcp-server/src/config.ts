@@ -26,16 +26,20 @@ function truthy(value: string | undefined): boolean {
 
 export function loadConfig(): Config {
   const baseUrlRaw = process.env.WACRM_BASE_URL?.trim();
-  const apiKey = process.env.WACRM_API_KEY?.trim();
+  // ORGANIZAP_MCP_API_KEY allows a Codex configuration to forward a
+  // user-scoped environment variable without storing its secret in config.toml.
+  const apiKey =
+    process.env.WACRM_API_KEY?.trim() ||
+    process.env.ORGANIZAP_MCP_API_KEY?.trim();
 
   const missing: string[] = [];
   if (!baseUrlRaw) missing.push('WACRM_BASE_URL');
-  if (!apiKey) missing.push('WACRM_API_KEY');
+  if (!apiKey) missing.push('WACRM_API_KEY or ORGANIZAP_MCP_API_KEY');
   if (missing.length > 0) {
     throw new Error(
       `Missing required environment variable(s): ${missing.join(', ')}. ` +
         `Set WACRM_BASE_URL to your instance URL (e.g. https://crm.example.com) ` +
-        `and WACRM_API_KEY to a key from Settings → API keys.`
+        `and WACRM_API_KEY (or ORGANIZAP_MCP_API_KEY) to a key from Settings → API keys.`
     );
   }
 
