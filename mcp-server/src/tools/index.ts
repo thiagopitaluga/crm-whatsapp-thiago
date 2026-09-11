@@ -10,8 +10,13 @@ import type { Config } from '../config.js';
 import { registerReadTools } from './read.js';
 import { registerWriteTools } from './write.js';
 import { registerBroadcastTools } from './broadcast.js';
+import { registerAutomationTools } from './automations.js';
 
-export function registerTools(server: McpServer, client: WacrmClient, config: Config): string[] {
+export function registerTools(
+  server: McpServer,
+  client: WacrmClient,
+  config: Config
+): string[] {
   const enabled: string[] = ['read'];
   registerReadTools(server, client);
 
@@ -23,6 +28,11 @@ export function registerTools(server: McpServer, client: WacrmClient, config: Co
   if (config.enableBroadcasts) {
     registerBroadcastTools(server, client);
     enabled.push('broadcast');
+  }
+
+  if (config.enableAutomations) {
+    registerAutomationTools(server, client);
+    enabled.push('automations');
   }
 
   return enabled;

@@ -29,16 +29,18 @@ other API call.
          "args": ["-y", "wacrm-mcp"],
          "env": {
            "WACRM_BASE_URL": "https://crm.example.com",
-           "WACRM_API_KEY": "wacrm_live_xxxxxxxxxxxxxxxxxxxxxxxx"
-         }
-       }
-     }
+           "WACRM_API_KEY": "wacrm_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+         },
+       },
+     },
    }
    ```
 
 That's **read-only** — the safe default. To let the assistant change
 data or send messages, add `"WACRM_ENABLE_WRITES": "true"` (and
-`"WACRM_ENABLE_BROADCASTS": "true"` for mass sends) to `env`.
+`"WACRM_ENABLE_BROADCASTS": "true"` for mass sends) to `env`. To
+create and manage CRM automations, add `"WACRM_ENABLE_AUTOMATIONS": "true"`
+and grant the key `automations:manage`.
 
 ## What it exposes
 
@@ -47,6 +49,8 @@ data or send messages, add `"WACRM_ENABLE_WRITES": "true"` (and
 - **Writes (opt-in):** send a message, create/update a contact.
 - **Broadcasts (opt-in):** launch a template broadcast — requires an
   explicit `confirm` and is marked destructive.
+- **Automations (opt-in):** list and inspect automations, create drafts,
+  edit them, and activate or delete only with explicit confirmation.
 
 ## Safety
 
