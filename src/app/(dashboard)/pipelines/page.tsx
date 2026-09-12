@@ -26,7 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GitBranch, Plus, ChevronDown, Settings, Search, Tags, X } from "lucide-react";
+import { GitBranch, Plus, ChevronDown, ChevronRight, Settings, Search, Tags, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
@@ -64,6 +64,7 @@ export default function PipelinesPage() {
   const [leadSearch, setLeadSearch] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -323,6 +324,15 @@ export default function PipelinesPage() {
     },
     [refreshDeals, supabase, t],
   );
+
+  const handleRenameStage = useCallback(async (stageId: string, name: string) => {
+    setStages((previous) => previous.map((stage) => stage.id === stageId ? { ...stage, name } : stage));
+    const { error } = await supabase.from("pipeline_stages").update({ name }).eq("id", stageId);
+    if (error) {
+      toast.error(t("toastFailedQuickUpdate"));
+      void refreshStages();
+    }
+  }, [refreshStages, supabase, t]);
 
   const handleQuickAssign = useCallback(
     async (deal: Deal, assigneeId: string | null) => {
@@ -729,11 +739,23 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={filteredDeals} />
+          <div className="rounded-xl border border-border bg-card/60">
+            <button
+              type="button"
+              onClick={() => setAnalyticsOpen((open) => !open)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-foreground hover:bg-muted/50"
+              aria-expanded={analyticsOpen}
+            >
+              <span>Resumo do funil</span>
+              {analyticsOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+            </button>
+            {analyticsOpen && <div className="border-t border-border p-3"><PipelineAnalytics stages={stages} deals={filteredDeals} /></div>}
+          </div>
           <PipelineBoard
             stages={stages}
             deals={filteredDeals}
             onDealMoved={handleDealMoved}
+            onRenameStage={handleRenameStage}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
             members={members}

@@ -11,13 +11,15 @@ import { useTranslations } from 'next-intl'
 // modal on the target page — that'd require touching those pages,
 // which is out of scope here.
 interface Action {
-  labelKey: string
+  labelKey?: string
+  label?: string
   href: string
   icon: ComponentType<{ className?: string }>
   tint: string
 }
 
 const ACTIONS: Action[] = [
+  { label: 'Funil de vendas', href: '/pipelines', icon: Briefcase, tint: 'text-emerald-500' },
   { labelKey: 'newContact', href: '/contacts', icon: UserPlus, tint: 'text-primary' },
   { labelKey: 'newDeal', href: '/pipelines', icon: Briefcase, tint: 'text-blue-400' },
   { labelKey: 'newBroadcast', href: '/broadcasts/new', icon: Radio, tint: 'text-amber-400' },
@@ -40,7 +42,7 @@ export function QuickActions() {
             <div className={`flex h-9 w-9 items-center justify-center rounded-lg bg-muted ${a.tint}`}>
               <Icon className="h-4 w-4" />
             </div>
-            <span className="text-sm font-medium text-foreground">{t(a.labelKey as string)}</span>
+            <span className="text-sm font-medium text-foreground">{a.label ?? t(a.labelKey as string)}</span>
           </Link>
         )
       })}

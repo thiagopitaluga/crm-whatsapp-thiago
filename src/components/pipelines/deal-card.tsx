@@ -132,6 +132,11 @@ export function DealCard({
         <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
           <Phone className="size-3 shrink-0" />
           {phone}
+          {deal.contact?.created_at ? (
+            <span className="ml-auto truncate text-[10px]" title={`Criado em ${new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}`}>
+              Criado em: {new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}
+            </span>
+          ) : null}
         </p>
       </div>
 

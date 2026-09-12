@@ -183,6 +183,18 @@ function InboxPageInner() {
 
       if (!user) return;
 
+      // A QR session lives in the connector, not in whatsapp_config
+      // (which stores the official Meta API setup). Ask it first so a
+      // healthy QR connection never produces a misleading warning.
+      const qrResponse = await fetch('/api/whatsapp/qr', { cache: 'no-store' });
+      if (qrResponse.ok) {
+        const qrState = await qrResponse.json() as { status?: string };
+        if (qrState.status === 'connected') {
+          setWhatsappConnected(true);
+          return;
+        }
+      }
+
       // whatsapp_config is one-row-per-account post-multi-user, so
       // the previous `.eq('user_id', user.id)` would miss the row
       // for any teammate who didn't personally save the config —

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import { Building2, Check, LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
@@ -50,7 +50,7 @@ import { useTranslations } from "next-intl";
 export function Header({ onOpenSidebar }: HeaderProps) {
   const t = useTranslations("Header");
   const pathname = usePathname();
-  const { profile, signOut } = useAuth();
+  const { profile, account, accounts, switchAccount, signOut } = useAuth();
   const titleKey = getPageTitleKey(pathname);
 
   const initial =
@@ -112,6 +112,26 @@ export function Header({ onOpenSidebar }: HeaderProps) {
               {profile?.email ?? ""}
             </p>
           </div>
+          {account ? (
+            <>
+              <DropdownMenuSeparator className="bg-border" />
+              <div className="flex items-center gap-2 px-2 py-2 text-sm font-medium text-foreground">
+                <Building2 className="size-4 text-primary" />
+                <span className="min-w-0 flex-1 truncate">{account.name}</span>
+              </div>
+              {accounts.length > 1 && accounts.map((availableAccount) => (
+                <DropdownMenuItem
+                  key={availableAccount.id}
+                  onClick={() => void switchAccount(availableAccount.id)}
+                  className="gap-2 text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+                >
+                  <Building2 className="size-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{availableAccount.name}</span>
+                  {availableAccount.id === account.id ? <Check className="size-4 text-primary" /> : null}
+                </DropdownMenuItem>
+              ))}
+            </>
+          ) : null}
           <DropdownMenuSeparator className="bg-border" />
           <DropdownMenuItem
             render={

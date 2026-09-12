@@ -26,6 +26,7 @@ interface PipelineBoardProps {
   stages: PipelineStage[];
   deals: Deal[];
   onDealMoved: (dealId: string, newStageId: string) => void;
+  onRenameStage: (stageId: string, name: string) => Promise<void>;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
   members: Profile[];
@@ -42,6 +43,7 @@ export function PipelineBoard({
   stages,
   deals,
   onDealMoved,
+  onRenameStage,
   onAddDeal,
   onEditDeal,
   members,
@@ -134,6 +136,7 @@ export function PipelineBoard({
               totalValue={totalValue}
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
+              onRenameStage={onRenameStage}
               onEditDeal={onEditDeal}
               members={members}
               onValueChange={onValueChange}
@@ -224,6 +227,7 @@ function StageColumn({
   totalValue,
   currency,
   onAddDeal,
+  onRenameStage,
   onEditDeal,
   members,
   onValueChange,
@@ -239,6 +243,7 @@ function StageColumn({
   totalValue: number;
   currency: string;
   onAddDeal: (stageId: string) => void;
+  onRenameStage: (stageId: string, name: string) => Promise<void>;
   onEditDeal: (deal: Deal) => void;
   members: Profile[];
   onValueChange: (deal: Deal, value: number) => Promise<void>;
@@ -251,6 +256,18 @@ function StageColumn({
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState(stage.name);
+
+  function saveName() {
+    const nextName = name.trim();
+    setEditingName(false);
+    if (!nextName || nextName === stage.name) {
+      setName(stage.name);
+      return;
+    }
+    void onRenameStage(stage.id, nextName);
+  }
 
   return (
     // On mobile each column is `w-[85vw]` (with a reasonable min/max)
@@ -265,10 +282,31 @@ function StageColumn({
         className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
         style={{ backgroundColor: stage.color }}
       />
-      <div className="flex items-center justify-between pt-3">
-        <h3 className="truncate text-sm font-semibold text-foreground">
-          {stage.name}
-        </h3>
+      <div className="flex items-center justify-between gap-2 pt-3">
+        {editingName ? (
+          <input
+            autoFocus
+            value={name}
+            placeholder="Novo nome de etapa"
+            aria-label="Novo nome de etapa"
+            onChange={(event) => setName(event.target.value)}
+            onBlur={saveName}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") saveName();
+              if (event.key === "Escape") { setName(stage.name); setEditingName(false); }
+            }}
+            className="h-7 min-w-0 flex-1 rounded border border-primary bg-background px-2 text-sm font-semibold text-foreground outline-none"
+          />
+        ) : (
+          <button
+            type="button"
+            title="Editar nome da etapa"
+            onClick={() => setEditingName(true)}
+            className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-foreground hover:text-primary"
+          >
+            {stage.name}
+          </button>
+        )}
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
           {deals.length}
         </span>
@@ -276,6 +314,16 @@ function StageColumn({
       <p className="text-xs text-muted-foreground">
         {formatCurrency(totalValue, currency)}
       </p>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onAddDeal(stage.id)}
+        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
+      >
+        <Plus className="mr-1 h-3 w-3" />
+        {t("addDeal")}
+      </Button>
 
       <div
         ref={setNodeRef}
@@ -309,15 +357,6 @@ function StageColumn({
         )}
       </div>
 
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onAddDeal(stage.id)}
-        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
-      >
-        <Plus className="mr-1 h-3 w-3" />
-        {t("addDeal")}
-      </Button>
     </div>
   );
 }

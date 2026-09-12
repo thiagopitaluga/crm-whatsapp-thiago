@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Languages } from "lucide-react";
+import { Check } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
 import {
@@ -13,8 +13,8 @@ import {
 const LOCALE_COOKIE = "wacrm.locale";
 
 const options = [
-  { locale: "pt-BR", code: "PT", labelKey: "portuguese" },
-  { locale: "en", code: "EN", labelKey: "english" },
+  { locale: "pt-BR", flag: "🇧🇷", labelKey: "portuguese" },
+  { locale: "en", flag: "🇺🇸", labelKey: "english" },
 ] as const;
 
 /** Per-browser language picker for the CRM header. */
@@ -33,12 +33,11 @@ export function LanguageToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="flex h-10 items-center gap-1 rounded-md px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none data-popup-open:bg-muted sm:px-2.5"
+        className="flex h-10 w-10 items-center justify-center rounded-md text-base transition-colors hover:bg-muted focus:outline-none data-popup-open:bg-muted"
         aria-label={t("menuLabel")}
         title={t("menuLabel")}
       >
-        <Languages className="h-4 w-4" />
-        <span>{current.code}</span>
+        <span aria-hidden>{current.flag}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
         {options.map((option) => (
@@ -47,7 +46,8 @@ export function LanguageToggle() {
             onClick={() => changeLocale(option.locale)}
             className="justify-between text-popover-foreground focus:bg-accent focus:text-accent-foreground"
           >
-            {t(option.labelKey)}
+            <span className="mr-2 text-base" aria-hidden>{option.flag}</span>
+            <span className="flex-1">{t(option.labelKey)}</span>
             {locale === option.locale ? <Check className="h-4 w-4" /> : null}
           </DropdownMenuItem>
         ))}
