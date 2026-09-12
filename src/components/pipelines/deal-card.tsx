@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Deal, DealStatus, PipelineStage, Profile, Tag } from "@/types";
 import {
   CalendarPlus,
+  GitBranch,
   CheckCircle2,
   CircleX,
   MessageCircle,
@@ -35,6 +36,8 @@ interface DealCardProps {
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  stages?: PipelineStage[];
+  onMoveStage?: (dealId: string, stageId: string) => void;
   isOverlay?: boolean;
 }
 
@@ -54,6 +57,8 @@ export function DealCard({
   onAssign,
   tags,
   onToggleTag,
+  stages = [],
+  onMoveStage,
   isOverlay,
 }: DealCardProps) {
   const t = useTranslations("Pipelines.card");
@@ -126,9 +131,28 @@ export function DealCard({
       />
 
       <div className="min-w-0 pl-1">
-        <h4 className="truncate text-sm font-semibold text-foreground" title={contactName}>
-          {contactName}
-        </h4>
+        <div className="flex items-center gap-1">
+          <h4 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={contactName}>{contactName}</h4>
+          {!isOverlay && stages.length > 1 && onMoveStage ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                title="Mudar de etapa"
+                aria-label="Mudar de etapa"
+                onClick={stopCardInteraction}
+                onPointerDown={stopCardInteraction}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary"
+              ><GitBranch className="size-3.5" /></DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-40" onClick={stopCardInteraction} onPointerDown={stopCardInteraction}>
+                {stages.map((candidate) => (
+                  <DropdownMenuItem key={candidate.id} disabled={candidate.id === deal.stage_id} onSelect={(event) => { event.stopPropagation(); onMoveStage(deal.id, candidate.id); }}>
+                    <span className="mr-2 size-2 rounded-full" style={{ backgroundColor: candidate.color }} />
+                    {candidate.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
         <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
           <Phone className="size-3 shrink-0" />
           {phone}

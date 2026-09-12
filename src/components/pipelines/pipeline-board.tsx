@@ -146,6 +146,8 @@ export function PipelineBoard({
               onAssign={onAssign}
               tags={tags}
               onToggleTag={onToggleTag}
+              stages={sortedStages}
+              onMoveStage={onDealMoved}
             />
           );
         })}
@@ -174,6 +176,7 @@ export function PipelineBoard({
               onAssign={async () => {}}
               tags={[]}
               onToggleTag={async () => {}}
+              stages={[]}
             />
           </div>
         ) : null}
@@ -237,6 +240,8 @@ function StageColumn({
   onAssign,
   tags,
   onToggleTag,
+  stages,
+  onMoveStage,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -253,6 +258,8 @@ function StageColumn({
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  stages: PipelineStage[];
+  onMoveStage: (dealId: string, stageId: string) => void;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -352,6 +359,8 @@ function StageColumn({
               onAssign={onAssign}
               tags={tags}
               onToggleTag={onToggleTag}
+              stages={stages}
+              onMoveStage={onMoveStage}
             />
           ))
         )}
@@ -373,6 +382,8 @@ function DraggableDealCard({
   onAssign,
   tags,
   onToggleTag,
+  stages,
+  onMoveStage,
 }: {
   deal: Deal;
   stage: PipelineStage;
@@ -385,6 +396,8 @@ function DraggableDealCard({
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  stages: PipelineStage[];
+  onMoveStage: (dealId: string, stageId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -409,6 +422,8 @@ function DraggableDealCard({
         onAssign={onAssign}
         tags={tags}
         onToggleTag={onToggleTag}
+        stages={stages}
+        onMoveStage={onMoveStage}
       />
     </div>
   );
