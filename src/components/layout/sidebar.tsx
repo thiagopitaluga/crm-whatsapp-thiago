@@ -24,7 +24,6 @@ import {
   User,
   UserCog,
   Users,
-  UsersRound,
   Workflow,
   X,
   Zap,
@@ -124,21 +123,10 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, accounts, switchAccount, signOut } = useAuth();
+  const { profile, account, accountRole, accounts, switchAccount, signOut } = useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
-  // Only surface the account-name strip when it actually carries
-  // information. A solo user's personal account is named after them
-  // (the 017 signup trigger seeds it from `full_name`), so showing it
-  // here would just duplicate the user name in the footer below. Once
-  // the account is renamed or the user joins a shared account, the
-  // name diverges and the strip becomes meaningful — that's the signal
-  // we gate on. Wait for the profile fetch to settle first, otherwise
-  // the strip flashes in once the row resolves (a layout jump).
-  const showAccountStrip =
-    !profileLoading &&
-    !!account?.name &&
-    (account.name !== profile?.full_name || !!account.logo_url);
+  const roleMeta = accountRole ? ROLE_CHIP[accountRole] : null;
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -192,11 +180,33 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
         )}
         aria-label="Principal"
       >
-        {/* Logo row. On mobile we put a close button here; on desktop the
-            close button is hidden since the sidebar is always-visible. */}
+        {/* The active CRM account is the sidebar's primary identity.
+            OrganiZAP remains subtly present in the user footer below. */}
         <div className={cn("flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border", collapsed ? "px-3" : "px-4")}>
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-2" title={collapsed ? "OrganiZAP" : undefined}>
-            <OrganiZAPLogo size="sm" compact={collapsed} priority />
+          <Link
+            href="/dashboard"
+            className="flex min-w-0 items-center gap-2"
+            title={collapsed ? account?.name ?? "OrganiZAP" : undefined}
+          >
+            {account?.logo_url ? (
+              <Avatar className="size-7 shrink-0 rounded-md">
+                <AvatarImage src={account.logo_url} alt="" />
+                <AvatarFallback className="rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                  {account.name?.charAt(0).toUpperCase() ?? "C"}
+                </AvatarFallback>
+              </Avatar>
+            ) : account ? (
+              <Avatar className="size-7 shrink-0 rounded-md">
+                <AvatarFallback className="rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                  {account.name?.charAt(0).toUpperCase() ?? "C"}
+                </AvatarFallback>
+              </Avatar>
+            ) : (
+              <OrganiZAPLogo size="sm" compact priority />
+            )}
+            <span className={cn("truncate text-sm font-semibold text-foreground", collapsed && "lg:hidden")}>
+              {account?.name ?? "OrganiZAP"}
+            </span>
           </Link>
           <button
             type="button"
@@ -305,52 +315,15 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
           </ul>
         </nav>
 
-        {/* User section */}
+        {/* Product signature + user section */}
         <div className={cn("shrink-0 border-t border-border p-3", collapsed && "lg:px-2")}>
-          {/* Account name display — surfaced only when the account
-              name differs from the user's own name (see
-              `showAccountStrip`). For a default solo account the two
-              match, so we hide it to avoid duplicating the user name
-              below; for renamed or shared accounts it tells the user
-              which account they're acting in. */}
-          {showAccountStrip && account?.name && !collapsed ? (
-            <div className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
-              {account.logo_url ? (
-                <Avatar className="size-4 shrink-0 rounded-sm">
-                  <AvatarImage src={account.logo_url} alt="" />
-                  <AvatarFallback className="rounded-sm bg-primary/10 text-[9px] text-primary">
-                    {account.name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              ) : (
-                <UsersRound className="size-3.5 shrink-0" />
-              )}
-              {/* `title=` exposes the full name on hover when it
-                  gets truncated (long account names + narrow
-                  sidebars). Cheap a11y win. */}
-              <span className="truncate" title={account.name}>
-                {account.name}
-              </span>
-              {accountRole ? (
-                // Always render the chip — owners used to be
-                // invisible here, which made them indistinguishable
-                // from admins at a glance. Now everyone sees their
-                // role (with a colour cue) regardless of tier.
-                (() => {
-                  const meta = ROLE_CHIP[accountRole];
-                  const Icon = meta.icon;
-                  return (
-                    <span
-                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
-                    >
-                      <Icon className="size-3" />
-                      {t(meta.labelKey as string)}
-                    </span>
-                  );
-                })()
-              ) : null}
-            </div>
-          ) : null}
+          <Link
+            href="/dashboard"
+            className={cn("mb-2 flex items-center gap-2 px-2 text-muted-foreground", collapsed && "lg:justify-center lg:px-0")}
+            title={collapsed ? "OrganiZAP" : undefined}
+          >
+            <OrganiZAPLogo size="sm" compact={collapsed} />
+          </Link>
           <DropdownMenu>
             <DropdownMenuTrigger className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60", collapsed && "lg:justify-center lg:px-2")}>
               <Avatar className="size-8 shrink-0">
@@ -373,6 +346,11 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
                 <p className="truncate text-xs text-muted-foreground">
                   {profile?.email ?? ""}
                 </p>
+                {roleMeta ? (
+                  <p className="mt-0.5 truncate text-[11px] font-medium text-primary">
+                    {t(roleMeta.labelKey as string)}
+                  </p>
+                ) : null}
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent

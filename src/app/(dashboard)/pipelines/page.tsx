@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Contact, Pipeline, PipelineStage, Deal, DealStatus, Profile, Tag } from "@/types";
+import type { Contact, CustomField, Pipeline, PipelineCardLayout, PipelineStage, Deal, DealStatus, Profile, Tag } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
@@ -26,7 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GitBranch, Plus, ChevronDown, ChevronRight, Settings, Search, Tags, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { GitBranch, Plus, ChevronDown, ChevronRight, Settings, Search, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
@@ -48,6 +49,25 @@ const SPEC_DEFAULT_STAGES = [
   { name: "Lost", color: "#ef4444", position: 5 }, // red
 ];
 
+const DEFAULT_CARD_LAYOUT: PipelineCardLayout = {
+  show_value: true,
+  show_created_at: true,
+  show_last_message: true,
+  custom_field_ids: [],
+};
+
+function normalizeCardLayout(layout: PipelineCardLayout | null | undefined): PipelineCardLayout {
+  return {
+    ...DEFAULT_CARD_LAYOUT,
+    ...layout,
+    custom_field_ids: layout?.custom_field_ids ?? [],
+  };
+}
+
+function layoutStorageKey(pipelineId: string) {
+  return `organizap:pipeline-card-layout:${pipelineId}`;
+}
+
 export default function PipelinesPage() {
   const t = useTranslations("Pipelines.page");
   const supabase = createClient();
@@ -61,10 +81,18 @@ export default function PipelinesPage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [leadSearch, setLeadSearch] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [customFieldId, setCustomFieldId] = useState("");
+  const [customFieldValue, setCustomFieldValue] = useState("");
   const [loading, setLoading] = useState(true);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [cardLayoutDraft, setCardLayoutDraft] = useState<PipelineCardLayout>(DEFAULT_CARD_LAYOUT);
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -118,13 +146,16 @@ export default function PipelinesPage() {
 
       const { data } = await supabase
         .from("deals")
-        .select("*, contact:contacts(*, conversations(last_message_text,last_message_at), contact_tags(tags(*))), assignee:profiles!deals_assigned_to_fkey(*)")
+        .select("*, contact:contacts(*, conversations(last_message_text,last_message_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)")
         .eq("pipeline_id", pipelineId)
         .eq("account_id", accountId)
         .order("created_at", { ascending: false });
       return (data ?? []).map((row) => {
         const contact = row.contact as
-          | (Contact & { contact_tags?: { tags: Tag | null }[] })
+          | (Contact & {
+              contact_tags?: { tags: Tag | null }[];
+              contact_custom_values?: Array<{ value?: string | null; custom_field?: Pick<CustomField, "id" | "field_name"> | null }>;
+            })
           | null;
         return {
           ...row,
@@ -134,6 +165,7 @@ export default function PipelinesPage() {
                 tags: (contact.contact_tags ?? [])
                   .map((link) => link.tags)
                   .filter((tag): tag is Tag => Boolean(tag)),
+                custom_values: contact.contact_custom_values ?? [],
               }
             : undefined,
         } as Deal;
@@ -147,14 +179,16 @@ export default function PipelinesPage() {
     let cancelled = false;
 
     (async () => {
-      const [profilesResult, tagsResult] = await Promise.all([
+      const [profilesResult, tagsResult, customFieldsResult] = await Promise.all([
         supabase.from("profiles").select("*").eq("account_id", accountId).order("full_name"),
         supabase.from("tags").select("*").eq("account_id", accountId).order("name"),
+        supabase.from("custom_fields").select("*").eq("account_id", accountId).order("field_name"),
       ]);
 
       if (cancelled) return;
       if (!profilesResult.error) setMembers((profilesResult.data ?? []) as Profile[]);
       if (!tagsResult.error) setTags((tagsResult.data ?? []) as Tag[]);
+      if (!customFieldsResult.error) setCustomFields((customFieldsResult.data ?? []) as CustomField[]);
     })();
 
     return () => {
@@ -509,8 +543,67 @@ export default function PipelinesPage() {
     const matchesTags =
       selectedTagIds.length === 0 ||
       selectedTagIds.some((tagId) => deal.contact?.tags?.some((tag) => tag.id === tagId));
-    return matchesSearch && matchesTags;
+    const createdDate = deal.contact?.created_at?.slice(0, 10) ?? "";
+    const matchesCreatedFrom = !createdFrom || (createdDate && createdDate >= createdFrom);
+    const matchesCreatedTo = !createdTo || (createdDate && createdDate <= createdTo);
+    const matchesAssignee = !assignedTo || deal.assigned_to === assignedTo;
+    const customValue = (deal.contact?.custom_values ?? []).find(
+      (item) => item.custom_field?.id === customFieldId,
+    )?.value?.toLocaleLowerCase() ?? "";
+    const matchesCustomField =
+      !customFieldId ||
+      (Boolean(customValue) && (!customFieldValue.trim() || customValue.includes(customFieldValue.trim().toLocaleLowerCase())));
+    return matchesSearch && matchesTags && matchesCreatedFrom && matchesCreatedTo && matchesAssignee && matchesCustomField;
   });
+
+  const activeFilterCount = [
+    selectedTagIds.length > 0,
+    Boolean(createdFrom),
+    Boolean(createdTo),
+    Boolean(assignedTo),
+    Boolean(customFieldId),
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setLeadSearch("");
+    setSelectedTagIds([]);
+    setCreatedFrom("");
+    setCreatedTo("");
+    setAssignedTo("");
+    setCustomFieldId("");
+    setCustomFieldValue("");
+  };
+
+  const saveCardLayout = async () => {
+    if (!selectedPipeline) return;
+    const nextLayout = normalizeCardLayout(cardLayoutDraft);
+    const { error } = await supabase
+      .from("pipelines")
+      .update({ card_layout: nextLayout })
+      .eq("id", selectedPipeline.id)
+      .eq("account_id", accountId);
+    if (error) {
+      // A deployment may reach the app just before its SQL migration. Keep
+      // the editor useful in that narrow window, scoped to the specific
+      // pipeline, and automatically prefer the server value once available.
+      if (typeof window !== "undefined" && (error.code === "PGRST204" || error.message.includes("card_layout"))) {
+        window.localStorage.setItem(layoutStorageKey(selectedPipeline.id), JSON.stringify(nextLayout));
+        setPipelines((current) => current.map((pipeline) => (
+          pipeline.id === selectedPipeline.id ? { ...pipeline, card_layout: nextLayout } : pipeline
+        )));
+        setLayoutOpen(false);
+        toast.success("Layout salvo neste dispositivo.");
+        return;
+      }
+      toast.error("Não foi possível salvar o layout do cartão.");
+      return;
+    }
+    setPipelines((current) => current.map((pipeline) => (
+      pipeline.id === selectedPipeline.id ? { ...pipeline, card_layout: nextLayout } : pipeline
+    )));
+    setLayoutOpen(false);
+    toast.success("Layout do cartão salvo.");
+  };
 
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();
@@ -561,6 +654,17 @@ export default function PipelinesPage() {
   }
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
+  const selectedCardLayout = (() => {
+    if (!selectedPipeline) return DEFAULT_CARD_LAYOUT;
+    if (selectedPipeline.card_layout) return normalizeCardLayout(selectedPipeline.card_layout);
+    if (typeof window === "undefined") return DEFAULT_CARD_LAYOUT;
+    try {
+      const stored = window.localStorage.getItem(layoutStorageKey(selectedPipeline.id));
+      return stored ? normalizeCardLayout(JSON.parse(stored) as PipelineCardLayout) : DEFAULT_CARD_LAYOUT;
+    } catch {
+      return DEFAULT_CARD_LAYOUT;
+    }
+  })();
 
   if (loading) {
     return (
@@ -632,6 +736,21 @@ export default function PipelinesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedPipeline && (
+            <GatedButton
+              variant="outline"
+              canAct={canEditSettings}
+              gateReason="edit pipeline layout"
+              onClick={() => {
+                setCardLayoutDraft(selectedCardLayout);
+                setLayoutOpen(true);
+              }}
+              className="border-border bg-card text-foreground hover:bg-muted"
+            >
+              <SlidersHorizontal className="mr-1.5 size-4" />
+              Editar layout do cartão
+            </GatedButton>
+          )}
           <GatedButton
             variant="outline"
             canAct={canEditSettings}
@@ -670,46 +789,68 @@ export default function PipelinesPage() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-muted px-3 text-sm font-medium text-foreground hover:bg-accent">
-              <Tags className="size-4" />
-              {t("filterTags")}
-              {selectedTagIds.length > 0 && (
+              <SlidersHorizontal className="size-4" />
+              Filtrar contatos
+              {activeFilterCount > 0 && (
                 <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] text-primary-foreground">
-                  {selectedTagIds.length}
+                  {activeFilterCount}
                 </span>
               )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-52">
-              <DropdownMenuItem onSelect={() => setSelectedTagIds([])}>
-                {t("allTags")}
-              </DropdownMenuItem>
-              {tags.length > 0 && <DropdownMenuSeparator />}
-              {tags.map((tag) => {
-                const selected = selectedTagIds.includes(tag.id);
-                return (
-                  <DropdownMenuItem
-                    key={tag.id}
-                    onSelect={() =>
-                      setSelectedTagIds((current) =>
-                        selected ? current.filter((id) => id !== tag.id) : [...current, tag.id],
-                      )
-                    }
-                  >
-                    <span className="size-2 rounded-full" style={{ backgroundColor: tag.color }} />
-                    <span className="flex-1">{tag.name}</span>
-                    {selected && <span aria-hidden>✓</span>}
-                  </DropdownMenuItem>
-                );
-              })}
+            <DropdownMenuContent align="end" className="w-80 p-3">
+              <div className="space-y-4" onClick={(event) => event.stopPropagation()}>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Etiquetas</Label>
+                  <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                    {tags.length === 0 ? <span className="text-xs text-muted-foreground">Nenhuma etiqueta criada.</span> : tags.map((tag) => {
+                      const selected = selectedTagIds.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => setSelectedTagIds((current) => selected ? current.filter((id) => id !== tag.id) : [...current, tag.id])}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors ${selected ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                        >
+                          <span className="size-1.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                          {tag.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="created-from" className="text-xs text-muted-foreground">Lead criado a partir de</Label>
+                    <Input id="created-from" type="date" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} className="h-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="created-to" className="text-xs text-muted-foreground">Lead criado até</Label>
+                    <Input id="created-to" type="date" value={createdTo} onChange={(event) => setCreatedTo(event.target.value)} className="h-8" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="assigned-to" className="text-xs text-muted-foreground">Responsável</Label>
+                  <select id="assigned-to" value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground">
+                    <option value="">Todos os usuários</option>
+                    {members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.email}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2 border-t border-border pt-3">
+                  <Label className="text-xs text-muted-foreground">Campo personalizado do contato</Label>
+                  <select value={customFieldId} onChange={(event) => { setCustomFieldId(event.target.value); setCustomFieldValue(""); }} className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground">
+                    <option value="">Selecionar campo</option>
+                    {customFields.map((field) => <option key={field.id} value={field.id}>{field.field_name}</option>)}
+                  </select>
+                  {customFieldId && <Input value={customFieldValue} onChange={(event) => setCustomFieldValue(event.target.value)} placeholder="Contém o valor..." className="h-8" />}
+                </div>
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
-          {(leadSearch || selectedTagIds.length > 0) && (
+          {(leadSearch || activeFilterCount > 0 || customFieldValue) && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setLeadSearch("");
-                setSelectedTagIds([]);
-              }}
+              onClick={clearFilters}
               className="text-muted-foreground hover:text-foreground"
             >
               <X className="mr-1 size-3.5" />
@@ -766,9 +907,67 @@ export default function PipelinesPage() {
             onAssign={handleQuickAssign}
             tags={tags}
             onToggleTag={handleToggleTag}
+            cardLayout={selectedCardLayout}
           />
         </>
       )}
+
+      <Dialog open={layoutOpen} onOpenChange={setLayoutOpen}>
+        <DialogContent className="sm:max-w-md bg-popover border-border">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">Layout do cartão</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">Escolha as informações que aparecerão nos cartões deste funil.</p>
+            {[
+              ["show_value", "Valor do lead"],
+              ["show_created_at", "Data de criação do contato"],
+              ["show_last_message", "Última mensagem"],
+            ].map(([key, label]) => {
+              const layoutKey = key as keyof Pick<PipelineCardLayout, "show_value" | "show_created_at" | "show_last_message">;
+              return (
+                <label key={key} className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5 text-sm text-foreground hover:bg-muted/50">
+                  {label}
+                  <Switch checked={cardLayoutDraft[layoutKey]} onCheckedChange={(checked) => setCardLayoutDraft((current) => ({ ...current, [layoutKey]: checked }))} />
+                </label>
+              );
+            })}
+            <div className="space-y-2 border-t border-border pt-4">
+              <p className="text-sm font-medium text-foreground">Campos personalizados</p>
+              <p className="text-xs text-muted-foreground">Eles aparecem abaixo do botão para chamar no WhatsApp.</p>
+              {customFields.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum campo personalizado criado nesta conta.</p>
+              ) : (
+                <div className="space-y-2">
+                  {customFields.map((field) => {
+                    const checked = cardLayoutDraft.custom_field_ids.includes(field.id);
+                    return (
+                      <label key={field.id} className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setCardLayoutDraft((current) => ({
+                            ...current,
+                            custom_field_ids: checked
+                              ? current.custom_field_ids.filter((id) => id !== field.id)
+                              : [...current.custom_field_ids, field.id],
+                          }))}
+                          className="size-4 accent-primary"
+                        />
+                        {field.field_name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="bg-popover/50 border-border">
+            <Button variant="outline" onClick={() => setLayoutOpen(false)} className="border-border text-muted-foreground hover:bg-muted">Cancelar</Button>
+            <Button onClick={() => void saveCardLayout()} className="bg-primary text-primary-foreground hover:bg-primary/90">Salvar layout</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New Pipeline Dialog */}
       <Dialog open={newPipelineOpen} onOpenChange={setNewPipelineOpen}>

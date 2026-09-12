@@ -355,6 +355,15 @@ export interface Pipeline {
   user_id: string;
   name: string;
   created_at: string;
+  /** Per-pipeline controls for which lead information appears on Kanban cards. */
+  card_layout?: PipelineCardLayout | null;
+}
+
+export interface PipelineCardLayout {
+  show_value: boolean;
+  show_created_at: boolean;
+  show_last_message: boolean;
+  custom_field_ids: string[];
 }
 
 export interface PipelineStage {
@@ -391,6 +400,10 @@ export interface Deal {
   /** Hydrated by the Kanban query to show a contact's latest message. */
   contact?: Contact & {
     conversations?: Pick<Conversation, 'last_message_text' | 'last_message_at'>[];
+    custom_values?: Array<{
+      value?: string | null;
+      custom_field?: Pick<CustomField, 'id' | 'field_name'> | null;
+    }>;
   };
   stage?: PipelineStage;
   assignee?: Profile;

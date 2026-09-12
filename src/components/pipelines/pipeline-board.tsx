@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import type { Deal, DealStatus, PipelineStage, Profile, Tag } from "@/types";
+import type { Deal, DealStatus, PipelineCardLayout, PipelineStage, Profile, Tag } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -37,6 +37,7 @@ interface PipelineBoardProps {
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  cardLayout: PipelineCardLayout;
 }
 
 export function PipelineBoard({
@@ -54,6 +55,7 @@ export function PipelineBoard({
   onAssign,
   tags,
   onToggleTag,
+  cardLayout,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -148,6 +150,7 @@ export function PipelineBoard({
               onToggleTag={onToggleTag}
               stages={sortedStages}
               onMoveStage={onDealMoved}
+              layout={cardLayout}
             />
           );
         })}
@@ -177,6 +180,7 @@ export function PipelineBoard({
               tags={[]}
               onToggleTag={async () => {}}
               stages={[]}
+              layout={cardLayout}
             />
           </div>
         ) : null}
@@ -242,6 +246,7 @@ function StageColumn({
   onToggleTag,
   stages,
   onMoveStage,
+  layout,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -260,6 +265,7 @@ function StageColumn({
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
   stages: PipelineStage[];
   onMoveStage: (dealId: string, stageId: string) => void;
+  layout: PipelineCardLayout;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -361,6 +367,7 @@ function StageColumn({
               onToggleTag={onToggleTag}
               stages={stages}
               onMoveStage={onMoveStage}
+              layout={layout}
             />
           ))
         )}
@@ -384,6 +391,7 @@ function DraggableDealCard({
   onToggleTag,
   stages,
   onMoveStage,
+  layout,
 }: {
   deal: Deal;
   stage: PipelineStage;
@@ -398,6 +406,7 @@ function DraggableDealCard({
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
   stages: PipelineStage[];
   onMoveStage: (dealId: string, stageId: string) => void;
+  layout: PipelineCardLayout;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -424,6 +433,7 @@ function DraggableDealCard({
         onToggleTag={onToggleTag}
         stages={stages}
         onMoveStage={onMoveStage}
+        layout={layout}
       />
     </div>
   );

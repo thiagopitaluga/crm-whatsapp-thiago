@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Deal, DealStatus, PipelineStage, Profile, Tag } from "@/types";
+import type { Deal, DealStatus, PipelineCardLayout, PipelineStage, Profile, Tag } from "@/types";
 import {
   CalendarPlus,
   GitBranch,
@@ -38,8 +38,16 @@ interface DealCardProps {
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
   stages?: PipelineStage[];
   onMoveStage?: (dealId: string, stageId: string) => void;
+  layout?: PipelineCardLayout;
   isOverlay?: boolean;
 }
+
+const DEFAULT_LAYOUT: PipelineCardLayout = {
+  show_value: true,
+  show_created_at: true,
+  show_last_message: true,
+  custom_field_ids: [],
+};
 
 function stopCardInteraction(event: React.SyntheticEvent) {
   event.stopPropagation();
@@ -59,6 +67,7 @@ export function DealCard({
   onToggleTag,
   stages = [],
   onMoveStage,
+  layout = DEFAULT_LAYOUT,
   isOverlay,
 }: DealCardProps) {
   const t = useTranslations("Pipelines.card");
@@ -84,6 +93,9 @@ export function DealCard({
   const lastMessage = latestConversation?.last_message_text;
   const whatsappPhone = deal.contact?.phone?.replace(/\D/g, "");
   const whatsappUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}` : null;
+  const customValues = (deal.contact?.custom_values ?? []).filter((item) =>
+    item.custom_field && layout.custom_field_ids.includes(item.custom_field.id) && item.value,
+  );
 
   async function commitValue() {
     const nextValue = Number(value);
@@ -156,7 +168,7 @@ export function DealCard({
         <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
           <Phone className="size-3 shrink-0" />
           {phone}
-          {deal.contact?.created_at ? (
+          {layout.show_created_at && deal.contact?.created_at ? (
             <span className="ml-auto truncate text-[10px]" title={`Criado em ${new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}`}>
               Criado em: {new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}
             </span>
@@ -164,7 +176,7 @@ export function DealCard({
         </p>
       </div>
 
-      <div className="mt-3 pl-1">
+      {layout.show_value && <div className="mt-3 pl-1">
         {editingValue && !isOverlay ? (
           <div className="flex items-center gap-1" onClick={stopCardInteraction} onPointerDown={stopCardInteraction}>
             <input
@@ -203,11 +215,13 @@ export function DealCard({
             {formatCurrency(deal.value, deal.currency)}
           </button>
         )}
-      </div>
+      </div>}
 
-      <p className="mt-3 line-clamp-2 min-h-10 border-l-2 border-border pl-2 text-xs leading-5 text-muted-foreground" title={lastMessage || undefined}>
-        {lastMessage || t("noRecentMessage")}
-      </p>
+      {layout.show_last_message && (
+        <p className="mt-3 line-clamp-2 min-h-10 border-l-2 border-border pl-2 text-xs leading-5 text-muted-foreground" title={lastMessage || undefined}>
+          {lastMessage || t("noRecentMessage")}
+        </p>
+      )}
 
       {whatsappUrl && !isOverlay && (
         <a
@@ -223,6 +237,17 @@ export function DealCard({
           <MessageCircle className="size-3.5" />
           {t("openWhatsApp")}
         </a>
+      )}
+
+      {customValues.length > 0 && (
+        <div className="mt-3 space-y-1 border-t border-border/70 pt-2 pl-1">
+          {customValues.map((item) => (
+            <div key={item.custom_field!.id} className="flex items-baseline gap-1.5 text-xs">
+              <span className="shrink-0 text-muted-foreground">{item.custom_field!.field_name}:</span>
+              <span className="min-w-0 truncate text-foreground" title={item.value ?? undefined}>{item.value}</span>
+            </div>
+          ))}
+        </div>
       )}
 
       {!isOverlay && (
