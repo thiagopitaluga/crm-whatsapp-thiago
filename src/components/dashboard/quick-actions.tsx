@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { UserPlus, Briefcase, Radio, Zap } from 'lucide-react'
+import { UserPlus, Briefcase, Kanban, Radio, Zap } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 import { useTranslations } from 'next-intl'
@@ -19,7 +19,7 @@ interface Action {
 }
 
 const ACTIONS: Action[] = [
-  { label: 'Funil de vendas', href: '/pipelines', icon: Briefcase, tint: 'text-emerald-500' },
+  { label: 'Kanban', href: '/pipelines', icon: Kanban, tint: 'text-emerald-500' },
   { labelKey: 'newContact', href: '/contacts', icon: UserPlus, tint: 'text-primary' },
   { labelKey: 'newDeal', href: '/pipelines', icon: Briefcase, tint: 'text-blue-400' },
   { labelKey: 'newBroadcast', href: '/broadcasts/new', icon: Radio, tint: 'text-amber-400' },

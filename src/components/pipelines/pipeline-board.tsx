@@ -25,7 +25,7 @@ import { useTranslations } from "next-intl";
 interface PipelineBoardProps {
   stages: PipelineStage[];
   deals: Deal[];
-  onDealMoved: (dealId: string, newStageId: string) => void;
+  onDealMoved: (dealId: string, newStageId: string) => Promise<void>;
   onRenameStage: (stageId: string, name: string) => Promise<void>;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
@@ -102,7 +102,7 @@ export function PipelineBoard({
     if (!deal || deal.stage_id === targetStageId) return;
     if (!sortedStages.some((s) => s.id === targetStageId)) return;
 
-    onDealMoved(dealId, targetStageId);
+    void onDealMoved(dealId, targetStageId);
   }
 
   function handleDragCancel() {
@@ -264,7 +264,7 @@ function StageColumn({
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
   stages: PipelineStage[];
-  onMoveStage: (dealId: string, stageId: string) => void;
+  onMoveStage: (dealId: string, stageId: string) => Promise<void>;
   layout: PipelineCardLayout;
 }) {
   const t = useTranslations("Pipelines.board");
@@ -405,7 +405,7 @@ function DraggableDealCard({
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
   stages: PipelineStage[];
-  onMoveStage: (dealId: string, stageId: string) => void;
+  onMoveStage: (dealId: string, stageId: string) => Promise<void>;
   layout: PipelineCardLayout;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({

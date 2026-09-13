@@ -11,18 +11,12 @@ import { OrganiZAPLogo } from "@/components/brand/organizap-logo";
 import {
   Bell,
   Bot,
-  Check,
   CalendarDays,
-  Crown,
-  GitBranch,
+  Kanban,
   LayoutDashboard,
-  LogOut,
   MessageSquare,
   Radio,
   Settings,
-  Shield,
-  User,
-  UserCog,
   Users,
   Workflow,
   X,
@@ -30,57 +24,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import type { AccountRole } from "@/lib/auth/roles";
-
-// Per-role chip metadata used in the sidebar's account strip + the
-// Members tab roster. Keeping this near both consumers in a single
-// place avoids drift between the two surfaces — when a designer
-// wants to recolour "agent" rows, this is the one diff.
-const ROLE_CHIP: Record<
-  AccountRole,
-  { icon: typeof Crown; labelKey: string; className: string }
-> = {
-  owner: {
-    icon: Crown,
-    labelKey: "roleOwner",
-    // Amber: scarce, immutable, "the boss" — gets visual emphasis.
-    className:
-      "border-amber-500/40 bg-amber-500/10 text-amber-300",
-  },
-  admin: {
-    icon: Shield,
-    labelKey: "roleAdmin",
-    // Primary-tinted: significant but not as scarce as owner.
-    className:
-      "border-primary/40 bg-primary/10 text-primary",
-  },
-  agent: {
-    icon: UserCog,
-    labelKey: "roleAgent",
-    // Neutral slate: the operational default.
-    className:
-      "border-border bg-muted text-foreground",
-  },
-  viewer: {
-    icon: User,
-    labelKey: "roleViewer",
-    // Muted slate: read-only role; visually quieter than agent.
-    className:
-      "border-border bg-card text-muted-foreground",
-  },
-};
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface NavItem {
   href: string;
@@ -95,7 +43,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
-  { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
+  { href: "/pipelines", labelKey: "pipelines", icon: Kanban },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
@@ -123,11 +71,9 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, account, accountRole, accounts, switchAccount, signOut } = useAuth();
+  const { account } = useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
-  const roleMeta = accountRole ? ROLE_CHIP[accountRole] : null;
-
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
   useEffect(() => {
@@ -315,7 +261,8 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
           </ul>
         </nav>
 
-        {/* Product signature + user section */}
+        {/* Product signature. Profile and account switching stay in the
+            header menu, keeping this footer deliberately brand-only. */}
         <div className={cn("shrink-0 border-t border-border p-3", collapsed && "lg:px-2")}>
           <Link
             href="/dashboard"
@@ -324,107 +271,6 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
           >
             <OrganiZAPLogo size="sm" compact={collapsed} />
           </Link>
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60", collapsed && "lg:justify-center lg:px-2")}>
-              <Avatar className="size-8 shrink-0">
-                {profile?.avatar_url ? (
-                  <AvatarImage
-                    src={profile.avatar_url}
-                    alt={profile.full_name ?? t("defaultAvatar")}
-                  />
-                ) : null}
-                <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
-                  {profile?.full_name?.charAt(0)?.toUpperCase() ??
-                    profile?.email?.charAt(0)?.toUpperCase() ??
-                    "U"}
-                </AvatarFallback>
-              </Avatar>
-              <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
-                <p className="truncate text-sm font-medium text-foreground">
-                  {profile?.full_name ?? t("defaultUser")}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {profile?.email ?? ""}
-                </p>
-                {roleMeta ? (
-                  <p className="mt-0.5 truncate text-[11px] font-medium text-primary">
-                    {t(roleMeta.labelKey as string)}
-                  </p>
-                ) : null}
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              side="top"
-              sideOffset={6}
-              className="min-w-56 bg-popover text-popover-foreground ring-border"
-            >
-              {accounts.length > 1 && (
-                <>
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                    {t("switchAccount")}
-                  </div>
-                  {accounts.map((availableAccount) => (
-                    <DropdownMenuItem
-                      key={availableAccount.id}
-                      onClick={() => {
-                        void switchAccount(availableAccount.id).catch((error) => {
-                          console.error("[Sidebar] account switch failed:", error);
-                        });
-                      }}
-                      className="gap-2 text-popover-foreground focus:bg-accent focus:text-accent-foreground"
-                    >
-                      <Avatar className="size-5 rounded-sm">
-                        {availableAccount.logo_url ? (
-                          <AvatarImage src={availableAccount.logo_url} alt="" />
-                        ) : null}
-                        <AvatarFallback className="rounded-sm bg-primary/10 text-[10px] text-primary">
-                          {availableAccount.name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="min-w-0 flex-1 truncate">{availableAccount.name}</span>
-                      {availableAccount.id === account?.id ? (
-                        <Check className="size-4 text-primary" aria-label={t("activeAccount")} />
-                      ) : null}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator className="bg-border" />
-                </>
-              )}
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href="/settings?tab=profile"
-                    onClick={onClose}
-                    className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
-                  />
-                }
-              >
-                <User className="size-4" />
-                {t("menuProfile")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href="/settings?tab=whatsapp"
-                    onClick={onClose}
-                    className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
-                  />
-                }
-              >
-                <Settings className="size-4" />
-                {t("menuSettings")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-border" />
-              <DropdownMenuItem
-                onClick={signOut}
-                className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
-              >
-                <LogOut className="size-4" />
-                {t("menuSignOut")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </aside>
     </>

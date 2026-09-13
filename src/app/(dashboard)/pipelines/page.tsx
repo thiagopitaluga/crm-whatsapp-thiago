@@ -312,20 +312,31 @@ export default function PipelinesPage() {
 
   const handleDealMoved = useCallback(
     async (dealId: string, newStageId: string) => {
-      // Optimistic update — board already animated; just persist.
+      const currentDeal = deals.find((deal) => deal.id === dealId);
+      if (!currentDeal || currentDeal.stage_id === newStageId || !accountId) return;
+
+      const previousStageId = currentDeal.stage_id;
+      // Show the selected column immediately, then keep it only after the
+      // database confirms the account-scoped update succeeded.
       setDeals((prev) =>
         prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d)),
       );
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("deals")
         .update({ stage_id: newStageId })
-        .eq("id", dealId);
-      if (error) {
+        .eq("id", dealId)
+        .eq("account_id", accountId)
+        .select("id")
+        .maybeSingle();
+      if (error || !data) {
+        setDeals((prev) =>
+          prev.map((deal) => (deal.id === dealId ? { ...deal, stage_id: previousStageId } : deal)),
+        );
         toast.error(t("toastFailedMoveDeal"));
-        refreshDeals();
+        void refreshDeals();
       }
     },
-    [supabase, refreshDeals, t],
+    [accountId, deals, supabase, refreshDeals, t],
   );
 
   const handleAddDeal = useCallback(

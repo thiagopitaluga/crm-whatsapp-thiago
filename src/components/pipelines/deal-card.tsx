@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Deal, DealStatus, PipelineCardLayout, PipelineStage, Profile, Tag } from "@/types";
 import {
   CalendarPlus,
-  GitBranch,
+  Kanban,
   CheckCircle2,
   CircleX,
   MessageCircle,
@@ -37,7 +37,7 @@ interface DealCardProps {
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
   stages?: PipelineStage[];
-  onMoveStage?: (dealId: string, stageId: string) => void;
+  onMoveStage?: (dealId: string, stageId: string) => Promise<void>;
   layout?: PipelineCardLayout;
   isOverlay?: boolean;
 }
@@ -74,6 +74,7 @@ export function DealCard({
   const [editingValue, setEditingValue] = useState(false);
   const [value, setValue] = useState(String(deal.value ?? 0));
   const [savingValue, setSavingValue] = useState(false);
+  const [movingStageId, setMovingStageId] = useState<string | null>(null);
 
   useEffect(() => setValue(String(deal.value ?? 0)), [deal.id, deal.value]);
 
@@ -148,15 +149,23 @@ export function DealCard({
           {!isOverlay && stages.length > 1 && onMoveStage ? (
             <DropdownMenu>
               <DropdownMenuTrigger
-                title="Mudar de etapa"
-                aria-label="Mudar de etapa"
+                title="Mover no Kanban"
+                aria-label="Mover no Kanban"
                 onClick={stopCardInteraction}
                 onPointerDown={stopCardInteraction}
                 className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary"
-              ><GitBranch className="size-3.5" /></DropdownMenuTrigger>
+              ><Kanban className="size-3.5" /></DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-40" onClick={stopCardInteraction} onPointerDown={stopCardInteraction}>
                 {stages.map((candidate) => (
-                  <DropdownMenuItem key={candidate.id} disabled={candidate.id === deal.stage_id} onSelect={(event) => { event.stopPropagation(); onMoveStage(deal.id, candidate.id); }}>
+                  <DropdownMenuItem
+                    key={candidate.id}
+                    disabled={candidate.id === deal.stage_id || movingStageId !== null}
+                    onClick={(event) => {
+                      stopCardInteraction(event);
+                      setMovingStageId(candidate.id);
+                      void onMoveStage(deal.id, candidate.id).finally(() => setMovingStageId(null));
+                    }}
+                  >
                     <span className="mr-2 size-2 rounded-full" style={{ backgroundColor: candidate.color }} />
                     {candidate.name}
                   </DropdownMenuItem>

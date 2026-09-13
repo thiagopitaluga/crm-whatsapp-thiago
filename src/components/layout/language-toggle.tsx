@@ -13,8 +13,8 @@ import {
 const LOCALE_COOKIE = "wacrm.locale";
 
 const options = [
-  { locale: "pt-BR", flag: "🇧🇷", labelKey: "portuguese" },
-  { locale: "en", flag: "🇺🇸", labelKey: "english" },
+  { locale: "pt-BR", flag: "/flags/br.svg", labelKey: "portuguese", flagAlt: "Brasil" },
+  { locale: "en", flag: "/flags/us.svg", labelKey: "english", flagAlt: "United States" },
 ] as const;
 
 /** Per-browser language picker for the CRM header. */
@@ -37,7 +37,7 @@ export function LanguageToggle() {
         aria-label={t("menuLabel")}
         title={t("menuLabel")}
       >
-        <span aria-hidden>{current.flag}</span>
+        <img src={current.flag} alt={current.flagAlt} className="h-5 w-7 rounded-sm object-cover shadow-sm" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
         {options.map((option) => (
@@ -46,7 +46,7 @@ export function LanguageToggle() {
             onClick={() => changeLocale(option.locale)}
             className="justify-between text-popover-foreground focus:bg-accent focus:text-accent-foreground"
           >
-            <span className="mr-2 text-base" aria-hidden>{option.flag}</span>
+            <img src={option.flag} alt="" className="mr-2 h-4 w-6 rounded-sm object-cover shadow-sm" />
             <span className="flex-1">{t(option.labelKey)}</span>
             {locale === option.locale ? <Check className="h-4 w-4" /> : null}
           </DropdownMenuItem>
