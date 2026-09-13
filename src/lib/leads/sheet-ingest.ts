@@ -87,11 +87,15 @@ export async function ingestSheetLead(
     input.sourceId
   );
   if (existingDeal) {
+    const noteText = input.note?.trim();
     const { error: updateError } = await db
       .from('deals')
       .update({
         stage_id: target.stageId,
         status: input.dealStatus ?? 'open',
+        // Keep the source note visible when a user opens the Kanban card.
+        // A blank spreadsheet cell must never erase a note added in the CRM.
+        ...(noteText ? { notes: noteText } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', existingDeal)
@@ -128,6 +132,7 @@ export async function ingestSheetLead(
       value: 0,
       currency: account?.default_currency ?? DEFAULT_CURRENCY,
       status: input.dealStatus ?? 'open',
+      notes: input.note?.trim() || null,
       source_type: input.source,
       source_external_id: input.sourceId,
     })
