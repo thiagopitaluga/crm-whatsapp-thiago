@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import { useState, useEffect, useCallback } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
+import { cn } from '@/lib/utils';
+import type { Contact, Deal, ContactNote, Tag } from '@/types';
 import {
   Phone,
   Mail,
@@ -15,27 +15,60 @@ import {
   DollarSign,
   StickyNote,
   Plus,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from "date-fns";
-import { useTranslations } from "next-intl";
-import { formatCurrency } from "@/lib/currency";
+  MousePointerClick,
+  Megaphone,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { format } from 'date-fns';
+import { useTranslations } from 'next-intl';
+import { formatCurrency } from '@/lib/currency';
 
 interface ContactSidebarProps {
   contact: Contact | null;
 }
 
+interface WebsiteAttributionClick {
+  id: string;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
+  gclid: string | null;
+  fbclid: string | null;
+  created_at: string;
+}
+
+interface WhatsAppConversationAttribution {
+  id: string;
+  provider: string;
+  attribution_type: string;
+  source_id: string | null;
+  source_type: string | null;
+  source_url: string | null;
+  ctwa_clid: string | null;
+  ad_headline: string | null;
+  ad_body: string | null;
+  created_at: string;
+}
+
 export function ContactSidebar({ contact }: ContactSidebarProps) {
-  const tSidebar = useTranslations("Inbox.sidebar");
-  const tThread = useTranslations("Inbox.messageThread");
+  const tSidebar = useTranslations('Inbox.sidebar');
+  const tThread = useTranslations('Inbox.messageThread');
 
   const { accountId, defaultCurrency } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
-  const [newNote, setNewNote] = useState("");
+  const [websiteAttributions, setWebsiteAttributions] = useState<
+    WebsiteAttributionClick[]
+  >([]);
+  const [whatsAppAttributions, setWhatsAppAttributions] = useState<
+    WhatsAppConversationAttribution[]
+  >([]);
+  const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
   const fetchContactData = useCallback(async () => {
@@ -43,22 +76,46 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals, notes, tags, and acquisition data in parallel. Attribution
+    // is optional for existing accounts, so a missing row never blocks the
+    // rest of the contact sidebar.
+    const [
+      dealsRes,
+      notesRes,
+      tagsRes,
+      websiteAttributionsRes,
+      whatsAppAttributionsRes,
+    ] = await Promise.all([
       supabase
-        .from("deals")
-        .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
+        .from('deals')
+        .select('*, stage:pipeline_stages(*)')
+        .eq('contact_id', contact.id)
+        .order('created_at', { ascending: false }),
       supabase
-        .from("contact_notes")
-        .select("*")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
+        .from('contact_notes')
+        .select('*')
+        .eq('contact_id', contact.id)
+        .order('created_at', { ascending: false }),
       supabase
-        .from("contact_tags")
-        .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
+        .from('contact_tags')
+        .select('id, tag_id, tags(*)')
+        .eq('contact_id', contact.id),
+      supabase
+        .from('campaign_attribution_clicks')
+        .select(
+          'id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, gclid, fbclid, created_at'
+        )
+        .eq('resolved_contact_id', contact.id)
+        .order('created_at', { ascending: false })
+        .limit(3),
+      supabase
+        .from('conversation_attributions')
+        .select(
+          'id, provider, attribution_type, source_id, source_type, source_url, ctwa_clid, ad_headline, ad_body, created_at'
+        )
+        .eq('contact_id', contact.id)
+        .order('created_at', { ascending: false })
+        .limit(3),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -72,6 +129,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         }));
       setTags(mapped);
     }
+    setWebsiteAttributions(
+      (websiteAttributionsRes.data ?? []) as WebsiteAttributionClick[]
+    );
+    setWhatsAppAttributions(
+      (whatsAppAttributionsRes.data ?? []) as WhatsAppConversationAttribution[]
+    );
   }, [contact]);
 
   // Load on contact change. setContactData/setTags run inside async
@@ -103,7 +166,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     const user = session?.user;
 
     const { data, error } = await supabase
-      .from("contact_notes")
+      .from('contact_notes')
       .insert({
         contact_id: contact.id,
         account_id: accountId,
@@ -115,29 +178,33 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
     if (!error && data) {
       setNotes((prev) => [data, ...prev]);
-      setNewNote("");
+      setNewNote('');
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
 
   if (!contact) {
     return (
-      <div className="flex h-full w-70 items-center justify-center border-l border-border bg-card">
-        <p className="text-sm text-muted-foreground">{tThread("selectConversation")}</p>
+      <div className="border-border bg-card flex h-full w-70 items-center justify-center border-l">
+        <p className="text-muted-foreground text-sm">
+          {tThread('selectConversation')}
+        </p>
       </div>
     );
   }
 
   const displayName = contact.name || contact.phone;
   const initials = displayName.charAt(0).toUpperCase();
+  const hasAttribution =
+    websiteAttributions.length > 0 || whatsAppAttributions.length > 0;
 
   return (
-    <div className="flex h-full w-70 flex-col border-l border-border bg-card">
+    <div className="border-border bg-card flex h-full w-70 flex-col border-l">
       <ScrollArea className="flex-1">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground">
+            <div className="bg-muted text-foreground flex h-16 w-16 items-center justify-center rounded-full text-lg font-semibold">
               {contact.avatar_url ? (
                 <img
                   src={contact.avatar_url}
@@ -148,11 +215,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 initials
               )}
             </div>
-            <h3 className="mt-3 text-sm font-semibold text-foreground">
+            <h3 className="text-foreground mt-3 text-sm font-semibold">
               {displayName}
             </h3>
             {contact.company && (
-              <p className="text-xs text-muted-foreground">{contact.company}</p>
+              <p className="text-muted-foreground text-xs">{contact.company}</p>
             )}
           </div>
 
@@ -160,37 +227,117 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           <div className="mt-4 space-y-2">
             <button
               onClick={handleCopyPhone}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
+              className="text-muted-foreground hover:bg-muted flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors"
             >
-              <Phone className="h-4 w-4 text-muted-foreground" />
+              <Phone className="text-muted-foreground h-4 w-4" />
               <span className="flex-1 text-left">{contact.phone}</span>
               {copied ? (
-                <Check className="h-3 w-3 text-primary" />
+                <Check className="text-primary h-3 w-3" />
               ) : (
-                <Copy className="h-3 w-3 text-muted-foreground" />
+                <Copy className="text-muted-foreground h-3 w-3" />
               )}
             </button>
 
             {contact.email && (
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">
-                <Mail className="h-4 w-4 text-muted-foreground" />
+              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
+                <Mail className="text-muted-foreground h-4 w-4" />
                 <span className="truncate">{contact.email}</span>
               </div>
             )}
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
+
+          {hasAttribution && (
+            <>
+              <div>
+                <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                  <MousePointerClick className="h-3 w-3" />
+                  Origem da conversa
+                </div>
+                <div className="mt-2 space-y-2">
+                  {whatsAppAttributions.map((attribution) => (
+                    <div
+                      key={attribution.id}
+                      className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2"
+                    >
+                      <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
+                        <Megaphone className="text-primary size-3.5" />
+                        Meta Ads · Clique para WhatsApp
+                      </div>
+                      {(attribution.ad_headline || attribution.source_id) && (
+                        <p
+                          className="text-muted-foreground mt-1 truncate text-xs"
+                          title={
+                            attribution.ad_headline ??
+                            attribution.source_id ??
+                            undefined
+                          }
+                        >
+                          {attribution.ad_headline ||
+                            `Anúncio ${attribution.source_id}`}
+                        </p>
+                      )}
+                      {attribution.ctwa_clid && (
+                        <p className="text-muted-foreground mt-1 text-[10px]">
+                          Identificador do clique salvo
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                  {websiteAttributions.map((attribution) => {
+                    const source =
+                      attribution.utm_source ||
+                      (attribution.gclid
+                        ? 'Google Ads'
+                        : attribution.fbclid
+                          ? 'Meta'
+                          : 'Site');
+                    return (
+                      <div
+                        key={attribution.id}
+                        className="bg-muted rounded-lg px-3 py-2"
+                      >
+                        <p className="text-foreground text-xs font-medium">
+                          {source}
+                          {attribution.utm_medium
+                            ? ` · ${attribution.utm_medium}`
+                            : ''}
+                        </p>
+                        {attribution.utm_campaign && (
+                          <p
+                            className="text-muted-foreground mt-1 truncate text-xs"
+                            title={attribution.utm_campaign}
+                          >
+                            {attribution.utm_campaign}
+                          </p>
+                        )}
+                        {(attribution.gclid || attribution.fbclid) && (
+                          <p className="text-muted-foreground mt-1 text-[10px]">
+                            Identificador de clique salvo
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="border-border my-4 border-t" />
+            </>
+          )}
 
           {/* Tags */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
               <TagIcon className="h-3 w-3" />
-              {tSidebar("tags")}
+              {tSidebar('tags')}
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
               {tags.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">{tSidebar("noTags")}</p>
+                <p className="text-muted-foreground px-1 text-xs">
+                  {tSidebar('noTags')}
+                </p>
               ) : (
                 tags.map((tag) => (
                   <span
@@ -209,29 +356,31 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
 
           {/* Active Deals */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
               <DollarSign className="h-3 w-3" />
-              {tSidebar("deals")}
+              {tSidebar('deals')}
             </div>
             <div className="mt-2 space-y-2">
               {deals.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">{tSidebar("noDeals")}</p>
+                <p className="text-muted-foreground px-1 text-xs">
+                  {tSidebar('noDeals')}
+                </p>
               ) : (
                 deals.map((deal) => (
-                  <div
-                    key={deal.id}
-                    className="rounded-lg bg-muted px-3 py-2"
-                  >
-                    <p className="text-sm font-medium text-foreground">
+                  <div key={deal.id} className="bg-muted rounded-lg px-3 py-2">
+                    <p className="text-foreground text-sm font-medium">
                       {deal.title}
                     </p>
-                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
                       <span>
-                        {formatCurrency(deal.value, deal.currency ?? defaultCurrency)}
+                        {formatCurrency(
+                          deal.value,
+                          deal.currency ?? defaultCurrency
+                        )}
                       </span>
                       {deal.stage && (
                         <span
@@ -252,26 +401,26 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
 
           {/* Notes */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
               <StickyNote className="h-3 w-3" />
-              {tSidebar("notes")}
+              {tSidebar('notes')}
             </div>
             <div className="mt-2">
               <div className="flex gap-2">
                 <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
-                  placeholder={tSidebar("addNotePlaceholder")}
+                  placeholder={tSidebar('addNotePlaceholder')}
                   rows={2}
-                  className="flex-1 resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+                  className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-lg border px-3 py-2 text-xs outline-none"
                 />
                 <Button
                   size="sm"
-                  className="h-auto bg-primary px-2 hover:bg-primary/90"
+                  className="bg-primary hover:bg-primary/90 h-auto px-2"
                   onClick={handleAddNote}
                   disabled={!newNote.trim() || addingNote}
                 >
@@ -281,15 +430,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
               <div className="mt-2 space-y-2">
                 {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-lg bg-muted px-3 py-2"
-                  >
-                    <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                  <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
+                    <p className="text-muted-foreground text-xs whitespace-pre-wrap">
                       {note.note_text}
                     </p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                    <p className="text-muted-foreground mt-1 text-[10px]">
+                      {format(new Date(note.created_at), 'MMM d, yyyy HH:mm')}
                     </p>
                   </div>
                 ))}
