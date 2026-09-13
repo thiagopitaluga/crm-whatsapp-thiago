@@ -21,6 +21,10 @@ export interface SheetLeadInput {
   pipeline: string;
   /** Blank means the pipeline's first stage. */
   stage?: string | null;
+  /** CRM outcome associated with the upstream stage. */
+  dealStatus?: 'open' | 'won' | 'lost' | null;
+  /** Optional note kept in sync from the upstream CRM worksheet. */
+  note?: string | null;
   /** Identifies the upstream system, e.g. `google_sheets`. */
   source: string;
   /** Stable, upstream-specific row id used to make retries idempotent. */
@@ -66,6 +70,16 @@ export async function ingestSheetLead(
     email: input.email,
   });
 
+  await upsertSourceNote(
+    db,
+    accountId,
+    auditUserId,
+    contact.id,
+    input.source,
+    input.sourceId,
+    input.note
+  );
+
   const existingDeal = await findExistingSourceDeal(
     db,
     accountId,
@@ -73,6 +87,19 @@ export async function ingestSheetLead(
     input.sourceId
   );
   if (existingDeal) {
+    const { error: updateError } = await db
+      .from('deals')
+      .update({
+        stage_id: target.stageId,
+        status: input.dealStatus ?? 'open',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existingDeal)
+      .eq('account_id', accountId);
+    if (updateError) {
+      console.error('[sheet-ingest] failed to update deal:', updateError);
+      throw new SheetLeadIngestError('Failed to update pipeline card', 500);
+    }
     return {
       contactId: contact.id,
       contactCreated: contact.created,
@@ -100,7 +127,7 @@ export async function ingestSheetLead(
       title: input.name?.trim() || input.phone,
       value: 0,
       currency: account?.default_currency ?? DEFAULT_CURRENCY,
-      status: 'open',
+      status: input.dealStatus ?? 'open',
       source_type: input.source,
       source_external_id: input.sourceId,
     })
@@ -139,6 +166,36 @@ export async function ingestSheetLead(
 
   console.error('[sheet-ingest] failed to create deal:', error);
   throw new SheetLeadIngestError('Failed to create pipeline card', 500);
+}
+
+async function upsertSourceNote(
+  db: SupabaseClient,
+  accountId: string,
+  userId: string,
+  contactId: string,
+  source: string,
+  sourceId: string,
+  note?: string | null
+) {
+  const noteText = note?.trim();
+  // A blank spreadsheet cell must not erase a note written by a CRM user.
+  if (!noteText) return;
+
+  const { error } = await db.from('contact_notes').upsert(
+    {
+      account_id: accountId,
+      contact_id: contactId,
+      user_id: userId,
+      note_text: noteText,
+      source_type: source,
+      source_external_id: `${sourceId}:crm-note`,
+    },
+    { onConflict: 'account_id,source_type,source_external_id' }
+  );
+  if (error) {
+    console.error('[sheet-ingest] failed to upsert contact note:', error);
+    throw new SheetLeadIngestError('Failed to update contact note', 500);
+  }
 }
 
 async function resolvePipelineTarget(

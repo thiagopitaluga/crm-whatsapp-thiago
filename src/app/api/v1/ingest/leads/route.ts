@@ -12,6 +12,7 @@ const MAX_PIPELINE_LENGTH = 120;
 const MAX_STAGE_LENGTH = 120;
 const MAX_SOURCE_LENGTH = 80;
 const MAX_SOURCE_ID_LENGTH = 250;
+const MAX_NOTE_LENGTH = 8_000;
 
 function readString(
   body: Record<string, unknown>,
@@ -60,12 +61,26 @@ export async function POST(request: Request) {
     const pipeline = readString(body, 'pipeline', MAX_PIPELINE_LENGTH, true)!;
     const source = readString(body, 'source', MAX_SOURCE_LENGTH, true)!;
     const sourceId = readString(body, 'source_id', MAX_SOURCE_ID_LENGTH, true)!;
+    const rawDealStatus = readString(body, 'deal_status', 10);
+    if (
+      rawDealStatus !== null &&
+      rawDealStatus !== 'open' &&
+      rawDealStatus !== 'won' &&
+      rawDealStatus !== 'lost'
+    ) {
+      throw new SheetLeadIngestError(
+        "'deal_status' must be 'open', 'won', or 'lost'",
+        400
+      );
+    }
     const result = await ingestSheetLead(ctx.supabase, ctx.accountId, {
       phone,
       name: readString(body, 'name', MAX_NAME_LENGTH),
       email: readString(body, 'email', MAX_EMAIL_LENGTH),
       pipeline,
       stage: readString(body, 'stage', MAX_STAGE_LENGTH),
+      dealStatus: rawDealStatus,
+      note: readString(body, 'note', MAX_NOTE_LENGTH),
       source,
       sourceId,
     });
