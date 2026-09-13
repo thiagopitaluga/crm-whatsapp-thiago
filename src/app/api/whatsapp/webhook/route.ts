@@ -6,6 +6,7 @@ import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 import { normalizeMetaCtwaReferral } from '@/lib/whatsapp/ctwa-referral';
 import { resolveInboundAttribution } from '@/lib/attribution/click-tracking';
+import { resolveMetaMarketingAttribution } from '@/lib/attribution/meta-marketing';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature';
@@ -777,13 +778,33 @@ async function processMessage(
   // second attribution, and a failed message insert must not leave an orphan
   // attribution behind. The helper is deliberately best-effort so campaign
   // reporting cannot make Meta retry an otherwise valid customer message.
-  await persistMetaCtwaAttribution({
+  const ctwaReferral = await persistMetaCtwaAttribution({
     referral: message.referral,
     accountId,
     conversationId: conversation.id,
     contactId: contactRecord.id,
     firstMessageId: message.id,
   });
+
+  // The Marketing API receives only the signed source id Meta supplied. The
+  // resolver first verifies this CRM tenant has an active connection to the
+  // returned ad account, and does not affect inbound-message delivery when
+  // no connection/token is configured or the reporting API is unavailable.
+  if (ctwaReferral?.sourceId) {
+    try {
+      await resolveMetaMarketingAttribution({
+        db: supabaseAdmin(),
+        accountId,
+        conversationId: conversation.id,
+        sourceId: ctwaReferral.sourceId,
+      });
+    } catch (error) {
+      console.error(
+        '[webhook] failed to resolve Meta Marketing attribution:',
+        error
+      );
+    }
+  }
 
   // First-party campaign links append a random reference marker to the
   // prefilled WhatsApp message. Resolve it only after the incoming message
@@ -965,7 +986,7 @@ async function persistMetaCtwaAttribution(input: {
   firstMessageId: string;
 }) {
   const referral = normalizeMetaCtwaReferral(input.referral);
-  if (!referral) return;
+  if (!referral) return null;
 
   const { error } = await supabaseAdmin()
     .from('conversation_attributions')
@@ -1004,6 +1025,8 @@ async function persistMetaCtwaAttribution(input: {
       error.message
     );
   }
+
+  return referral;
 }
 
 async function parseMessageContent(

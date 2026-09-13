@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// The resolver is explicitly server-only; Vitest executes the route directly
+// in Node rather than through Next's server-module alias.
+vi.mock('server-only', () => ({}))
+
 // Shared, hoisted state the module mocks close over. Reset per test.
 const h = vi.hoisted(() => ({
   runAutomationsForTrigger: vi.fn(),
