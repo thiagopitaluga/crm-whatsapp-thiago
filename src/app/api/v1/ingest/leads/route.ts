@@ -13,6 +13,9 @@ const MAX_STAGE_LENGTH = 120;
 const MAX_SOURCE_LENGTH = 80;
 const MAX_SOURCE_ID_LENGTH = 250;
 const MAX_NOTE_LENGTH = 8_000;
+const MAX_CUSTOM_FIELD_NAME_LENGTH = 120;
+const MAX_CUSTOM_FIELD_VALUE_LENGTH = 4_000;
+const MAX_CUSTOM_FIELDS = 20;
 
 function readString(
   body: Record<string, unknown>,
@@ -36,6 +39,50 @@ function readString(
     );
   }
   return trimmed || null;
+}
+
+function readCustomFieldValues(
+  body: Record<string, unknown>
+): Record<string, string> {
+  const raw = body.custom_fields;
+  if (raw == null) return {};
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new SheetLeadIngestError("'custom_fields' must be an object", 400);
+  }
+
+  const entries = Object.entries(raw);
+  if (entries.length > MAX_CUSTOM_FIELDS) {
+    throw new SheetLeadIngestError(
+      `'custom_fields' accepts at most ${MAX_CUSTOM_FIELDS} values`,
+      400
+    );
+  }
+
+  const values: Record<string, string> = {};
+  for (const [rawName, rawValue] of entries) {
+    const name = rawName.trim();
+    if (!name || name.length > MAX_CUSTOM_FIELD_NAME_LENGTH) {
+      throw new SheetLeadIngestError(
+        `'custom_fields' field names must be 1-${MAX_CUSTOM_FIELD_NAME_LENGTH} characters`,
+        400
+      );
+    }
+    if (typeof rawValue !== 'string') {
+      throw new SheetLeadIngestError(
+        `'custom_fields.${name}' must be a string`,
+        400
+      );
+    }
+    const value = rawValue.trim();
+    if (value.length > MAX_CUSTOM_FIELD_VALUE_LENGTH) {
+      throw new SheetLeadIngestError(
+        `'custom_fields.${name}' must be ${MAX_CUSTOM_FIELD_VALUE_LENGTH} characters or fewer`,
+        400
+      );
+    }
+    if (value) values[name] = value;
+  }
+  return values;
 }
 
 /**
@@ -81,6 +128,7 @@ export async function POST(request: Request) {
       stage: readString(body, 'stage', MAX_STAGE_LENGTH),
       dealStatus: rawDealStatus,
       note: readString(body, 'note', MAX_NOTE_LENGTH),
+      customFieldValues: readCustomFieldValues(body),
       source,
       sourceId,
     });

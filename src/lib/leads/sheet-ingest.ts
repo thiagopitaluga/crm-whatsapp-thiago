@@ -25,6 +25,8 @@ export interface SheetLeadInput {
   dealStatus?: 'open' | 'won' | 'lost' | null;
   /** Optional note kept in sync from the upstream CRM worksheet. */
   note?: string | null;
+  /** Non-empty contact custom-field values keyed by their account-scoped name. */
+  customFieldValues?: Record<string, string>;
   /** Identifies the upstream system, e.g. `google_sheets`. */
   source: string;
   /** Stable, upstream-specific row id used to make retries idempotent. */
@@ -78,6 +80,12 @@ export async function ingestSheetLead(
     input.source,
     input.sourceId,
     input.note
+  );
+  await upsertContactCustomFieldValues(
+    db,
+    accountId,
+    contact.id,
+    input.customFieldValues
   );
 
   const existingDeal = await findExistingSourceDeal(
@@ -200,6 +208,69 @@ async function upsertSourceNote(
   if (error) {
     console.error('[sheet-ingest] failed to upsert contact note:', error);
     throw new SheetLeadIngestError('Failed to update contact note', 500);
+  }
+}
+
+/**
+ * Applies values only when the upstream sheet has a value. This keeps blank
+ * cells from erasing information that a CRM user entered manually.
+ */
+async function upsertContactCustomFieldValues(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string,
+  requestedValues?: Record<string, string>
+) {
+  const entries = Object.entries(requestedValues ?? {}).filter(
+    ([fieldName, value]) => fieldName.trim() && value.trim()
+  );
+  if (!entries.length) return;
+
+  const { data: fields, error: fieldsError } = await db
+    .from('custom_fields')
+    .select('id, field_name')
+    .eq('account_id', accountId);
+  if (fieldsError) {
+    console.error(
+      '[sheet-ingest] failed to resolve custom fields:',
+      fieldsError
+    );
+    throw new SheetLeadIngestError('Failed to resolve contact fields', 500);
+  }
+
+  const fieldsByName = new Map<string, string>();
+  for (const field of fields ?? []) {
+    const key = field.field_name.trim().toLocaleLowerCase();
+    if (fieldsByName.has(key)) {
+      throw new SheetLeadIngestError(
+        `Contact field '${field.field_name}' is ambiguous for this CRM account`,
+        422
+      );
+    }
+    fieldsByName.set(key, field.id as string);
+  }
+
+  const values = entries.map(([fieldName, value]) => {
+    const fieldId = fieldsByName.get(fieldName.trim().toLocaleLowerCase());
+    if (!fieldId) {
+      throw new SheetLeadIngestError(
+        `Contact field '${fieldName}' was not found for this CRM account`,
+        422
+      );
+    }
+    return {
+      contact_id: contactId,
+      custom_field_id: fieldId,
+      value: value.trim(),
+    };
+  });
+
+  const { error } = await db
+    .from('contact_custom_values')
+    .upsert(values, { onConflict: 'contact_id,custom_field_id' });
+  if (error) {
+    console.error('[sheet-ingest] failed to upsert contact fields:', error);
+    throw new SheetLeadIngestError('Failed to update contact fields', 500);
   }
 }
 
