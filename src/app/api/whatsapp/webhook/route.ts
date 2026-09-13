@@ -4,6 +4,7 @@ import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { normalizeMetaCtwaReferral } from '@/lib/whatsapp/ctwa-referral'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
@@ -70,6 +71,11 @@ interface WhatsAppMessage {
   button?: { text?: string; payload?: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  /**
+   * Meta sends this on messages that start from a Click-to-WhatsApp ad.
+   * It includes the CTWA click id plus the referral source/ad metadata.
+   */
+  referral?: unknown
 }
 
 interface WhatsAppWebhookEntry {
@@ -739,6 +745,20 @@ async function processMessage(
     return
   }
 
+  // A Click-to-WhatsApp referral belongs to the conversation AND contact
+  // that this first inbound message resolved to. Persist it only after the
+  // message's idempotency boundary: Meta webhook retries must not create a
+  // second attribution, and a failed message insert must not leave an orphan
+  // attribution behind. The helper is deliberately best-effort so campaign
+  // reporting cannot make Meta retry an otherwise valid customer message.
+  await persistMetaCtwaAttribution({
+    referral: message.referral,
+    accountId,
+    conversationId: conversation.id,
+    contactId: contactRecord.id,
+    firstMessageId: message.id,
+  })
+
   // Update conversation. The unread bump is done DB-side (migration 037's
   // bump_conversation_on_inbound) rather than as a read-modify-write of the
   // snapshot loaded above: two inbound messages for the same conversation
@@ -894,6 +914,52 @@ async function processMessage(
     content_type: contentType,
     text: contentText,
   })
+}
+
+async function persistMetaCtwaAttribution(input: {
+  referral: unknown
+  accountId: string
+  conversationId: string
+  contactId: string
+  firstMessageId: string
+}) {
+  const referral = normalizeMetaCtwaReferral(input.referral)
+  if (!referral) return
+
+  const { error } = await supabaseAdmin()
+    .from('conversation_attributions')
+    .upsert(
+      {
+        account_id: input.accountId,
+        conversation_id: input.conversationId,
+        contact_id: input.contactId,
+        provider: 'meta',
+        attribution_type: 'click_to_whatsapp',
+        first_message_id: input.firstMessageId,
+        source_url: referral.sourceUrl,
+        source_type: referral.sourceType,
+        source_id: referral.sourceId,
+        ctwa_clid: referral.ctwaClid,
+        headline: referral.headline,
+        body: referral.body,
+        media_type: referral.mediaType,
+        image_url: referral.imageUrl,
+        video_url: referral.videoUrl,
+        thumbnail_url: referral.thumbnailUrl,
+        referral_metadata: referral.metadata,
+      },
+      {
+        // Keep the first signed Meta referral for this provider/conversation.
+        // Re-deliveries and later customer messages therefore never overwrite
+        // the original acquisition context.
+        onConflict: 'account_id,conversation_id,provider',
+        ignoreDuplicates: true,
+      }
+    )
+
+  if (error) {
+    console.error('[webhook] failed to persist Meta CTWA referral:', error.message)
+  }
 }
 
 async function parseMessageContent(

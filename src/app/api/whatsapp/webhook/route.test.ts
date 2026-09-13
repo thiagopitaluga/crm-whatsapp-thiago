@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
     rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
+    attributionUpsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
     afterCallbacks: [] as (() => Promise<void> | void)[],
     automationStarted: 0,
     automationCompleted: 0,
@@ -136,6 +137,13 @@ vi.mock('@supabase/supabase-js', () => ({
               }
             },
           }
+        case 'conversation_attributions':
+          return {
+            upsert: (row: Record<string, unknown>, options: unknown) => {
+              h.state.attributionUpsertCalls.push({ row, options })
+              return Promise.resolve({ error: null })
+            },
+          }
         default:
           throw new Error(`unexpected table: ${table}`)
       }
@@ -254,6 +262,7 @@ beforeEach(() => {
   h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
   h.state.upsertCalls = []
   h.state.rpcCalls = []
+  h.state.attributionUpsertCalls = []
   h.state.afterCallbacks = []
   h.state.automationStarted = 0
   h.state.automationCompleted = 0
@@ -325,6 +334,51 @@ describe('inbound webhook: atomic unread bump (#369)', () => {
       name: 'bump_conversation_on_inbound',
       args: { p_conversation_id: 'conv-1' },
     })
+  })
+})
+
+describe('inbound webhook: Meta Click-to-WhatsApp attribution', () => {
+  it('persists a signed Meta referral against the resolved account, conversation, and contact', async () => {
+    await runWebhook({
+      ...TEXT_MESSAGE,
+      referral: {
+        source_url: 'https://www.facebook.com/ad',
+        source_type: 'ad',
+        source_id: 'ad-123',
+        ctwa_clid: 'ctwa-click-123',
+        headline: 'Lotes em oferta',
+      },
+    })
+
+    expect(h.state.attributionUpsertCalls).toHaveLength(1)
+    expect(h.state.attributionUpsertCalls[0]).toMatchObject({
+      row: {
+        account_id: 'acc-1',
+        conversation_id: 'conv-1',
+        contact_id: 'contact-1',
+        provider: 'meta',
+        attribution_type: 'click_to_whatsapp',
+        first_message_id: 'wamid.TEST1',
+        source_id: 'ad-123',
+        ctwa_clid: 'ctwa-click-123',
+      },
+      options: {
+        onConflict: 'account_id,conversation_id,provider',
+        ignoreDuplicates: true,
+      },
+    })
+  })
+
+  it('does not create an attribution for a normal WhatsApp message or a duplicate delivery', async () => {
+    await runWebhook()
+    expect(h.state.attributionUpsertCalls).toHaveLength(0)
+
+    h.state.messageUpsertResult = []
+    await runWebhook({
+      ...TEXT_MESSAGE,
+      referral: { ctwa_clid: 'replayed-click' },
+    })
+    expect(h.state.attributionUpsertCalls).toHaveLength(0)
   })
 })
 
