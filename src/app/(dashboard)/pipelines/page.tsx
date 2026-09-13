@@ -53,6 +53,7 @@ import {
 } from 'date-fns';
 import {
   CalendarDays,
+  Filter,
   GitBranch,
   Plus,
   ChevronDown,
@@ -67,11 +68,6 @@ import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
-
-// Pipeline creation is admin-class (settings-tier write under
-// the new RLS); deal creation is operational and only requires
-// agent+. The two CTAs gate on different `useCan` capabilities,
-// not on different copy.
 
 // Spec-defined seed — name and color per the product spec.
 const SPEC_DEFAULT_STAGES = [
@@ -92,6 +88,7 @@ const DEFAULT_CARD_LAYOUT: PipelineCardLayout = {
 };
 
 type DateRangePreset =
+  | 'all'
   | 'today'
   | 'yesterday'
   | 'last7Days'
@@ -102,6 +99,7 @@ type DateRangePreset =
   | 'thisYear';
 
 const DATE_RANGE_PRESETS: Array<{ id: DateRangePreset; label: string }> = [
+  { id: 'all', label: 'Máximo' },
   { id: 'today', label: 'Hoje' },
   { id: 'yesterday', label: 'Ontem' },
   { id: 'last7Days', label: 'Últimos 7 dias' },
@@ -112,7 +110,10 @@ const DATE_RANGE_PRESETS: Array<{ id: DateRangePreset; label: string }> = [
   { id: 'thisYear', label: 'Este ano' },
 ];
 
-function getDateRange(preset: DateRangePreset, now = new Date()) {
+function getDateRange(
+  preset: Exclude<DateRangePreset, 'all'>,
+  now = new Date()
+) {
   switch (preset) {
     case 'today':
       return { from: now, to: now };
@@ -158,7 +159,6 @@ export default function PipelinesPage() {
   const t = useTranslations('Pipelines.page');
   const supabase = createClient();
   const canEditSettings = useCan('edit-settings');
-  const canCreateDeals = useCan('send-messages');
   const { accountId } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -199,6 +199,8 @@ export default function PipelinesPage() {
 
   // Guard against double-seeding (React StrictMode double-effect in dev).
   const seedAttemptedForAccount = useRef<string | null>(null);
+  const createdFromInputRef = useRef<HTMLInputElement>(null);
+  const createdToInputRef = useRef<HTMLInputElement>(null);
 
   const loadPipelines = useCallback(async () => {
     if (!accountId) return [];
@@ -742,9 +744,27 @@ export default function PipelinesPage() {
   };
 
   const applyDateRange = (preset: DateRangePreset) => {
+    if (preset === 'all') {
+      setCreatedFrom('');
+      setCreatedTo('');
+      return;
+    }
+
     const range = getDateRange(preset);
     setCreatedFrom(format(range.from, 'yyyy-MM-dd'));
     setCreatedTo(format(range.to, 'yyyy-MM-dd'));
+  };
+
+  const openDatePicker = (input: HTMLInputElement | null) => {
+    if (!input) return;
+
+    input.focus();
+    try {
+      input.showPicker?.();
+    } catch {
+      // Browsers without showPicker still open the native picker on click.
+      input.click();
+    }
   };
 
   const saveCardLayout = async () => {
@@ -885,7 +905,7 @@ export default function PipelinesPage() {
           {/* Pipeline selector dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger className="border-border bg-card text-foreground hover:bg-muted data-[popup-open]:bg-muted inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors">
-              <GitBranch className="text-primary h-4 w-4" />
+              <Filter className="text-primary h-4 w-4" />
               <span className="font-semibold">
                 {selectedPipeline?.name ?? t('selectPipeline')}
               </span>
@@ -910,7 +930,7 @@ export default function PipelinesPage() {
                       : 'text-popover-foreground'
                   }
                 >
-                  <GitBranch className="mr-2 h-3.5 w-3.5" />
+                  <Filter className="mr-2 h-3.5 w-3.5" />
                   {p.name}
                 </DropdownMenuItem>
               ))}
@@ -928,7 +948,7 @@ export default function PipelinesPage() {
           </DropdownMenu>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {selectedPipeline && (
             <GatedButton
               variant="outline"
@@ -944,26 +964,6 @@ export default function PipelinesPage() {
               Editar layout do cartão
             </GatedButton>
           )}
-          <GatedButton
-            variant="outline"
-            canAct={canEditSettings}
-            gateReason="create pipelines"
-            onClick={() => setNewPipelineOpen(true)}
-            className="border-border bg-card text-foreground hover:bg-muted"
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            {t('addPipeline')}
-          </GatedButton>
-          <GatedButton
-            canAct={canCreateDeals}
-            gateReason="create deals"
-            disabled={!selectedPipelineId || stages.length === 0}
-            onClick={() => handleAddDeal()}
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            {t('addDeal')}
-          </GatedButton>
         </div>
       </div>
 
@@ -1045,16 +1045,23 @@ export default function PipelinesPage() {
                     </Label>
                     <div className="relative">
                       <Input
+                        ref={createdFromInputRef}
                         id="created-from"
                         type="date"
                         value={createdFrom}
                         onChange={(event) => setCreatedFrom(event.target.value)}
-                        className="h-8 pr-8"
+                        className="h-8 pr-9"
                       />
-                      <CalendarDays
-                        aria-hidden="true"
-                        className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2"
-                      />
+                      <button
+                        type="button"
+                        aria-label="Selecionar data inicial"
+                        onClick={() =>
+                          openDatePicker(createdFromInputRef.current)
+                        }
+                        className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
+                      >
+                        <CalendarDays aria-hidden="true" className="size-3.5" />
+                      </button>
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -1066,16 +1073,23 @@ export default function PipelinesPage() {
                     </Label>
                     <div className="relative">
                       <Input
+                        ref={createdToInputRef}
                         id="created-to"
                         type="date"
                         value={createdTo}
                         onChange={(event) => setCreatedTo(event.target.value)}
-                        className="h-8 pr-8"
+                        className="h-8 pr-9"
                       />
-                      <CalendarDays
-                        aria-hidden="true"
-                        className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2"
-                      />
+                      <button
+                        type="button"
+                        aria-label="Selecionar data final"
+                        onClick={() =>
+                          openDatePicker(createdToInputRef.current)
+                        }
+                        className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
+                      >
+                        <CalendarDays aria-hidden="true" className="size-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
