@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS public.campaign_tracking_links (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT campaign_tracking_links_slug_format
-    CHECK (slug ~ '^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$' OR slug ~ '^[a-z0-9]$'),
+    -- PostgreSQL uses POSIX regular expressions, so this deliberately
+    -- avoids PCRE-only non-capturing groups.
+    CHECK (slug ~ '^[a-z0-9]([a-z0-9-]{0,78}[a-z0-9])?$'),
   CONSTRAINT campaign_tracking_links_whatsapp_number_format
     CHECK (whatsapp_number ~ '^[1-9][0-9]{6,14}$')
 );
