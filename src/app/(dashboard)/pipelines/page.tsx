@@ -87,6 +87,7 @@ const DEFAULT_CARD_LAYOUT: PipelineCardLayout = {
   show_value: true,
   show_created_at: true,
   show_last_message: true,
+  show_notes: true,
   custom_field_ids: [],
 };
 
@@ -1240,12 +1241,14 @@ export default function PipelinesPage() {
               ['show_value', 'Valor do lead'],
               ['show_created_at', 'Data de criação do contato'],
               ['show_last_message', 'Última mensagem'],
+              ['show_notes', 'Notas'],
             ].map(([key, label]) => {
               const layoutKey = key as keyof Pick<
                 PipelineCardLayout,
                 | 'show_value'
                 | 'show_created_at'
                 | 'show_last_message'
+                | 'show_notes'
               >;
               return (
                 <label

@@ -363,6 +363,7 @@ export interface PipelineCardLayout {
   show_value: boolean;
   show_created_at: boolean;
   show_last_message: boolean;
+  show_notes: boolean;
   custom_field_ids: string[];
 }
 

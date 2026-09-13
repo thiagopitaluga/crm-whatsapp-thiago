@@ -53,6 +53,7 @@ const DEFAULT_LAYOUT: PipelineCardLayout = {
   show_value: true,
   show_created_at: true,
   show_last_message: true,
+  show_notes: true,
   custom_field_ids: [],
 };
 
@@ -293,7 +294,7 @@ export function DealCard({
         </a>
       )}
 
-      {deal.notes?.trim() && (
+      {layout.show_notes && deal.notes?.trim() && (
         <div
           className="border-primary/40 text-muted-foreground mt-3 flex gap-1.5 border-l-2 pl-2 text-xs leading-5"
           title={deal.notes}
