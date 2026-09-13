@@ -695,25 +695,25 @@
       "delete": "Excluir tarefa",
       "unknownContact": "Contato indisponível",
       "googleCalendarTitle": "Integração com Google Agenda",
-    "googleDisconnected": "Não conectado",
-    "googleConnectedStatus": "Conectado",
-    "connectGoogleCalendar": "Conectar",
-    "openGoogleCalendar": "Abrir Google Agenda",
-    "googleConnected": "Google Agenda conectada",
-    "googleUnavailable": "Configure as credenciais do Google Agenda para conectar.",
-    "googleConnectionFailed": "Não foi possível conectar ao Google Agenda",
-    "previousMonth": "Mês anterior",
-    "nextMonth": "Próximo mês",
-    "goToToday": "Hoje",
-    "calendarHint": "Clique em um dia para agendar uma tarefa.",
-    "moreTasks": "+{count} tarefas",
-    "searchPlaceholder": "Buscar tarefa ou lead",
-    "filterLead": "Todos os leads",
-    "filterTag": "Todas as etiquetas",
-    "filterStage": "Todas as etapas",
-    "filterAssignee": "Todos os responsáveis",
-    "completedSuccess": "Tarefa concluída",
-    "reopenedSuccess": "Tarefa reaberta"
+      "googleDisconnected": "Não conectado",
+      "googleConnectedStatus": "Conectado",
+      "connectGoogleCalendar": "Conectar",
+      "openGoogleCalendar": "Abrir Google Agenda",
+      "googleConnected": "Google Agenda conectada",
+      "googleUnavailable": "Configure as credenciais do Google Agenda para conectar.",
+      "googleConnectionFailed": "Não foi possível conectar ao Google Agenda",
+      "previousMonth": "Mês anterior",
+      "nextMonth": "Próximo mês",
+      "goToToday": "Hoje",
+      "calendarHint": "Clique em um dia para agendar uma tarefa.",
+      "moreTasks": "+{count} tarefas",
+      "searchPlaceholder": "Buscar tarefa ou lead",
+      "filterLead": "Todos os leads",
+      "filterTag": "Todas as etiquetas",
+      "filterStage": "Todas as etapas",
+      "filterAssignee": "Todos os responsáveis",
+      "completedSuccess": "Tarefa concluída",
+      "reopenedSuccess": "Tarefa reaberta"
     },
     "form": {
       "newTitle": "Agendar tarefa",
@@ -940,10 +940,22 @@
       "emptyDesc": "Escolha um modelo acima ou crie um do zero.",
       "never": "nunca",
       "templates": {
-        "welcome_message": { "name": "Mensagem de boas-vindas", "description": "Responda automaticamente aos novos contatos com uma saudação." },
-        "out_of_office": { "name": "Fora do horário", "description": "Responda fora do horário de atendimento para ninguém ficar sem retorno." },
-        "lead_qualifier": { "name": "Qualificar lead", "description": "Faça perguntas para qualificar os contatos recebidos." },
-        "follow_up_reminder": { "name": "Lembrete de acompanhamento", "description": "Envie um lembrete se o contato não responder em 24 horas." }
+        "welcome_message": {
+          "name": "Mensagem de boas-vindas",
+          "description": "Responda automaticamente aos novos contatos com uma saudação."
+        },
+        "out_of_office": {
+          "name": "Fora do horário",
+          "description": "Responda fora do horário de atendimento para ninguém ficar sem retorno."
+        },
+        "lead_qualifier": {
+          "name": "Qualificar lead",
+          "description": "Faça perguntas para qualificar os contatos recebidos."
+        },
+        "follow_up_reminder": {
+          "name": "Lembrete de acompanhamento",
+          "description": "Envie um lembrete se o contato não responder em 24 horas."
+        }
       },
       "triggerLabels": {
         "new_message_received": "Nova mensagem",
@@ -1726,7 +1738,8 @@
       "fields": "Campos e tags",
       "deals": "negócios e moeda",
       "members": "Membros da equipe",
-      "api": "Chaves de API"
+      "api": "Chaves de API",
+      "tracking": "Rastreamento de campanhas"
     },
     "groups": {
       "account": "Conta",

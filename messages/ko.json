@@ -669,25 +669,25 @@
       "delete": "작업 삭제",
       "unknownContact": "연락처를 사용할 수 없음",
       "googleCalendarTitle": "Google Calendar 연동",
-    "googleDisconnected": "연결되지 않음",
-    "googleConnectedStatus": "연결됨",
-    "connectGoogleCalendar": "연결",
-    "openGoogleCalendar": "Google Calendar 열기",
-    "googleConnected": "Google Calendar가 연결되었습니다",
-    "googleUnavailable": "연결하려면 Google Calendar 자격 증명을 구성하세요.",
-    "googleConnectionFailed": "Google Calendar에 연결할 수 없습니다",
-    "previousMonth": "이전 달",
-    "nextMonth": "다음 달",
-    "goToToday": "오늘",
-    "calendarHint": "날짜를 클릭하여 작업을 예약하세요.",
-    "moreTasks": "+{count}개 작업",
-    "searchPlaceholder": "작업 또는 리드 검색",
-    "filterLead": "모든 리드",
-    "filterTag": "모든 태그",
-    "filterStage": "모든 단계",
-    "filterAssignee": "모든 담당자",
-    "completedSuccess": "작업이 완료되었습니다",
-    "reopenedSuccess": "작업을 다시 열었습니다"
+      "googleDisconnected": "연결되지 않음",
+      "googleConnectedStatus": "연결됨",
+      "connectGoogleCalendar": "연결",
+      "openGoogleCalendar": "Google Calendar 열기",
+      "googleConnected": "Google Calendar가 연결되었습니다",
+      "googleUnavailable": "연결하려면 Google Calendar 자격 증명을 구성하세요.",
+      "googleConnectionFailed": "Google Calendar에 연결할 수 없습니다",
+      "previousMonth": "이전 달",
+      "nextMonth": "다음 달",
+      "goToToday": "오늘",
+      "calendarHint": "날짜를 클릭하여 작업을 예약하세요.",
+      "moreTasks": "+{count}개 작업",
+      "searchPlaceholder": "작업 또는 리드 검색",
+      "filterLead": "모든 리드",
+      "filterTag": "모든 태그",
+      "filterStage": "모든 단계",
+      "filterAssignee": "모든 담당자",
+      "completedSuccess": "작업이 완료되었습니다",
+      "reopenedSuccess": "작업을 다시 열었습니다"
     },
     "form": {
       "newTitle": "작업 예약",
@@ -914,10 +914,22 @@
       "emptyDesc": "위의 템플릿을 선택하거나 처음부터 새로 만드세요.",
       "never": "없음",
       "templates": {
-        "welcome_message": { "name": "환영 메시지", "description": "처음 연락한 고객에게 자동으로 인사합니다." },
-        "out_of_office": { "name": "부재중 안내", "description": "업무 시간 외에 자동으로 답장합니다." },
-        "lead_qualifier": { "name": "리드 분류", "description": "수신 연락처를 분류할 질문을 보냅니다." },
-        "follow_up_reminder": { "name": "후속 안내", "description": "24시간 동안 답장이 없으면 알림을 보냅니다." }
+        "welcome_message": {
+          "name": "환영 메시지",
+          "description": "처음 연락한 고객에게 자동으로 인사합니다."
+        },
+        "out_of_office": {
+          "name": "부재중 안내",
+          "description": "업무 시간 외에 자동으로 답장합니다."
+        },
+        "lead_qualifier": {
+          "name": "리드 분류",
+          "description": "수신 연락처를 분류할 질문을 보냅니다."
+        },
+        "follow_up_reminder": {
+          "name": "후속 안내",
+          "description": "24시간 동안 답장이 없으면 알림을 보냅니다."
+        }
       },
       "triggerLabels": {
         "new_message_received": "새 메시지",
@@ -1710,7 +1722,8 @@
       "fields": "필드 & 태그",
       "deals": "딜 & 통화",
       "members": "팀원",
-      "api": "API 키"
+      "api": "API 키",
+      "tracking": "캠페인 추적"
     },
     "groups": {
       "account": "계정",

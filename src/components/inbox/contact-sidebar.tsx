@@ -48,8 +48,8 @@ interface WhatsAppConversationAttribution {
   source_type: string | null;
   source_url: string | null;
   ctwa_clid: string | null;
-  ad_headline: string | null;
-  ad_body: string | null;
+  headline: string | null;
+  body: string | null;
   created_at: string;
 }
 
@@ -111,7 +111,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       supabase
         .from('conversation_attributions')
         .select(
-          'id, provider, attribution_type, source_id, source_type, source_url, ctwa_clid, ad_headline, ad_body, created_at'
+          'id, provider, attribution_type, source_id, source_type, source_url, ctwa_clid, headline, body, created_at'
         )
         .eq('contact_id', contact.id)
         .order('created_at', { ascending: false })
@@ -266,16 +266,16 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                         <Megaphone className="text-primary size-3.5" />
                         Meta Ads · Clique para WhatsApp
                       </div>
-                      {(attribution.ad_headline || attribution.source_id) && (
+                      {(attribution.headline || attribution.source_id) && (
                         <p
                           className="text-muted-foreground mt-1 truncate text-xs"
                           title={
-                            attribution.ad_headline ??
+                            attribution.headline ??
                             attribution.source_id ??
                             undefined
                           }
                         >
-                          {attribution.ad_headline ||
+                          {attribution.headline ||
                             `Anúncio ${attribution.source_id}`}
                         </p>
                       )}

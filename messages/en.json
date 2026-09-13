@@ -695,25 +695,25 @@
       "delete": "Delete task",
       "unknownContact": "Unavailable contact",
       "googleCalendarTitle": "Google Calendar integration",
-    "googleDisconnected": "Not connected",
-    "googleConnectedStatus": "Connected",
-    "connectGoogleCalendar": "Connect",
-    "openGoogleCalendar": "Open Google Calendar",
-    "googleConnected": "Google Calendar connected",
-    "googleUnavailable": "Configure Google Calendar credentials to connect.",
-    "googleConnectionFailed": "Could not connect to Google Calendar",
-    "previousMonth": "Previous month",
-    "nextMonth": "Next month",
-    "goToToday": "Today",
-    "calendarHint": "Click a day to schedule a task.",
-    "moreTasks": "+{count} tasks",
-    "searchPlaceholder": "Search task or lead",
-    "filterLead": "All leads",
-    "filterTag": "All tags",
-    "filterStage": "All stages",
-    "filterAssignee": "All assignees",
-    "completedSuccess": "Task completed",
-    "reopenedSuccess": "Task reopened"
+      "googleDisconnected": "Not connected",
+      "googleConnectedStatus": "Connected",
+      "connectGoogleCalendar": "Connect",
+      "openGoogleCalendar": "Open Google Calendar",
+      "googleConnected": "Google Calendar connected",
+      "googleUnavailable": "Configure Google Calendar credentials to connect.",
+      "googleConnectionFailed": "Could not connect to Google Calendar",
+      "previousMonth": "Previous month",
+      "nextMonth": "Next month",
+      "goToToday": "Today",
+      "calendarHint": "Click a day to schedule a task.",
+      "moreTasks": "+{count} tasks",
+      "searchPlaceholder": "Search task or lead",
+      "filterLead": "All leads",
+      "filterTag": "All tags",
+      "filterStage": "All stages",
+      "filterAssignee": "All assignees",
+      "completedSuccess": "Task completed",
+      "reopenedSuccess": "Task reopened"
     },
     "form": {
       "newTitle": "Schedule task",
@@ -940,10 +940,22 @@
       "emptyDesc": "Pick a template above or create one from scratch.",
       "never": "never",
       "templates": {
-        "welcome_message": { "name": "Welcome message", "description": "Automatically greet first-time contacts." },
-        "out_of_office": { "name": "Out of office", "description": "Reply outside business hours so no one is left waiting." },
-        "lead_qualifier": { "name": "Qualify lead", "description": "Ask questions to qualify incoming contacts." },
-        "follow_up_reminder": { "name": "Follow-up reminder", "description": "Send a reminder when a contact has not replied in 24 hours." }
+        "welcome_message": {
+          "name": "Welcome message",
+          "description": "Automatically greet first-time contacts."
+        },
+        "out_of_office": {
+          "name": "Out of office",
+          "description": "Reply outside business hours so no one is left waiting."
+        },
+        "lead_qualifier": {
+          "name": "Qualify lead",
+          "description": "Ask questions to qualify incoming contacts."
+        },
+        "follow_up_reminder": {
+          "name": "Follow-up reminder",
+          "description": "Send a reminder when a contact has not replied in 24 hours."
+        }
       },
       "triggerLabels": {
         "new_message_received": "New message",
@@ -1736,7 +1748,8 @@
       "fields": "Fields & tags",
       "deals": "Deals & currency",
       "members": "Team members",
-      "api": "API keys"
+      "api": "API keys",
+      "tracking": "Campaign tracking"
     },
     "groups": {
       "account": "Account",
