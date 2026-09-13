@@ -18,7 +18,6 @@ import {
   Radio,
   Settings,
   Users,
-  Workflow,
   X,
   Zap,
   PanelLeftClose,
@@ -34,23 +33,17 @@ interface NavItem {
   href: string;
   labelKey: string;
   icon: typeof LayoutDashboard;
-  /**
-   * When true, the nav row renders a small "Beta" chip after the label.
-   * Purely informational — doesn't affect routing or access.
-   */
-  beta?: boolean;
 }
 
 const navItems: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/pipelines", labelKey: "pipelines", icon: Kanban },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
-  { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/tasks", labelKey: "tasks", icon: CalendarDays },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
-  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
+  { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
 ];
 
@@ -130,7 +123,7 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
             OrganiZAP remains subtly present in the user footer below. */}
         <div className={cn("flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border", collapsed ? "px-3" : "px-4")}>
           <Link
-            href="/dashboard"
+            href="/settings?tab=company"
             className="flex min-w-0 items-center gap-2"
             title={collapsed ? account?.name ?? "OrganiZAP" : undefined}
           >
@@ -205,14 +198,6 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
                     <span className={cn("flex-1", collapsed && "lg:hidden")}>{t(item.labelKey as string)}</span>
-                    {item.beta && !collapsed && (
-                      <span
-                        aria-label={t("beta")}
-                        className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300"
-                      >
-                        {t("beta")}
-                      </span>
-                    )}
                     {showUnreadDot && (
                       <span
                         aria-label={t("unreadConversations", { count: totalUnread })}
