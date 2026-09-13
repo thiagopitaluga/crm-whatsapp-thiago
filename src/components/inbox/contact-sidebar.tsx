@@ -50,7 +50,36 @@ interface WhatsAppConversationAttribution {
   ctwa_clid: string | null;
   headline: string | null;
   body: string | null;
+  meta_ad_account_id: string | null;
+  meta_campaign_id: string | null;
+  meta_campaign_name: string | null;
+  meta_adset_id: string | null;
+  meta_adset_name: string | null;
+  meta_ad_id: string | null;
+  meta_ad_name: string | null;
+  meta_marketing_resolved_at: string | null;
   created_at: string;
+}
+
+function MetaAttributionDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
+  if (!value) return null;
+
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
+        {label}
+      </p>
+      <p className="text-foreground truncate text-xs" title={value}>
+        {value}
+      </p>
+    </div>
+  );
 }
 
 export function ContactSidebar({ contact }: ContactSidebarProps) {
@@ -111,7 +140,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       supabase
         .from('conversation_attributions')
         .select(
-          'id, provider, attribution_type, source_id, source_type, source_url, ctwa_clid, headline, body, created_at'
+          'id, provider, attribution_type, source_id, source_type, source_url, ctwa_clid, headline, body, meta_ad_account_id, meta_campaign_id, meta_campaign_name, meta_adset_id, meta_adset_name, meta_ad_id, meta_ad_name, meta_marketing_resolved_at, created_at'
         )
         .eq('contact_id', contact.id)
         .order('created_at', { ascending: false })
@@ -260,23 +289,53 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   {whatsAppAttributions.map((attribution) => (
                     <div
                       key={attribution.id}
-                      className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2"
+                      className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2.5"
                     >
                       <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
                         <Megaphone className="text-primary size-3.5" />
                         Meta Ads · Clique para WhatsApp
                       </div>
-                      {(attribution.headline || attribution.source_id) && (
-                        <p
-                          className="text-muted-foreground mt-1 truncate text-xs"
-                          title={
-                            attribution.headline ??
-                            attribution.source_id ??
-                            undefined
+                      <div className="mt-2 space-y-2">
+                        <MetaAttributionDetail
+                          label="Campanha"
+                          value={
+                            attribution.meta_campaign_name ||
+                            (attribution.meta_campaign_id
+                              ? `ID ${attribution.meta_campaign_id}`
+                              : null)
                           }
+                        />
+                        <MetaAttributionDetail
+                          label="Conjunto de anúncios"
+                          value={
+                            attribution.meta_adset_name ||
+                            (attribution.meta_adset_id
+                              ? `ID ${attribution.meta_adset_id}`
+                              : null)
+                          }
+                        />
+                        <MetaAttributionDetail
+                          label="Anúncio"
+                          value={
+                            attribution.meta_ad_name ||
+                            attribution.headline ||
+                            (attribution.meta_ad_id
+                              ? `ID ${attribution.meta_ad_id}`
+                              : null)
+                          }
+                        />
+                      </div>
+                      {!attribution.meta_marketing_resolved_at && (
+                        <p className="text-muted-foreground mt-2 text-[10px]">
+                          Dados da campanha aguardando consulta no Meta Ads.
+                        </p>
+                      )}
+                      {attribution.source_id && (
+                        <p
+                          className="text-muted-foreground mt-2 truncate text-[10px]"
+                          title={attribution.source_id}
                         >
-                          {attribution.headline ||
-                            `Anúncio ${attribution.source_id}`}
+                          ID de origem: {attribution.source_id}
                         </p>
                       )}
                       {attribution.ctwa_clid && (
