@@ -120,12 +120,12 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
         aria-label="Principal"
       >
         {/* The active CRM account is the sidebar's primary identity.
-            OrganiZAP remains subtly present in the user footer below. */}
+            The product mark remains subtly present in the user footer below. */}
         <div className={cn("flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border", collapsed ? "px-3" : "px-4")}>
           <Link
             href="/settings?tab=company"
             className="flex min-w-0 items-center gap-2"
-            title={collapsed ? account?.name ?? "OrganiZAP" : undefined}
+            title={collapsed ? account?.name ?? "Você Digital CRM" : undefined}
           >
             {account?.logo_url ? (
               <Avatar className="size-7 shrink-0 rounded-md">
@@ -144,7 +144,7 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
               <OrganiZAPLogo size="sm" compact priority />
             )}
             <span className={cn("truncate text-sm font-semibold text-foreground", collapsed && "lg:hidden")}>
-              {account?.name ?? "OrganiZAP"}
+              {account?.name ?? "Você Digital CRM"}
             </span>
           </Link>
           <button
@@ -252,7 +252,7 @@ export function Sidebar({ open = false, onClose, collapsed = false, onToggleColl
           <Link
             href="/dashboard"
             className={cn("mb-2 flex items-center gap-2 px-2 text-muted-foreground", collapsed && "lg:justify-center lg:px-0")}
-            title={collapsed ? "OrganiZAP" : undefined}
+            title={collapsed ? "Você Digital CRM" : undefined}
           >
             <OrganiZAPLogo size="sm" compact={collapsed} />
           </Link>

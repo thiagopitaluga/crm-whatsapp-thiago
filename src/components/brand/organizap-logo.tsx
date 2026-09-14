@@ -16,7 +16,7 @@ const sizeClasses = {
   lg: { mark: "size-10", text: "text-2xl" },
 };
 
-/** The consistent product mark used across OrganiZAP-owned screens and navigation. */
+/** The consistent product mark used across product screens and navigation. */
 export function OrganiZAPLogo({
   className,
   priority = false,
@@ -27,7 +27,7 @@ export function OrganiZAPLogo({
   const classes = sizeClasses[size];
 
   return (
-    <div aria-label="OrganiZAP" className={cn("flex shrink-0 items-center gap-2.5", className)}>
+    <div aria-label="Você Digital CRM" className={cn("flex shrink-0 items-center gap-2.5", className)}>
       <span className={cn("relative shrink-0", classes.mark)}>
         <Image
           src="/organizap-mark.png"
@@ -39,8 +39,8 @@ export function OrganiZAPLogo({
         />
       </span>
       <span className={cn("font-bold leading-none tracking-[-0.055em]", classes.text, compact && "sr-only")}>
-        <span className={onDark ? "text-white" : "text-foreground"}>Organi</span>
-        <span className="text-[#15AC5A]">ZAP</span>
+        <span className={onDark ? "text-white" : "text-foreground"}>Você Digital</span>
+        <span className="text-[#6d3df5]"> CRM</span>
       </span>
     </div>
   );

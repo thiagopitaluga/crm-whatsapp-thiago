@@ -22,8 +22,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "OrganiZAP",
-    template: "%s — OrganiZAP",
+    default: "Você Digital CRM",
+    template: "%s — Você Digital CRM",
   },
   description: "CRM para atendimento, vendas e automação pelo WhatsApp.",
   robots: {
