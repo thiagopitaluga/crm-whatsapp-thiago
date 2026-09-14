@@ -19,6 +19,24 @@ export interface IngestLeadResult {
   dealId: string | null;
 }
 
+export type ExternalMessageContentType =
+  | 'text'
+  | 'image'
+  | 'document'
+  | 'audio'
+  | 'video'
+  | 'location'
+  | 'interactive';
+
+export interface IngestExternalWhatsAppMessageInput extends IngestLeadInput {
+  direction: 'inbound' | 'outbound';
+  /** Stable provider id, used to make connector retries idempotent. */
+  messageId: string;
+  contentText: string;
+  contentType: ExternalMessageContentType;
+  createdAt?: string | null;
+}
+
 /**
  * Create the minimum CRM footprint for an incoming lead.
  *
@@ -43,7 +61,13 @@ export async function ingestLead(
   );
 
   const dealId = contact.created
-    ? await createDefaultDeal(db, accountId, auditUserId, contact.id, input.name)
+    ? await createDefaultDeal(
+        db,
+        accountId,
+        auditUserId,
+        contact.id,
+        input.name
+      )
     : null;
 
   return {
@@ -101,6 +125,116 @@ export async function updateExistingLeadConversation(
   return true;
 }
 
+/**
+ * Persist one event received from a trusted WhatsApp connector.
+ *
+ * The QR connector originally sent only the conversation preview.  Keeping
+ * its provider message id here gives it the same durable, idempotent message
+ * history as the official Cloud API webhook, without creating contacts from
+ * outbound messages.
+ */
+export async function ingestExternalWhatsAppMessage(
+  db: SupabaseClient,
+  accountId: string,
+  input: IngestExternalWhatsAppMessageInput
+): Promise<IngestLeadResult | null> {
+  const messageId = input.messageId.trim().slice(0, 500);
+  const contentText = normalizeMessageContent(input.contentText);
+  if (!messageId || !contentText) {
+    throw new Error('messageId and contentText are required');
+  }
+
+  let result: IngestLeadResult;
+  if (input.direction === 'inbound') {
+    // The message row, rather than the lead creation helper, owns the latest
+    // message state so the event timestamp and idempotency boundary stay in
+    // one place.
+    result = await ingestLead(db, accountId, {
+      phone: input.phone,
+      name: input.name,
+    });
+  } else {
+    const sanitizedPhone = sanitizePhoneForMeta(input.phone);
+    if (!isValidE164(sanitizedPhone)) {
+      throw new Error('Invalid phone number');
+    }
+    const contact = await findExistingContact(db, accountId, sanitizedPhone);
+    if (!contact) return null;
+    const conversationId = await findExistingConversation(
+      db,
+      accountId,
+      contact.id
+    );
+    if (!conversationId) return null;
+    result = {
+      contactId: contact.id,
+      contactCreated: false,
+      conversationId,
+      dealId: null,
+    };
+  }
+
+  const createdAt = normalizeMessageTimestamp(input.createdAt);
+  const { data: insertedRows, error: insertError } = await db
+    .from('messages')
+    .upsert(
+      {
+        conversation_id: result.conversationId,
+        sender_type: input.direction === 'inbound' ? 'customer' : 'agent',
+        content_type: input.contentType,
+        content_text: contentText,
+        message_id: messageId,
+        status: input.direction === 'inbound' ? 'delivered' : 'sent',
+        created_at: createdAt,
+      },
+      { onConflict: 'conversation_id,message_id', ignoreDuplicates: true }
+    )
+    .select('id');
+  if (insertError) throw new Error('Failed to store WhatsApp message');
+
+  // A connector can replay events after reconnecting. Only a freshly stored
+  // message may change the list preview or unread count.
+  if (insertedRows?.length) {
+    if (input.direction === 'inbound') {
+      const { error } = await db.rpc('bump_conversation_on_inbound', {
+        p_conversation_id: result.conversationId,
+        p_last_message_text: contentText,
+      });
+      if (error) throw new Error('Failed to update inbound conversation');
+    } else {
+      const { error } = await db
+        .from('conversations')
+        .update({
+          last_message_text: contentText,
+          last_message_at: createdAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', result.conversationId)
+        .eq('account_id', accountId);
+      if (error) throw new Error('Failed to update outbound conversation');
+    }
+  }
+
+  return result;
+}
+
+async function findExistingConversation(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string
+): Promise<string | null> {
+  const { data, error } = await db
+    .from('conversations')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error('Failed to find the lead conversation');
+  return data?.id ?? null;
+}
+
 async function findOrCreateConversation(
   db: SupabaseClient,
   accountId: string,
@@ -130,7 +264,8 @@ async function findOrCreateConversation(
         })
         .eq('id', existing[0].id)
         .eq('account_id', accountId);
-      if (updateError) throw new Error('Failed to update the lead conversation');
+      if (updateError)
+        throw new Error('Failed to update the lead conversation');
     }
     return existing[0].id as string;
   }
@@ -166,6 +301,19 @@ async function findOrCreateConversation(
 function normalizeMessagePreview(value?: string | null): string | null {
   const preview = value?.replace(/\s+/g, ' ').trim().slice(0, 500);
   return preview || null;
+}
+
+function normalizeMessageContent(value: string): string | null {
+  const content = value.replace(/\0/g, '').trim().slice(0, 20_000);
+  return content || null;
+}
+
+function normalizeMessageTimestamp(value?: string | null): string {
+  if (value) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return new Date().toISOString();
 }
 
 async function createDefaultDeal(

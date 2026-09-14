@@ -2,7 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 import { ContactError } from '@/lib/api/v1/contacts';
-import { ingestLead, updateExistingLeadConversation } from '@/lib/leads/ingest';
+import {
+  ingestExternalWhatsAppMessage,
+  ingestLead,
+  type ExternalMessageContentType,
+  updateExistingLeadConversation,
+} from '@/lib/leads/ingest';
 import { isValidQrConnectorSecret } from '@/lib/whatsapp/qr-connector';
 
 export const runtime = 'nodejs';
@@ -25,6 +30,15 @@ export async function POST(request: Request) {
       ? body.last_message_preview
       : null;
   const direction = body?.direction === 'outbound' ? 'outbound' : 'inbound';
+  const messageId =
+    typeof body?.message_id === 'string' ? body.message_id.trim() : '';
+  const contentText =
+    typeof body?.content_text === 'string' ? body.content_text : null;
+  const contentType = asContentType(body?.content_type);
+  const messageCreatedAt =
+    typeof body?.message_created_at === 'string'
+      ? body.message_created_at
+      : null;
 
   if (!/^[0-9a-f-]{36}$/i.test(accountId) || !phone) {
     return NextResponse.json(
@@ -47,11 +61,32 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (direction === 'outbound') {
-      const updated = await updateExistingLeadConversation(supabase, accountId, {
+    if (messageId && contentText && contentType) {
+      const result = await ingestExternalWhatsAppMessage(supabase, accountId, {
         phone,
-        lastMessagePreview,
+        name,
+        direction,
+        messageId,
+        contentText,
+        contentType,
+        createdAt: messageCreatedAt,
       });
+      return NextResponse.json({
+        stored: Boolean(result),
+        contact_id: result?.contactId ?? null,
+        conversation_id: result?.conversationId ?? null,
+      });
+    }
+
+    if (direction === 'outbound') {
+      const updated = await updateExistingLeadConversation(
+        supabase,
+        accountId,
+        {
+          phone,
+          lastMessagePreview,
+        }
+      );
       return NextResponse.json({ updated });
     }
 
@@ -82,4 +117,19 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+function asContentType(value: unknown): ExternalMessageContentType | null {
+  return typeof value === 'string' &&
+    [
+      'text',
+      'image',
+      'document',
+      'audio',
+      'video',
+      'location',
+      'interactive',
+    ].includes(value)
+    ? (value as ExternalMessageContentType)
+    : null;
 }

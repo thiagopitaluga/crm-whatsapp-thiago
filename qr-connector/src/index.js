@@ -461,11 +461,13 @@ async function ingestMessage(accountId, message, session) {
   // JID. Baileys v7 exposes the matching phone-number JID in remoteJidAlt.
   // Prefer it, so a new lead is always created with a usable WhatsApp number.
   const alternateJid = message.key.remoteJidAlt;
-  const jid = [remoteJid, alternateJid].find((candidate) =>
-    candidate?.endsWith('@s.whatsapp.net')
-  ) ?? (remoteJid?.endsWith('@lid')
-    ? session.phoneJidsByLid.get(remoteJid)
-    : remoteJid);
+  const jid =
+    [remoteJid, alternateJid].find((candidate) =>
+      candidate?.endsWith('@s.whatsapp.net')
+    ) ??
+    (remoteJid?.endsWith('@lid')
+      ? session.phoneJidsByLid.get(remoteJid)
+      : remoteJid);
   if (
     !jid ||
     jid.endsWith('@g.us') ||
@@ -488,25 +490,58 @@ async function ingestMessage(accountId, message, session) {
   // WhatsApp does not reliably include the recipient name on a message sent
   // from this account. Outbound events only update existing CRM contacts, so
   // there is no need to infer or overwrite a name here.
-  const name = direction === 'inbound' ? message.pushName?.trim() || null : null;
-  const lastMessagePreview = getMessagePreview(message);
+  const name =
+    direction === 'inbound' ? message.pushName?.trim() || null : null;
+  const messageContent = getMessageContent(message);
 
-  await sendLeadToCrm(accountId, phone, name, lastMessagePreview, direction);
+  await sendLeadToCrm(
+    accountId,
+    phone,
+    name,
+    messageContent.preview,
+    direction,
+    {
+      messageId: message.key.id,
+      contentText: messageContent.text,
+      contentType: messageContent.type,
+      createdAt: toIsoTimestamp(message.messageTimestamp),
+    }
+  );
 }
 
-function getMessagePreview(message) {
+function getMessageContent(message) {
   const content = message.message || {};
   const text = content.conversation || content.extendedTextMessage?.text;
-  if (typeof text === 'string' && text.trim()) return text.trim();
-  if (content.imageMessage) return content.imageMessage.caption?.trim() || '[Imagem]';
-  if (content.videoMessage) return content.videoMessage.caption?.trim() || '[Vídeo]';
+  if (typeof text === 'string' && text.trim()) {
+    return { preview: text.trim(), text: text.trim(), type: 'text' };
+  }
+  if (content.imageMessage) {
+    const text = content.imageMessage.caption?.trim() || '[Imagem]';
+    return { preview: text, text, type: 'image' };
+  }
+  if (content.videoMessage) {
+    const text = content.videoMessage.caption?.trim() || '[Vídeo]';
+    return { preview: text, text, type: 'video' };
+  }
   if (content.documentMessage)
-    return content.documentMessage.fileName?.trim() || '[Documento]';
-  if (content.audioMessage) return '[Áudio]';
-  if (content.stickerMessage) return '[Figurinha]';
-  if (content.locationMessage) return '[Localização]';
-  if (content.contactMessage) return '[Contato]';
-  return '[Mensagem]';
+    return {
+      preview: content.documentMessage.fileName?.trim() || '[Documento]',
+      text: content.documentMessage.fileName?.trim() || '[Documento]',
+      type: 'document',
+    };
+  if (content.audioMessage)
+    return { preview: '[Áudio]', text: '[Áudio]', type: 'audio' };
+  if (content.stickerMessage)
+    return { preview: '[Figurinha]', text: '[Figurinha]', type: 'image' };
+  if (content.locationMessage)
+    return {
+      preview: '[Localização]',
+      text: '[Localização]',
+      type: 'location',
+    };
+  if (content.contactMessage)
+    return { preview: '[Contato]', text: '[Contato]', type: 'text' };
+  return { preview: '[Mensagem]', text: '[Mensagem]', type: 'text' };
 }
 
 async function sendLeadToCrm(
@@ -514,7 +549,8 @@ async function sendLeadToCrm(
   phone,
   name,
   lastMessagePreview = null,
-  direction = 'inbound'
+  direction = 'inbound',
+  message = null
 ) {
   const endpoint = crmConnectorSecret
     ? `${crmBaseUrl}/api/internal/qr-ingest`
@@ -536,6 +572,14 @@ async function sendLeadToCrm(
         name,
         last_message_preview: lastMessagePreview,
         direction,
+        ...(message?.messageId && message?.contentText && message?.contentType
+          ? {
+              message_id: message.messageId,
+              content_text: message.contentText,
+              content_type: message.contentType,
+              message_created_at: message.createdAt,
+            }
+          : {}),
       }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -552,6 +596,13 @@ async function sendLeadToCrm(
     console.error('[qr-connector] CRM ingest failed:', safeError(error));
     return false;
   }
+}
+
+function toIsoTimestamp(value) {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds > 0
+    ? new Date(seconds * 1000).toISOString()
+    : new Date().toISOString();
 }
 
 function authenticateConnectorRequest(req, res, next) {
