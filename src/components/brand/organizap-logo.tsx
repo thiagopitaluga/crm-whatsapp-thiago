@@ -11,9 +11,9 @@ interface OrganiZAPLogoProps {
 }
 
 const sizeClasses = {
-  sm: { mark: "size-6", text: "text-base" },
-  md: { mark: "size-8", text: "text-xl" },
-  lg: { mark: "size-10", text: "text-2xl" },
+  sm: "h-7 w-24",
+  md: "h-9 w-32",
+  lg: "h-12 w-44",
 };
 
 /** The consistent product mark used across product screens and navigation. */
@@ -24,24 +24,38 @@ export function OrganiZAPLogo({
   onDark = false,
   compact = false,
 }: OrganiZAPLogoProps) {
-  const classes = sizeClasses[size];
-
   return (
-    <div aria-label="Você Digital CRM" className={cn("flex shrink-0 items-center gap-2.5", className)}>
-      <span className={cn("relative shrink-0", classes.mark)}>
-        <Image
-          src="/organizap-mark.png"
-          alt=""
-          fill
-          priority={priority}
-          sizes="40px"
-          className="object-contain"
-        />
-      </span>
-      <span className={cn("font-bold leading-none tracking-[-0.055em]", classes.text, compact && "sr-only")}>
-        <span className={onDark ? "text-white" : "text-foreground"}>Você Digital</span>
-        <span className="text-[#6d3df5]"> CRM</span>
-      </span>
+    <div
+      aria-label="Você Digital CRM"
+      className={cn(
+        "flex shrink-0 items-center",
+        onDark && "rounded-md bg-white/95 px-2 py-1",
+        className,
+      )}
+    >
+      {compact ? (
+        <span className="relative size-6 shrink-0">
+          <Image
+            src="/organizap-mark.png"
+            alt="Você Digital CRM"
+            fill
+            priority={priority}
+            sizes="24px"
+            className="object-contain"
+          />
+        </span>
+      ) : (
+        <span className={cn("relative shrink-0", sizeClasses[size])}>
+          <Image
+            src="/voce-digital-crm-logo-cropped.png"
+            alt="Você Digital CRM"
+            fill
+            priority={priority}
+            sizes={size === "lg" ? "176px" : size === "md" ? "128px" : "96px"}
+            className="object-contain"
+          />
+        </span>
+      )}
     </div>
   );
 }
