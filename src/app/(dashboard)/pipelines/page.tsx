@@ -935,7 +935,7 @@ export default function PipelinesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1006,7 +1006,7 @@ export default function PipelinesPage() {
 
       {/* Board */}
       {pipelines.length > 0 && (
-        <div className="border-border bg-card/60 flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center">
+        <div className="border-border bg-card/60 flex flex-col gap-2 rounded-xl border p-3 lg:absolute lg:top-0 lg:right-[216px] lg:left-[168px] lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
             <Input

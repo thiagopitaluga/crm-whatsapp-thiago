@@ -161,7 +161,7 @@ export function PipelineBoard({
           of the Kanban; each column scrolls its own cards vertically. */}
       <div
         ref={setBoardScrollElement}
-        className="pipeline-scroll flex h-[var(--pipeline-board-height)] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden pb-1 lg:snap-none"
+        className="pipeline-scroll flex h-[var(--pipeline-board-height)] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden lg:snap-none"
       >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
