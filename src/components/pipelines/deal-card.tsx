@@ -213,7 +213,6 @@ export function DealCard({
               className="ml-auto truncate text-[10px]"
               title={`Criado em ${new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}`}
             >
-              Criado em:{' '}
               {new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}
             </span>
           ) : null}

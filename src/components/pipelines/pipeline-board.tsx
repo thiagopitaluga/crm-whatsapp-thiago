@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -13,14 +13,21 @@ import {
   closestCorners,
   type DragEndEvent,
   type DragStartEvent,
-} from "@dnd-kit/core";
-import type { Deal, DealStatus, PipelineCardLayout, PipelineStage, Profile, Tag } from "@/types";
-import { DealCard } from "./deal-card";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
-import { formatCurrency } from "@/lib/currency";
-import { useTranslations } from "next-intl";
+} from '@dnd-kit/core';
+import type {
+  Deal,
+  DealStatus,
+  PipelineCardLayout,
+  PipelineStage,
+  Profile,
+  Tag,
+} from '@/types';
+import { DealCard } from './deal-card';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+import { formatCurrency } from '@/lib/currency';
+import { useTranslations } from 'next-intl';
 
 interface PipelineBoardProps {
   stages: PipelineStage[];
@@ -59,10 +66,18 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
+  const stickyScrollRef = useRef<HTMLDivElement>(null);
+  const [stickyScroll, setStickyScroll] = useState({
+    visible: false,
+    width: 0,
+    left: 0,
+    contentWidth: 0,
+  });
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
-    [stages],
+    [stages]
   );
 
   const dealsByStage = useMemo(() => {
@@ -80,12 +95,65 @@ export function PipelineBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     // Keyboard drag support: focus a card, Space to pick up, arrows to move,
     // Space to drop, Escape to cancel.
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor)
   );
 
   const activeDeal = activeDealId
-    ? deals.find((d) => d.id === activeDealId) ?? null
+    ? (deals.find((d) => d.id === activeDealId) ?? null)
     : null;
+
+  // The board can be much taller than the viewport. A second, fixed native
+  // scrollbar mirrors the board so horizontal navigation remains available
+  // while the user is working on any card, not only at the board's bottom.
+  useEffect(() => {
+    const board = boardScrollRef.current;
+    if (!board) return;
+
+    const updateStickyScroll = () => {
+      const bounds = board.getBoundingClientRect();
+      setStickyScroll({
+        visible: board.scrollWidth > board.clientWidth + 1,
+        width: bounds.width,
+        left: bounds.left,
+        contentWidth: board.scrollWidth,
+      });
+    };
+    const syncFromBoard = () => {
+      const sticky = stickyScrollRef.current;
+      if (sticky && sticky.scrollLeft !== board.scrollLeft) {
+        sticky.scrollLeft = board.scrollLeft;
+      }
+    };
+
+    updateStickyScroll();
+    syncFromBoard();
+    board.addEventListener('scroll', syncFromBoard, { passive: true });
+    window.addEventListener('resize', updateStickyScroll);
+    const observer = new ResizeObserver(updateStickyScroll);
+    observer.observe(board);
+
+    return () => {
+      board.removeEventListener('scroll', syncFromBoard);
+      window.removeEventListener('resize', updateStickyScroll);
+      observer.disconnect();
+    };
+  }, [sortedStages.length, deals.length]);
+
+  // The proxy is rendered after the first measurement. Preserve a browser
+  // restored (or already dragged) board position when it appears.
+  useEffect(() => {
+    const board = boardScrollRef.current;
+    const sticky = stickyScrollRef.current;
+    if (board && sticky) sticky.scrollLeft = board.scrollLeft;
+  }, [stickyScroll.visible, stickyScroll.contentWidth]);
+
+  function syncFromStickyScroll() {
+    const board = boardScrollRef.current;
+    const sticky = stickyScrollRef.current;
+    if (board && sticky && board.scrollLeft !== sticky.scrollLeft) {
+      board.scrollLeft = sticky.scrollLeft;
+    }
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
@@ -123,12 +191,15 @@ export function PipelineBoard({
           natural layout. The board can still overflow horizontally on
           lg+ once a pipeline has many stages (columns keep a 260px
           min-width), so a thin scrollbar stays visible on desktop. */}
-      <div className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none">
+      <div
+        ref={boardScrollRef}
+        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none"
+      >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(
             (s, d) => s + Number(d.value || 0),
-            0,
+            0
           );
           return (
             <StageColumn
@@ -156,10 +227,24 @@ export function PipelineBoard({
         })}
       </div>
 
+      {stickyScroll.visible && (
+        <div
+          ref={stickyScrollRef}
+          className="pipeline-sticky-scroll fixed bottom-3 z-40 overflow-x-auto"
+          style={{ left: stickyScroll.left, width: stickyScroll.width }}
+          onScroll={syncFromStickyScroll}
+          tabIndex={0}
+          role="region"
+          aria-label="Rolagem horizontal do Kanban"
+        >
+          <div style={{ width: stickyScroll.contentWidth, height: 1 }} />
+        </div>
+      )}
+
       <DragOverlay
         dropAnimation={{
           duration: 200,
-          easing: "cubic-bezier(0.2, 0, 0, 1)",
+          easing: 'cubic-bezier(0.2, 0, 0, 1)',
         }}
       >
         {activeDeal ? (
@@ -189,6 +274,25 @@ export function PipelineBoard({
       <style jsx>{`
         .pipeline-scroll {
           scroll-behavior: smooth;
+        }
+        .pipeline-sticky-scroll {
+          height: 16px;
+          scrollbar-width: thin;
+          scrollbar-color: var(--border) var(--card);
+        }
+        .pipeline-sticky-scroll::-webkit-scrollbar {
+          height: 12px;
+        }
+        .pipeline-sticky-scroll::-webkit-scrollbar-track {
+          background: var(--card);
+          border-radius: 9999px;
+        }
+        .pipeline-sticky-scroll::-webkit-scrollbar-thumb {
+          background-color: var(--muted-foreground);
+          border-radius: 9999px;
+        }
+        .pipeline-sticky-scroll::-webkit-scrollbar-thumb:hover {
+          background-color: var(--foreground);
         }
         /* On touch devices the peek/snap layout already signals there's
            more to swipe, so the scrollbar is hidden for a clean look.
@@ -267,7 +371,7 @@ function StageColumn({
   onMoveStage: (dealId: string, stageId: string) => Promise<void>;
   layout: PipelineCardLayout;
 }) {
-  const t = useTranslations("Pipelines.board");
+  const t = useTranslations('Pipelines.board');
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(stage.name);
@@ -289,7 +393,7 @@ function StageColumn({
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border border-border bg-card/60 p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
+    <div className="border-border bg-card/60 flex w-[85vw] max-w-[320px] min-w-[260px] shrink-0 snap-start flex-col rounded-xl border p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:shrink lg:basis-[260px] lg:snap-none">
       {/* 3px colored top border — sits above the column's padding */}
       <div
         className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
@@ -305,26 +409,29 @@ function StageColumn({
             onChange={(event) => setName(event.target.value)}
             onBlur={saveName}
             onKeyDown={(event) => {
-              if (event.key === "Enter") saveName();
-              if (event.key === "Escape") { setName(stage.name); setEditingName(false); }
+              if (event.key === 'Enter') saveName();
+              if (event.key === 'Escape') {
+                setName(stage.name);
+                setEditingName(false);
+              }
             }}
-            className="h-7 min-w-0 flex-1 rounded border border-primary bg-background px-2 text-sm font-semibold text-foreground outline-none"
+            className="border-primary bg-background text-foreground h-7 min-w-0 flex-1 rounded border px-2 text-sm font-semibold outline-none"
           />
         ) : (
           <button
             type="button"
             title="Editar nome da etapa"
             onClick={() => setEditingName(true)}
-            className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-foreground hover:text-primary"
+            className="text-foreground hover:text-primary min-w-0 flex-1 truncate text-left text-sm font-semibold"
           >
             {stage.name}
           </button>
         )}
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+        <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium">
           {deals.length}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         {formatCurrency(totalValue, currency)}
       </p>
 
@@ -332,23 +439,23 @@ function StageColumn({
         variant="ghost"
         size="sm"
         onClick={() => onAddDeal(stage.id)}
-        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
+        className="border-border text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground mt-3 w-full justify-start border border-dashed bg-transparent"
       >
         <Plus className="mr-1 h-3 w-3" />
-        {t("addDeal")}
+        {t('addDeal')}
       </Button>
 
       <div
         ref={setNodeRef}
         className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all ${
           isOver
-            ? "bg-primary/5 outline outline-2 outline-dashed outline-primary outline-offset-2"
-            : ""
+            ? 'bg-primary/5 outline-primary outline outline-2 outline-offset-2 outline-dashed'
+            : ''
         }`}
       >
         {deals.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-border py-10 text-xs text-muted-foreground">
-            {t("dropDealHere")}
+          <div className="border-border text-muted-foreground flex flex-1 items-center justify-center rounded-lg border-2 border-dashed py-10 text-xs">
+            {t('dropDealHere')}
           </div>
         ) : (
           deals.map((deal) => (
@@ -372,7 +479,6 @@ function StageColumn({
           ))
         )}
       </div>
-
     </div>
   );
 }
@@ -417,7 +523,7 @@ function DraggableDealCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
+      style={{ opacity: isDragging ? 0.3 : 1, touchAction: 'none' }}
     >
       <DealCard
         deal={deal}
