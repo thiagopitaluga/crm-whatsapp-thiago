@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -68,14 +68,8 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
-  const boardScrollRef = useRef<HTMLDivElement>(null);
-  const stickyScrollRef = useRef<HTMLDivElement>(null);
-  const [stickyScroll, setStickyScroll] = useState({
-    visible: false,
-    width: 0,
-    left: 0,
-    contentWidth: 0,
-  });
+  const [boardScrollElement, setBoardScrollElement] =
+    useState<HTMLDivElement | null>(null);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -104,58 +98,33 @@ export function PipelineBoard({
     ? (deals.find((d) => d.id === activeDealId) ?? null)
     : null;
 
-  // The board can be much taller than the viewport. A second, fixed native
-  // scrollbar mirrors the board so horizontal navigation remains available
-  // while the user is working on any card, not only at the board's bottom.
+  // Keep the board itself at the available viewport height. Each stage then
+  // owns its vertical list scroll, leaving the browser's native horizontal
+  // scrollbar permanently attached to the board's lower edge.
   useEffect(() => {
-    const board = boardScrollRef.current;
-    if (!board) return;
+    if (!boardScrollElement) return;
 
-    const updateStickyScroll = () => {
-      const bounds = board.getBoundingClientRect();
-      setStickyScroll({
-        visible: board.scrollWidth > board.clientWidth + 1,
-        width: bounds.width,
-        left: bounds.left,
-        contentWidth: board.scrollWidth,
-      });
-    };
-    const syncFromBoard = () => {
-      const sticky = stickyScrollRef.current;
-      if (sticky && sticky.scrollLeft !== board.scrollLeft) {
-        sticky.scrollLeft = board.scrollLeft;
-      }
+    const updateBoardHeight = () => {
+      const top = boardScrollElement.getBoundingClientRect().top;
+      const availableHeight = Math.max(280, window.innerHeight - top);
+      boardScrollElement.style.setProperty(
+        '--pipeline-board-height',
+        `${availableHeight}px`
+      );
     };
 
-    updateStickyScroll();
-    syncFromBoard();
-    board.addEventListener('scroll', syncFromBoard, { passive: true });
-    window.addEventListener('resize', updateStickyScroll);
-    const observer = new ResizeObserver(updateStickyScroll);
-    observer.observe(board);
+    updateBoardHeight();
+    window.addEventListener('resize', updateBoardHeight);
+    const observer = new ResizeObserver(updateBoardHeight);
+    if (boardScrollElement.parentElement) {
+      observer.observe(boardScrollElement.parentElement);
+    }
 
     return () => {
-      board.removeEventListener('scroll', syncFromBoard);
-      window.removeEventListener('resize', updateStickyScroll);
+      window.removeEventListener('resize', updateBoardHeight);
       observer.disconnect();
     };
-  }, [sortedStages.length, deals.length]);
-
-  // The proxy is rendered after the first measurement. Preserve a browser
-  // restored (or already dragged) board position when it appears.
-  useEffect(() => {
-    const board = boardScrollRef.current;
-    const sticky = stickyScrollRef.current;
-    if (board && sticky) sticky.scrollLeft = board.scrollLeft;
-  }, [stickyScroll.visible, stickyScroll.contentWidth]);
-
-  function syncFromStickyScroll() {
-    const board = boardScrollRef.current;
-    const sticky = stickyScrollRef.current;
-    if (board && sticky && board.scrollLeft !== sticky.scrollLeft) {
-      board.scrollLeft = sticky.scrollLeft;
-    }
-  }
+  }, [boardScrollElement, sortedStages.length, deals.length]);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
@@ -187,15 +156,12 @@ export function PipelineBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      {/* snap-x + snap-mandatory on mobile so swipes land the next
-          stage cleanly at the viewport edge instead of mid-column.
-          Disabled on lg+ where snapping would interfere with the
-          natural layout. The board can still overflow horizontally on
-          lg+ once a pipeline has many stages (columns keep a 260px
-          min-width), so a thin scrollbar stays visible on desktop. */}
+      {/* Horizontal scrolling belongs to this fixed-height board, rather than
+          to the page. Its native scrollbar is therefore always at the bottom
+          of the Kanban; each column scrolls its own cards vertically. */}
       <div
-        ref={boardScrollRef}
-        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none"
+        ref={setBoardScrollElement}
+        className="pipeline-scroll flex h-[var(--pipeline-board-height)] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden pb-1 lg:snap-none"
       >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
@@ -229,22 +195,6 @@ export function PipelineBoard({
           );
         })}
       </div>
-
-      {stickyScroll.visible && (
-        <div className="border-border bg-background/95 fixed inset-x-0 bottom-0 z-40 h-6 border-t backdrop-blur-sm">
-          <div
-            ref={stickyScrollRef}
-            className="pipeline-sticky-scroll absolute bottom-0 overflow-x-auto"
-            style={{ left: stickyScroll.left, width: stickyScroll.width }}
-            onScroll={syncFromStickyScroll}
-            tabIndex={0}
-            role="region"
-            aria-label="Rolagem horizontal do Kanban"
-          >
-            <div style={{ width: stickyScroll.contentWidth, height: 1 }} />
-          </div>
-        </div>
-      )}
 
       <DragOverlay
         dropAnimation={{
@@ -281,30 +231,11 @@ export function PipelineBoard({
         .pipeline-scroll {
           scroll-behavior: smooth;
         }
-        .pipeline-sticky-scroll {
-          height: 18px;
-          scrollbar-width: thin;
-          scrollbar-color: var(--border) var(--card);
-        }
-        .pipeline-sticky-scroll::-webkit-scrollbar {
-          height: 12px;
-        }
-        .pipeline-sticky-scroll::-webkit-scrollbar-track {
-          background: var(--card);
-          border-radius: 9999px;
-        }
-        .pipeline-sticky-scroll::-webkit-scrollbar-thumb {
-          background-color: var(--muted-foreground);
-          border-radius: 9999px;
-        }
-        .pipeline-sticky-scroll::-webkit-scrollbar-thumb:hover {
-          background-color: var(--foreground);
-        }
         /* On touch devices the peek/snap layout already signals there's
            more to swipe, so the scrollbar is hidden for a clean look.
            On desktop (mouse) the board can overflow with many stages
            and there is no peek hint, so keep a thin, themed scrollbar
-           visible to make the overflow discoverable and usable. */
+           visible at the board's bottom. */
         @media (hover: none), (pointer: coarse) {
           .pipeline-scroll::-webkit-scrollbar {
             height: 0;
@@ -401,7 +332,7 @@ function StageColumn({
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="border-border bg-card/60 flex w-[85vw] max-w-[320px] min-w-[260px] shrink-0 snap-start flex-col rounded-xl border p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:shrink lg:basis-[260px] lg:snap-none">
+    <div className="border-border bg-card/60 flex h-full min-h-0 w-[85vw] max-w-[320px] min-w-[260px] shrink-0 snap-start flex-col rounded-xl border p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:shrink lg:basis-[260px] lg:snap-none">
       {/* 3px colored top border — sits above the column's padding */}
       <div
         className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
@@ -455,7 +386,7 @@ function StageColumn({
 
       <div
         ref={setNodeRef}
-        className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all ${
+        className={`mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 transition-all ${
           isOver
             ? 'bg-primary/5 outline-primary outline outline-2 outline-offset-2 outline-dashed'
             : ''
