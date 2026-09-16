@@ -52,6 +52,8 @@ import {
   StickyNote,
   Tag as TagIcon,
   UserRound,
+  Check,
+  Minus,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
 import {
@@ -104,6 +106,43 @@ function nextDay(date: string) {
   const value = new Date(Date.UTC(year, month - 1, day));
   value.setUTCDate(value.getUTCDate() + 1);
   return value.toISOString().slice(0, 10);
+}
+
+function ContactSelectionCheckbox({
+  checked,
+  indeterminate = false,
+  disabled = false,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  disabled?: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  const active = checked || indeterminate;
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate ? 'mixed' : checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      className={`focus-visible:ring-primary inline-flex size-5 shrink-0 items-center justify-center rounded border-2 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+        active
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-muted-foreground/70 bg-background hover:border-primary text-transparent'
+      }`}
+    >
+      {indeterminate ? (
+        <Minus className="size-3.5" aria-hidden="true" />
+      ) : checked ? (
+        <Check className="size-3.5" aria-hidden="true" />
+      ) : null}
+    </button>
+  );
 }
 
 export default function ContactsPage() {
@@ -1077,13 +1116,12 @@ export default function ContactsPage() {
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="w-12 min-w-12 px-3">
-                <Checkbox
+                <ContactSelectionCheckbox
                   checked={allOnPageSelected}
                   indeterminate={!allOnPageSelected && someOnPageSelected}
-                  onCheckedChange={toggleSelectAll}
+                  onChange={toggleSelectAll}
                   disabled={contacts.length === 0}
-                  aria-label="Selecionar todos os contatos desta página"
-                  className="border-muted-foreground/70 hover:border-primary"
+                  label="Selecionar todos os contatos desta página"
                 />
               </TableHead>
               <TableHead className="text-muted-foreground">
@@ -1156,11 +1194,10 @@ export default function ContactsPage() {
                     className="w-12 min-w-12 px-3"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <Checkbox
+                    <ContactSelectionCheckbox
                       checked={selected.has(contact.id)}
-                      onCheckedChange={() => toggleSelect(contact.id)}
-                      aria-label={`Select ${contact.name || contact.phone}`}
-                      className="border-muted-foreground/70 hover:border-primary"
+                      onChange={() => toggleSelect(contact.id)}
+                      label={`Selecionar ${contact.name || contact.phone}`}
                     />
                   </TableCell>
                   <TableCell className="text-foreground font-medium">
@@ -1235,9 +1272,10 @@ export default function ContactsPage() {
                                   className="w-full max-w-48 text-xs"
                                   aria-label={t('moveContactStage')}
                                 >
-                                  <SelectValue
-                                    placeholder={t('stageUnavailable')}
-                                  />
+                                  <span className="min-w-0 flex-1 truncate text-left">
+                                    {currentStage?.name ??
+                                      t('stageUnavailable')}
+                                  </span>
                                 </SelectTrigger>
                                 <SelectContent>
                                   {pipelineStages.map((stage) => (
