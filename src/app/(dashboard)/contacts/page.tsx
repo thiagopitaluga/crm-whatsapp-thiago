@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag } from '@/types';
+import type { Contact, Profile, Tag, ContactTag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,13 +15,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -39,7 +32,6 @@ import {
   Search,
   Plus,
   Upload,
-  MoreHorizontal,
   Pencil,
   Trash2,
   Loader2,
@@ -49,11 +41,19 @@ import {
   SlidersHorizontal,
   Filter,
   X,
+  CalendarPlus,
+  StickyNote,
+  Tag as TagIcon,
+  UserRound,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
-import { ContactDetailView } from '@/components/contacts/contact-detail-view';
+import {
+  ContactDetailView,
+  type ContactDetailTab,
+} from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
+import { TaskForm } from '@/components/tasks/task-form';
 import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
@@ -63,6 +63,13 @@ const PAGE_SIZE = 25;
 
 interface ContactWithTags extends Contact {
   tags?: Tag[];
+}
+
+function nextDay(date: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
 }
 
 export default function ContactsPage() {
@@ -79,6 +86,8 @@ export default function ContactsPage() {
   const [totalCount, setTotalCount] = useState(0);
   // Tag filter — contacts shown must have ANY of these tags (OR).
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
 
   // Modals
   const [formOpen, setFormOpen] = useState(false);
@@ -161,6 +170,8 @@ export default function ContactsPage() {
         p_search: term || null,
         p_limit: PAGE_SIZE,
         p_offset: from,
+        p_created_from: createdFrom || null,
+        p_created_to: createdTo || null,
       });
       if (seq !== fetchSeq.current) return; // superseded by a newer fetch
       if (error) {
@@ -182,6 +193,14 @@ export default function ContactsPage() {
       if (term) {
         const like = `%${term}%`;
         query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
+      }
+
+      if (createdFrom) {
+        query = query.gte('created_at', `${createdFrom}T00:00:00.000Z`);
+      }
+
+      if (createdTo) {
+        query = query.lt('created_at', `${nextDay(createdTo)}T00:00:00.000Z`);
       }
 
       const { data, count: exactCount, error } = await query;
@@ -226,7 +245,7 @@ export default function ContactsPage() {
 
     setContacts(enriched);
     setLoading(false);
-  }, [accountId, supabase, page, search, selectedTagIds, tagsMap, t]);
+  }, [accountId, supabase, page, search, selectedTagIds, createdFrom, createdTo, tagsMap, t]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not
@@ -342,7 +361,13 @@ export default function ContactsPage() {
   const allTags = Object.values(tagsMap).sort((a, b) =>
     a.name.localeCompare(b.name)
   );
-  const hasActiveFilters = search.trim().length > 0 || selectedTagIds.length > 0;
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    selectedTagIds.length > 0 ||
+    Boolean(createdFrom) ||
+    Boolean(createdTo);
+  const activeFilterCount =
+    selectedTagIds.length + Number(Boolean(createdFrom)) + Number(Boolean(createdTo));
 
   function toggleTagFilter(tagId: string) {
     setSelectedTagIds((prev) =>
@@ -353,8 +378,10 @@ export default function ContactsPage() {
     setPage(0);
   }
 
-  function clearTagFilters() {
+  function clearFilters() {
     setSelectedTagIds([]);
+    setCreatedFrom('');
+    setCreatedTo('');
     setPage(0);
   }
 
@@ -401,7 +428,7 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* Search + tag filter */}
+      {/* Search + filters */}
       <div className="space-y-2">
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative w-full max-w-sm">
@@ -429,60 +456,103 @@ export default function ContactsPage() {
               }
             >
               <Filter className="size-4" />
-              {t('filterByTags')}
-              {selectedTagIds.length > 0 && (
+              {t('filters')}
+              {activeFilterCount > 0 && (
                 <span className="ml-1 inline-flex items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
-                  {selectedTagIds.length}
+                  {activeFilterCount}
                 </span>
               )}
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64 p-0">
               <div className="flex items-center justify-between px-3 py-2 border-b border-border">
                 <span className="text-sm font-medium text-popover-foreground">
-                  {t('filterByTags')}
+                  {t('filters')}
                 </span>
-                {selectedTagIds.length > 0 && (
+                {activeFilterCount > 0 && (
                   <button
-                    onClick={clearTagFilters}
+                    onClick={clearFilters}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
                     {t('clearAll')}
                   </button>
                 )}
               </div>
-              {allTags.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-muted-foreground text-center">
-                  {t('noTagsYet')}
-                </p>
-              ) : (
-                <div className="max-h-64 overflow-y-auto py-1">
-                  {allTags.map((tag) => (
-                    <label
-                      key={tag.id}
-                      className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-muted/50"
-                    >
-                      <Checkbox
-                        checked={selectedTagIds.includes(tag.id)}
-                        onCheckedChange={() => toggleTagFilter(tag.id)}
-                        aria-label={`Filter by ${tag.name}`}
+              <div className="space-y-3 p-3">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t('createdDate')}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="space-y-1">
+                      <span className="text-xs text-muted-foreground">{t('createdFrom')}</span>
+                      <Input
+                        type="date"
+                        value={createdFrom}
+                        max={createdTo || undefined}
+                        onChange={(event) => {
+                          setCreatedFrom(event.target.value);
+                          setPage(0);
+                        }}
+                        aria-label={t('createdFrom')}
+                        className="h-9 text-xs"
                       />
-                      <span
-                        className="size-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: tag.color }}
-                      />
-                      <span className="text-sm text-popover-foreground truncate">
-                        {tag.name}
-                      </span>
                     </label>
-                  ))}
+                    <label className="space-y-1">
+                      <span className="text-xs text-muted-foreground">{t('createdTo')}</span>
+                      <Input
+                        type="date"
+                        value={createdTo}
+                        min={createdFrom || undefined}
+                        onChange={(event) => {
+                          setCreatedTo(event.target.value);
+                          setPage(0);
+                        }}
+                        aria-label={t('createdTo')}
+                        className="h-9 text-xs"
+                      />
+                    </label>
+                  </div>
                 </div>
-              )}
+
+                <div className="border-t border-border pt-3">
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">
+                    {t('filterByTags')}
+                  </p>
+                  {allTags.length === 0 ? (
+                    <p className="py-2 text-sm text-muted-foreground text-center">
+                      {t('noTagsYet')}
+                    </p>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto -mx-1 py-1">
+                      {allTags.map((tag) => (
+                        <label
+                          key={tag.id}
+                          className="flex items-center gap-2.5 px-1 py-1.5 cursor-pointer hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            checked={selectedTagIds.includes(tag.id)}
+                            onCheckedChange={() => toggleTagFilter(tag.id)}
+                            aria-label={`Filter by ${tag.name}`}
+                          />
+                          <span
+                            className="size-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: tag.color }}
+                          />
+                          <span className="text-sm text-popover-foreground truncate">
+                            {tag.name}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         </div>
 
-        {/* Active tag-filter chips */}
-        {selectedTagIds.length > 0 && (
+        {/* Active filter chips */}
+        {(selectedTagIds.length > 0 || createdFrom || createdTo) && (
           <div className="flex flex-wrap items-center gap-1.5">
             {selectedTagIds.map((id) => {
               const tag = tagsMap[id];
@@ -507,8 +577,38 @@ export default function ContactsPage() {
                 </span>
               );
             })}
+            {createdFrom && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {t('createdFrom')}: {createdFrom}
+                <button
+                  onClick={() => {
+                    setCreatedFrom('');
+                    setPage(0);
+                  }}
+                  aria-label={t('clearCreatedFrom')}
+                  className="hover:opacity-70"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            )}
+            {createdTo && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {t('createdTo')}: {createdTo}
+                <button
+                  onClick={() => {
+                    setCreatedTo('');
+                    setPage(0);
+                  }}
+                  aria-label={t('clearCreatedTo')}
+                  className="hover:opacity-70"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            )}
             <button
-              onClick={clearTagFilters}
+              onClick={clearFilters}
               className="text-xs text-muted-foreground hover:text-foreground px-1"
             >
               {t('clearAll')}
