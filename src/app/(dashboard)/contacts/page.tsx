@@ -838,6 +838,41 @@ export default function ContactsPage() {
             />
           </div>
 
+          <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[18.5rem]">
+            <label className="space-y-1">
+              <span className="text-muted-foreground text-xs">
+                {t('createdFrom')}
+              </span>
+              <Input
+                type="date"
+                value={createdFrom}
+                max={createdTo || undefined}
+                onChange={(event) => {
+                  setCreatedFrom(event.target.value);
+                  setPage(0);
+                }}
+                aria-label={t('createdFrom')}
+                className="h-9 text-xs"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-muted-foreground text-xs">
+                {t('createdTo')}
+              </span>
+              <Input
+                type="date"
+                value={createdTo}
+                min={createdFrom || undefined}
+                onChange={(event) => {
+                  setCreatedTo(event.target.value);
+                  setPage(0);
+                }}
+                aria-label={t('createdTo')}
+                className="h-9 text-xs"
+              />
+            </label>
+          </div>
+
           <Popover>
             <PopoverTrigger
               render={
@@ -870,47 +905,7 @@ export default function ContactsPage() {
                 )}
               </div>
               <div className="space-y-3 p-3">
-                <div className="space-y-1.5">
-                  <p className="text-muted-foreground text-xs font-medium">
-                    {t('createdDate')}
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="space-y-1">
-                      <span className="text-muted-foreground text-xs">
-                        {t('createdFrom')}
-                      </span>
-                      <Input
-                        type="date"
-                        value={createdFrom}
-                        max={createdTo || undefined}
-                        onChange={(event) => {
-                          setCreatedFrom(event.target.value);
-                          setPage(0);
-                        }}
-                        aria-label={t('createdFrom')}
-                        className="h-9 text-xs"
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-muted-foreground text-xs">
-                        {t('createdTo')}
-                      </span>
-                      <Input
-                        type="date"
-                        value={createdTo}
-                        min={createdFrom || undefined}
-                        onChange={(event) => {
-                          setCreatedTo(event.target.value);
-                          setPage(0);
-                        }}
-                        aria-label={t('createdTo')}
-                        className="h-9 text-xs"
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="border-border border-t pt-3">
+                <div>
                   <p className="text-muted-foreground mb-1 text-xs font-medium">
                     {t('filterByTags')}
                   </p>
