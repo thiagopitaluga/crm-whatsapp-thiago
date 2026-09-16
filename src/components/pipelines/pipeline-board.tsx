@@ -106,14 +106,12 @@ export function PipelineBoard({
 
     const updateBoardHeight = () => {
       const top = boardScrollElement.getBoundingClientRect().top;
-      const dashboardMain = boardScrollElement.closest('main');
-      const bottom = dashboardMain
-        ? dashboardMain.getBoundingClientRect().bottom
-        : window.innerHeight;
-      // Main has an internal bottom gutter. Extend the board through that
-      // gutter so the native horizontal scrollbar sits at the real visual
-      // footer instead of leaving an empty strip underneath it.
-      const availableHeight = Math.max(280, bottom - top + 40);
+      // Use the viewport, not the dashboard content box. The latter includes
+      // its bottom padding, which created a visible gutter below the native
+      // scrollbar at some responsive widths.
+      const viewportHeight =
+        window.visualViewport?.height ?? window.innerHeight;
+      const availableHeight = Math.max(0, Math.floor(viewportHeight - top));
       boardScrollElement.style.setProperty(
         '--pipeline-board-height',
         `${availableHeight}px`
@@ -238,38 +236,22 @@ export function PipelineBoard({
         .pipeline-scroll {
           scroll-behavior: smooth;
         }
-        /* On touch devices the peek/snap layout already signals there's
-           more to swipe, so the scrollbar is hidden for a clean look.
-           On desktop (mouse) the board can overflow with many stages
-           and there is no peek hint, so keep a thin, themed scrollbar
-           visible at the board's bottom. */
-        @media (hover: none), (pointer: coarse) {
-          .pipeline-scroll::-webkit-scrollbar {
-            height: 0;
-            display: none;
-          }
-          .pipeline-scroll {
-            scrollbar-width: none;
-          }
+        .pipeline-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: var(--border) transparent;
         }
-        @media (hover: hover) and (pointer: fine) {
-          .pipeline-scroll {
-            scrollbar-width: thin;
-            scrollbar-color: var(--border) transparent;
-          }
-          .pipeline-scroll::-webkit-scrollbar {
-            height: 8px;
-          }
-          .pipeline-scroll::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .pipeline-scroll::-webkit-scrollbar-thumb {
-            background-color: var(--border);
-            border-radius: 9999px;
-          }
-          .pipeline-scroll::-webkit-scrollbar-thumb:hover {
-            background-color: var(--muted-foreground);
-          }
+        .pipeline-scroll::-webkit-scrollbar {
+          height: 8px;
+        }
+        .pipeline-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .pipeline-scroll::-webkit-scrollbar-thumb {
+          background-color: var(--border);
+          border-radius: 9999px;
+        }
+        .pipeline-scroll::-webkit-scrollbar-thumb:hover {
+          background-color: var(--muted-foreground);
         }
       `}</style>
     </DndContext>
