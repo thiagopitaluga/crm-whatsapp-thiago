@@ -82,7 +82,18 @@ interface ContactListDeal {
   stage_id: string;
   status: string | null;
   updated_at: string | null;
+  stage?: Pick<
+    PipelineStage,
+    'id' | 'pipeline_id' | 'name' | 'position'
+  > | null;
+  pipeline?: { id: string; name: string } | null;
 }
+
+type ContactListDealRow = Omit<ContactListDeal, 'stage' | 'pipeline'> & {
+  stage?: ContactListDeal['stage'] | NonNullable<ContactListDeal['stage']>[];
+  pipeline?:
+    ContactListDeal['pipeline'] | NonNullable<ContactListDeal['pipeline']>[];
+};
 
 interface StageOption extends PipelineStage {
   pipelineName: string;
@@ -345,7 +356,9 @@ export default function ContactsPage() {
           .in('contact_id', contactIds),
         supabase
           .from('deals')
-          .select('id, contact_id, pipeline_id, stage_id, status, updated_at')
+          .select(
+            'id, contact_id, pipeline_id, stage_id, status, updated_at, stage:pipeline_stages(id, pipeline_id, name, position), pipeline:pipelines(id, name)'
+          )
           .eq('account_id', accountId)
           .eq('status', 'open')
           .in('contact_id', contactIds)
@@ -369,10 +382,20 @@ export default function ContactsPage() {
     );
     const openDealsByContact: Record<string, ContactListDeal[]> = {};
     (dealsResult.data ?? []).forEach((deal) => {
-      if (!deal.contact_id) return;
-      const list = openDealsByContact[deal.contact_id] ?? [];
-      list.push(deal as ContactListDeal);
-      openDealsByContact[deal.contact_id] = list;
+      const row = deal as unknown as ContactListDealRow;
+      if (!row.contact_id) return;
+      const list = openDealsByContact[row.contact_id] ?? [];
+      list.push({
+        ...row,
+        // PostgREST returns an object for the many-to-one relation, while a
+        // missing relationship can be inferred as an array by TypeScript.
+        // Normalize both shapes before the UI reads the stage label.
+        stage: Array.isArray(row.stage) ? (row.stage[0] ?? null) : row.stage,
+        pipeline: Array.isArray(row.pipeline)
+          ? (row.pipeline[0] ?? null)
+          : row.pipeline,
+      });
+      openDealsByContact[row.contact_id] = list;
     });
 
     const enriched: ContactWithTags[] = contactRows.map((c) => ({
@@ -691,10 +714,13 @@ export default function ContactsPage() {
             contact.lastMessage ?? '',
             (contact.openDeals ?? [])
               .map((deal) => {
-                const stage = stageOptions.find(
+                const stageOption = stageOptions.find(
                   (item) => item.id === deal.stage_id
                 );
-                return stage ? `${stage.pipelineName}: ${stage.name}` : '';
+                const stage = stageOption ?? deal.stage;
+                return stage
+                  ? `${stageOption?.pipelineName ?? deal.pipeline?.name ?? t('unknownPipeline')}: ${stage.name}`
+                  : '';
               })
               .filter(Boolean)
               .join(' | '),
@@ -1055,13 +1081,14 @@ export default function ContactsPage() {
         <Table className="min-w-[980px]">
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="w-10">
+              <TableHead className="w-12 min-w-12 px-3">
                 <Checkbox
                   checked={allOnPageSelected}
                   indeterminate={!allOnPageSelected && someOnPageSelected}
                   onCheckedChange={toggleSelectAll}
                   disabled={contacts.length === 0}
                   aria-label="Selecionar todos os contatos desta página"
+                  className="border-muted-foreground/70 hover:border-primary"
                 />
               </TableHead>
               <TableHead className="text-muted-foreground">
@@ -1130,11 +1157,15 @@ export default function ContactsPage() {
                   className="border-border hover:bg-muted/50 cursor-pointer"
                   onClick={() => openDetail(contact.id)}
                 >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  <TableCell
+                    className="w-12 min-w-12 px-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Checkbox
                       checked={selected.has(contact.id)}
                       onCheckedChange={() => toggleSelect(contact.id)}
                       aria-label={`Select ${contact.name || contact.phone}`}
+                      className="border-muted-foreground/70 hover:border-primary"
                     />
                   </TableCell>
                   <TableCell className="text-foreground font-medium">
@@ -1159,18 +1190,36 @@ export default function ContactsPage() {
                     {contact.openDeals && contact.openDeals.length > 0 ? (
                       <div className="space-y-1.5">
                         {contact.openDeals.map((deal) => {
-                          const currentStage = stageOptions.find(
-                            (stage) => stage.id === deal.stage_id
-                          );
-                          const pipelineStages = stagesForPipeline(
+                          const currentStage =
+                            stageOptions.find(
+                              (stage) => stage.id === deal.stage_id
+                            ) ??
+                            (deal.stage
+                              ? {
+                                  ...deal.stage,
+                                  pipelineName: deal.pipeline?.name ?? '',
+                                }
+                              : undefined);
+                          const configuredStages = stagesForPipeline(
                             deal.pipeline_id
                           );
+                          // A list page can render before the shared stage
+                          // lookup returns. Keep the stage embedded with the
+                          // deal available as a label in that brief window
+                          // (and for legacy deals), never expose its UUID.
+                          const pipelineStages = currentStage
+                            ? configuredStages.some(
+                                (stage) => stage.id === currentStage.id
+                              )
+                              ? configuredStages
+                              : [currentStage, ...configuredStages]
+                            : configuredStages;
                           return (
                             <div key={deal.id} className="space-y-0.5">
                               {contact.openDeals &&
                                 contact.openDeals.length > 1 && (
                                   <p className="text-muted-foreground truncate text-[10px]">
-                                    {currentStage?.pipelineName ??
+                                    {currentStage?.pipelineName ||
                                       t('unknownPipeline')}
                                   </p>
                                 )}
