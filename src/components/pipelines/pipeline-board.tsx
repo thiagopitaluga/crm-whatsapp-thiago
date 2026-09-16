@@ -231,16 +231,18 @@ export function PipelineBoard({
       </div>
 
       {stickyScroll.visible && (
-        <div
-          ref={stickyScrollRef}
-          className="pipeline-sticky-scroll fixed bottom-0 z-40 overflow-x-auto"
-          style={{ left: stickyScroll.left, width: stickyScroll.width }}
-          onScroll={syncFromStickyScroll}
-          tabIndex={0}
-          role="region"
-          aria-label="Rolagem horizontal do Kanban"
-        >
-          <div style={{ width: stickyScroll.contentWidth, height: 1 }} />
+        <div className="border-border bg-background/95 fixed inset-x-0 bottom-0 z-40 h-6 border-t backdrop-blur-sm">
+          <div
+            ref={stickyScrollRef}
+            className="pipeline-sticky-scroll absolute bottom-0 overflow-x-auto"
+            style={{ left: stickyScroll.left, width: stickyScroll.width }}
+            onScroll={syncFromStickyScroll}
+            tabIndex={0}
+            role="region"
+            aria-label="Rolagem horizontal do Kanban"
+          >
+            <div style={{ width: stickyScroll.contentWidth, height: 1 }} />
+          </div>
         </div>
       )}
 
@@ -280,7 +282,7 @@ export function PipelineBoard({
           scroll-behavior: smooth;
         }
         .pipeline-sticky-scroll {
-          height: 16px;
+          height: 18px;
           scrollbar-width: thin;
           scrollbar-color: var(--border) var(--card);
         }
