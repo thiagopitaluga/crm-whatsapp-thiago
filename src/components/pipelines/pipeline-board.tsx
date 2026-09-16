@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -68,6 +68,7 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -95,6 +96,81 @@ export function PipelineBoard({
   const activeDeal = activeDealId
     ? (deals.find((d) => d.id === activeDealId) ?? null)
     : null;
+
+  // Lets users reveal stages without having to first drag the native scrollbar.
+  // The listener is restricted to the board's visible vertical area, so moving
+  // through controls above or below the Kanban cannot move its columns.
+  useEffect(() => {
+    const board = boardScrollRef.current;
+    if (!board) return;
+
+    const edgeThreshold = 56;
+    const maxSpeed = 22;
+    let velocity = 0;
+    let frame = 0;
+
+    const stop = () => {
+      velocity = 0;
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+    };
+
+    const tick = () => {
+      if (!velocity) return;
+
+      const previousScrollLeft = board.scrollLeft;
+      board.scrollLeft += velocity;
+      if (board.scrollLeft === previousScrollLeft) {
+        stop();
+        return;
+      }
+
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') return;
+
+      const bounds = board.getBoundingClientRect();
+      const isOverVisibleBoard =
+        event.clientY >= Math.max(0, bounds.top) &&
+        event.clientY <= Math.min(window.innerHeight, bounds.bottom);
+
+      if (!isOverVisibleBoard || board.scrollWidth <= board.clientWidth) {
+        stop();
+        return;
+      }
+
+      const fromLeft = event.clientX;
+      const fromRight = window.innerWidth - event.clientX;
+      if (fromLeft <= edgeThreshold) {
+        velocity = -maxSpeed * Math.max(0.25, 1 - fromLeft / edgeThreshold);
+      } else if (fromRight <= edgeThreshold) {
+        velocity = maxSpeed * Math.max(0.25, 1 - fromRight / edgeThreshold);
+      } else {
+        stop();
+        return;
+      }
+
+      if (!frame) frame = window.requestAnimationFrame(tick);
+    };
+
+    const handlePointerLeave = () => stop();
+    window.addEventListener('pointermove', handlePointerMove, {
+      passive: true,
+    });
+    window.addEventListener('blur', handlePointerLeave);
+    document.addEventListener('visibilitychange', handlePointerLeave);
+
+    return () => {
+      stop();
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('blur', handlePointerLeave);
+      document.removeEventListener('visibilitychange', handlePointerLeave);
+    };
+  }, [deals.length, sortedStages.length]);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
@@ -126,7 +202,10 @@ export function PipelineBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none">
+      <div
+        ref={boardScrollRef}
+        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none"
+      >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(
