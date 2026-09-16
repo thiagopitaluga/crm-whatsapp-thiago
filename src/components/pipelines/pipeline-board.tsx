@@ -105,7 +105,7 @@ export function PipelineBoard({
     if (!board) return;
 
     const edgeThreshold = 56;
-    const maxSpeed = 22;
+    const maxSpeed = 36;
     let velocity = 0;
     let frame = 0;
 
@@ -290,7 +290,7 @@ export function PipelineBoard({
         @media (hover: hover) and (pointer: fine) {
           .pipeline-scroll {
             scrollbar-width: thin;
-            scrollbar-color: var(--border) transparent;
+            scrollbar-color: transparent transparent;
           }
           .pipeline-scroll::-webkit-scrollbar {
             height: 8px;
@@ -299,11 +299,11 @@ export function PipelineBoard({
             background: transparent;
           }
           .pipeline-scroll::-webkit-scrollbar-thumb {
-            background-color: var(--border);
+            background-color: transparent;
             border-radius: 9999px;
           }
           .pipeline-scroll::-webkit-scrollbar-thumb:hover {
-            background-color: var(--muted-foreground);
+            background-color: transparent;
           }
         }
       `}</style>
