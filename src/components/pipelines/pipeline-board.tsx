@@ -106,7 +106,11 @@ export function PipelineBoard({
 
     const updateBoardHeight = () => {
       const top = boardScrollElement.getBoundingClientRect().top;
-      const availableHeight = Math.max(280, window.innerHeight - top);
+      const dashboardMain = boardScrollElement.closest('main');
+      const bottom = dashboardMain
+        ? dashboardMain.getBoundingClientRect().bottom
+        : window.innerHeight;
+      const availableHeight = Math.max(280, bottom - top);
       boardScrollElement.style.setProperty(
         '--pipeline-board-height',
         `${availableHeight}px`

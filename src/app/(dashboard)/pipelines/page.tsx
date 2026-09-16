@@ -941,7 +941,7 @@ export default function PipelinesPage() {
         <div className="flex items-center gap-3">
           {/* Pipeline selector dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="border-border bg-card text-foreground hover:bg-muted data-[popup-open]:bg-muted inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors">
+            <DropdownMenuTrigger className="border-border bg-card text-foreground hover:bg-muted data-[popup-open]:bg-muted inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm transition-colors">
               <Filter className="text-primary h-4 w-4" />
               <span className="font-semibold">
                 {selectedPipeline?.name ?? t('selectPipeline')}
@@ -995,7 +995,7 @@ export default function PipelinesPage() {
                 setCardLayoutDraft(selectedCardLayout);
                 setLayoutOpen(true);
               }}
-              className="border-border bg-card text-foreground hover:bg-muted"
+              className="border-border bg-card text-foreground hover:bg-muted h-10"
             >
               <SlidersHorizontal className="mr-1.5 size-4" />
               Editar layout do cartão
@@ -1006,7 +1006,7 @@ export default function PipelinesPage() {
 
       {/* Board */}
       {pipelines.length > 0 && (
-        <div className="border-border bg-card/60 flex flex-col gap-2 rounded-xl border p-3 lg:absolute lg:top-0 lg:right-[216px] lg:left-[168px] lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-2 lg:absolute lg:top-0 lg:right-[216px] lg:left-[168px] lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
             <Input
@@ -1014,7 +1014,7 @@ export default function PipelinesPage() {
               onChange={(event) => setLeadSearch(event.target.value)}
               placeholder={t('searchLeadsPlaceholder')}
               aria-label={t('searchLeads')}
-              className="border-border bg-muted text-foreground pl-9"
+              className="border-border bg-muted text-foreground h-10 pl-9"
             />
           </div>
           <Popover>
@@ -1022,7 +1022,7 @@ export default function PipelinesPage() {
               render={
                 <button
                   type="button"
-                  className="border-border bg-muted text-foreground hover:bg-accent inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium"
+                  className="border-border bg-muted text-foreground hover:bg-accent inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium"
                 />
               }
             >
