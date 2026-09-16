@@ -105,7 +105,7 @@ export function PipelineBoard({
     if (!board) return;
 
     const edgeThreshold = 56;
-    const maxSpeed = 36;
+    const maxSpeed = 72;
     let velocity = 0;
     let frame = 0;
 
@@ -273,38 +273,22 @@ export function PipelineBoard({
       <style jsx>{`
         .pipeline-scroll {
           scroll-behavior: smooth;
+          -ms-overflow-style: none;
+          scrollbar-width: none;
         }
-        /* On touch devices the peek/snap layout already signals there's
-           more to swipe, so the scrollbar is hidden for a clean look.
-           On desktop (mouse) the board can overflow with many stages
-           and there is no peek hint, so keep a thin native scrollbar. */
-        @media (hover: none), (pointer: coarse) {
-          .pipeline-scroll::-webkit-scrollbar {
-            height: 0;
-            display: none;
-          }
-          .pipeline-scroll {
-            scrollbar-width: none;
-          }
+        /* The board remains horizontally scrollable by touchpad, Shift+wheel,
+           dragging a card and screen-edge hover, but never renders a native
+           scrollbar track or thumb. */
+        .pipeline-scroll::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+          background: transparent;
         }
-        @media (hover: hover) and (pointer: fine) {
-          .pipeline-scroll {
-            scrollbar-width: thin;
-            scrollbar-color: transparent transparent;
-          }
-          .pipeline-scroll::-webkit-scrollbar {
-            height: 8px;
-          }
-          .pipeline-scroll::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .pipeline-scroll::-webkit-scrollbar-thumb {
-            background-color: transparent;
-            border-radius: 9999px;
-          }
-          .pipeline-scroll::-webkit-scrollbar-thumb:hover {
-            background-color: transparent;
-          }
+        .pipeline-scroll::-webkit-scrollbar-track,
+        .pipeline-scroll::-webkit-scrollbar-thumb,
+        .pipeline-scroll::-webkit-scrollbar-thumb:hover {
+          background: transparent;
         }
       `}</style>
     </DndContext>
