@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -68,8 +68,6 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
-  const [boardScrollElement, setBoardScrollElement] =
-    useState<HTMLDivElement | null>(null);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -97,39 +95,6 @@ export function PipelineBoard({
   const activeDeal = activeDealId
     ? (deals.find((d) => d.id === activeDealId) ?? null)
     : null;
-
-  // Keep the board itself at the available viewport height. Each stage then
-  // owns its vertical list scroll, leaving the browser's native horizontal
-  // scrollbar permanently attached to the board's lower edge.
-  useEffect(() => {
-    if (!boardScrollElement) return;
-
-    const updateBoardHeight = () => {
-      const top = boardScrollElement.getBoundingClientRect().top;
-      // Use the viewport, not the dashboard content box. The latter includes
-      // its bottom padding, which created a visible gutter below the native
-      // scrollbar at some responsive widths.
-      const viewportHeight =
-        window.visualViewport?.height ?? window.innerHeight;
-      const availableHeight = Math.max(0, Math.floor(viewportHeight - top));
-      boardScrollElement.style.setProperty(
-        '--pipeline-board-height',
-        `${availableHeight}px`
-      );
-    };
-
-    updateBoardHeight();
-    window.addEventListener('resize', updateBoardHeight);
-    const observer = new ResizeObserver(updateBoardHeight);
-    if (boardScrollElement.parentElement) {
-      observer.observe(boardScrollElement.parentElement);
-    }
-
-    return () => {
-      window.removeEventListener('resize', updateBoardHeight);
-      observer.disconnect();
-    };
-  }, [boardScrollElement, sortedStages.length, deals.length]);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
@@ -164,10 +129,7 @@ export function PipelineBoard({
       {/* Horizontal scrolling belongs to this fixed-height board, rather than
           to the page. Its native scrollbar is therefore always at the bottom
           of the Kanban; each column scrolls its own cards vertically. */}
-      <div
-        ref={setBoardScrollElement}
-        className="pipeline-scroll flex h-[var(--pipeline-board-height)] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden lg:snap-none"
-      >
+      <div className="pipeline-scroll flex h-full min-h-0 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden lg:snap-none">
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(
