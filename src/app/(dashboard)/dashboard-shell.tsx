@@ -61,6 +61,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           className={`flex-1 p-4 sm:p-6 ${
             isKanbanPage ? 'min-h-0 overflow-hidden' : 'overflow-y-auto'
           }`}
+          style={isKanbanPage ? { paddingBottom: '1px' } : undefined}
         >
           {/* Above every page: writes are being rejected and here's why.
               Renders nothing unless the account/role failed to resolve. */}
