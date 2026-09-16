@@ -935,7 +935,7 @@ export default function PipelinesPage() {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col gap-6">
+    <div className="relative space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1006,7 +1006,7 @@ export default function PipelinesPage() {
 
       {/* Board */}
       {pipelines.length > 0 && (
-        <div className="flex shrink-0 flex-col gap-2 lg:absolute lg:top-0 lg:right-[216px] lg:left-[168px] lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-2 lg:absolute lg:top-0 lg:right-[216px] lg:left-[168px] lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
             <Input
@@ -1237,7 +1237,7 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <div className="border-border bg-card/60 shrink-0 rounded-xl border">
+          <div className="border-border bg-card/60 rounded-xl border">
             <button
               type="button"
               onClick={() => setAnalyticsOpen((open) => !open)}
@@ -1257,29 +1257,27 @@ export default function PipelinesPage() {
               </div>
             )}
           </div>
-          <div className="min-h-0 flex-1">
-            <PipelineBoard
-              stages={stages}
-              deals={filteredDeals}
-              onDealMoved={handleDealMoved}
-              onRenameStage={handleRenameStage}
-              onAddDeal={handleAddDeal}
-              onEditDeal={handleEditDeal}
-              members={members}
-              onValueChange={handleQuickValue}
-              onStatusChange={handleQuickStatus}
-              onAddNote={(deal) => setQuickNoteDeal(deal)}
-              onScheduleTask={(deal) => setTaskDeal(deal)}
-              onAssign={handleQuickAssign}
-              tags={tags}
-              onToggleTag={handleToggleTag}
-              onCreateTag={(deal) => {
-                setNewTagName('');
-                setNewTagDeal(deal);
-              }}
-              cardLayout={selectedCardLayout}
-            />
-          </div>
+          <PipelineBoard
+            stages={stages}
+            deals={filteredDeals}
+            onDealMoved={handleDealMoved}
+            onRenameStage={handleRenameStage}
+            onAddDeal={handleAddDeal}
+            onEditDeal={handleEditDeal}
+            members={members}
+            onValueChange={handleQuickValue}
+            onStatusChange={handleQuickStatus}
+            onAddNote={(deal) => setQuickNoteDeal(deal)}
+            onScheduleTask={(deal) => setTaskDeal(deal)}
+            onAssign={handleQuickAssign}
+            tags={tags}
+            onToggleTag={handleToggleTag}
+            onCreateTag={(deal) => {
+              setNewTagName('');
+              setNewTagDeal(deal);
+            }}
+            cardLayout={selectedCardLayout}
+          />
         </>
       )}
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -48,6 +48,12 @@ interface PipelineBoardProps {
   cardLayout: PipelineCardLayout;
 }
 
+interface ScrollDockGeometry {
+  left: number;
+  width: number;
+  scrollWidth: number;
+}
+
 export function PipelineBoard({
   stages,
   deals,
@@ -68,6 +74,19 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const footerScrollRef = useRef<HTMLDivElement | null>(null);
+  const [boardMounted, setBoardMounted] = useState(false);
+  const [footerMounted, setFooterMounted] = useState(false);
+  const [scrollDock, setScrollDock] = useState<ScrollDockGeometry | null>(null);
+  const setBoardScrollRef = useCallback((node: HTMLDivElement | null) => {
+    boardScrollRef.current = node;
+    setBoardMounted(node !== null);
+  }, []);
+  const setFooterScrollRef = useCallback((node: HTMLDivElement | null) => {
+    footerScrollRef.current = node;
+    setFooterMounted(node !== null);
+  }, []);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -95,6 +114,107 @@ export function PipelineBoard({
   const activeDeal = activeDealId
     ? (deals.find((d) => d.id === activeDealId) ?? null)
     : null;
+
+  // Keep columns tall enough for useful vertical scrolling while the page
+  // itself remains scrollable.
+  useEffect(() => {
+    const boardScrollElement = boardScrollRef.current;
+    if (!boardScrollElement) return;
+
+    const updateBoardHeight = () => {
+      const top = boardScrollElement.getBoundingClientRect().top;
+      const dashboardMain = boardScrollElement.closest('main');
+      const bottom = dashboardMain
+        ? dashboardMain.getBoundingClientRect().bottom
+        : window.innerHeight;
+      const availableHeight = Math.max(280, bottom - top);
+      boardScrollElement.style.setProperty(
+        '--pipeline-board-height',
+        `${availableHeight}px`
+      );
+    };
+
+    updateBoardHeight();
+    window.addEventListener('resize', updateBoardHeight);
+    const observer = new ResizeObserver(updateBoardHeight);
+    if (boardScrollElement.parentElement) {
+      observer.observe(boardScrollElement.parentElement);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateBoardHeight);
+      observer.disconnect();
+    };
+  }, [boardMounted, sortedStages.length, deals.length]);
+
+  // Measure the board separately so the fixed dock can render before its own
+  // element exists.
+  useEffect(() => {
+    const boardScrollElement = boardScrollRef.current;
+    if (!boardScrollElement) return;
+
+    const updateDock = () => {
+      const rect = boardScrollElement.getBoundingClientRect();
+      const next = {
+        left: Math.round(rect.left),
+        width: Math.round(boardScrollElement.clientWidth),
+        scrollWidth: boardScrollElement.scrollWidth,
+      };
+      setScrollDock((current) =>
+        current &&
+        current.left === next.left &&
+        current.width === next.width &&
+        current.scrollWidth === next.scrollWidth
+          ? current
+          : next
+      );
+    };
+
+    const observer = new ResizeObserver(updateDock);
+    observer.observe(boardScrollElement);
+    window.addEventListener('resize', updateDock);
+    updateDock();
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateDock);
+    };
+  }, [boardMounted, sortedStages.length, deals.length]);
+
+  // The page keeps its normal vertical scroll. Mirror the board's horizontal
+  // position into a compact fixed footer so the stage switcher is reachable
+  // from the first viewport, regardless of how far the page was scrolled.
+  useEffect(() => {
+    const boardScrollElement = boardScrollRef.current;
+    const footerScrollElement = footerScrollRef.current;
+    if (!boardScrollElement || !footerScrollElement) return;
+
+    let syncing = false;
+    const syncFooter = () => {
+      if (syncing) return;
+      syncing = true;
+      footerScrollElement.scrollLeft = boardScrollElement.scrollLeft;
+      syncing = false;
+    };
+    const syncBoard = () => {
+      if (syncing) return;
+      syncing = true;
+      boardScrollElement.scrollLeft = footerScrollElement.scrollLeft;
+      syncing = false;
+    };
+    boardScrollElement.addEventListener('scroll', syncFooter, {
+      passive: true,
+    });
+    footerScrollElement.addEventListener('scroll', syncBoard, {
+      passive: true,
+    });
+    syncFooter();
+
+    return () => {
+      boardScrollElement.removeEventListener('scroll', syncFooter);
+      footerScrollElement.removeEventListener('scroll', syncBoard);
+    };
+  }, [boardMounted, footerMounted]);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
@@ -126,10 +246,10 @@ export function PipelineBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      {/* Horizontal scrolling belongs to this fixed-height board, rather than
-          to the page. Its native scrollbar is therefore always at the bottom
-          of the Kanban; each column scrolls its own cards vertically. */}
-      <div className="pipeline-scroll flex h-full min-h-0 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden lg:snap-none">
+      <div
+        ref={setBoardScrollRef}
+        className="pipeline-scroll flex h-[var(--pipeline-board-height)] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden lg:snap-none"
+      >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(
@@ -162,6 +282,20 @@ export function PipelineBoard({
           );
         })}
       </div>
+
+      {scrollDock && scrollDock.scrollWidth > scrollDock.width && (
+        <div
+          ref={setFooterScrollRef}
+          aria-label="Rolagem horizontal do Kanban"
+          className="pipeline-scroll-dock"
+          style={{
+            left: scrollDock.left,
+            width: scrollDock.width,
+          }}
+        >
+          <div style={{ width: scrollDock.scrollWidth, height: 1 }} />
+        </div>
+      )}
 
       <DragOverlay
         dropAnimation={{
@@ -198,21 +332,33 @@ export function PipelineBoard({
         .pipeline-scroll {
           scroll-behavior: smooth;
         }
+        .pipeline-scroll::-webkit-scrollbar {
+          display: none;
+        }
         .pipeline-scroll {
+          scrollbar-width: none;
+        }
+        .pipeline-scroll-dock {
+          position: fixed;
+          z-index: 40;
+          bottom: 1px;
+          height: 9px;
+          overflow-x: auto;
+          overflow-y: hidden;
           scrollbar-width: thin;
           scrollbar-color: var(--border) transparent;
         }
-        .pipeline-scroll::-webkit-scrollbar {
+        .pipeline-scroll-dock::-webkit-scrollbar {
           height: 8px;
         }
-        .pipeline-scroll::-webkit-scrollbar-track {
+        .pipeline-scroll-dock::-webkit-scrollbar-track {
           background: transparent;
         }
-        .pipeline-scroll::-webkit-scrollbar-thumb {
+        .pipeline-scroll-dock::-webkit-scrollbar-thumb {
           background-color: var(--border);
           border-radius: 9999px;
         }
-        .pipeline-scroll::-webkit-scrollbar-thumb:hover {
+        .pipeline-scroll-dock::-webkit-scrollbar-thumb:hover {
           background-color: var(--muted-foreground);
         }
       `}</style>
