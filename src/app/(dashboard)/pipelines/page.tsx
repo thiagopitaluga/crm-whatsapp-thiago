@@ -79,6 +79,12 @@ const SPEC_DEFAULT_STAGES = [
   { name: 'Lost', color: '#ef4444', position: 5 }, // red
 ];
 
+interface DealMoveHistoryEntry {
+  dealId: string;
+  fromStageId: string;
+  toStageId: string;
+}
+
 const DEFAULT_CARD_LAYOUT: PipelineCardLayout = {
   show_value: true,
   show_created_at: true,
@@ -165,6 +171,8 @@ export default function PipelinesPage() {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const undoMoveStackRef = useRef<DealMoveHistoryEntry[]>([]);
+  const redoMoveStackRef = useRef<DealMoveHistoryEntry[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
@@ -176,6 +184,13 @@ export default function PipelinesPage() {
   const [customFieldId, setCustomFieldId] = useState('');
   const [customFieldValue, setCustomFieldValue] = useState('');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // A move history belongs to the selected pipeline and must not leak when
+    // the user switches to another one.
+    undoMoveStackRef.current = [];
+    redoMoveStackRef.current = [];
+  }, [selectedPipelineId]);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [cardLayoutDraft, setCardLayoutDraft] =
@@ -427,11 +442,11 @@ export default function PipelinesPage() {
     setDeals(await loadDeals(selectedPipelineId));
   }, [loadDeals, selectedPipelineId]);
 
-  const handleDealMoved = useCallback(
-    async (dealId: string, newStageId: string) => {
+  const moveDeal = useCallback(
+    async (dealId: string, newStageId: string): Promise<boolean> => {
       const currentDeal = deals.find((deal) => deal.id === dealId);
       if (!currentDeal || currentDeal.stage_id === newStageId || !accountId)
-        return;
+        return false;
 
       const previousStageId = currentDeal.stage_id;
       // Show the selected column immediately, then keep it only after the
@@ -454,10 +469,76 @@ export default function PipelinesPage() {
         );
         toast.error(t('toastFailedMoveDeal'));
         void refreshDeals();
+        return false;
       }
+      return true;
     },
     [accountId, deals, supabase, refreshDeals, t]
   );
+
+  const handleDealMoved = useCallback(
+    async (dealId: string, newStageId: string) => {
+      const currentDeal = deals.find((deal) => deal.id === dealId);
+      if (!currentDeal || currentDeal.stage_id === newStageId) return;
+
+      const moved = await moveDeal(dealId, newStageId);
+      if (!moved) return;
+
+      undoMoveStackRef.current.push({
+        dealId,
+        fromStageId: currentDeal.stage_id,
+        toStageId: newStageId,
+      });
+      redoMoveStackRef.current = [];
+    },
+    [deals, moveDeal]
+  );
+
+  useEffect(() => {
+    function handleMoveHistoryShortcut(event: KeyboardEvent) {
+      const isUndoRedoKey =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y');
+      if (!isUndoRedoKey) return;
+
+      const target = event.target;
+      const isEditing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isEditing) return;
+
+      const isRedo =
+        event.key.toLowerCase() === 'y' ||
+        (event.key.toLowerCase() === 'z' && event.shiftKey);
+      const sourceStack = isRedo
+        ? redoMoveStackRef.current
+        : undoMoveStackRef.current;
+      const entry = sourceStack[sourceStack.length - 1];
+      if (!entry) return;
+
+      event.preventDefault();
+      sourceStack.pop();
+      const targetStageId = isRedo ? entry.toStageId : entry.fromStageId;
+      void moveDeal(entry.dealId, targetStageId).then((moved) => {
+        if (!moved) {
+          sourceStack.push(entry);
+          return;
+        }
+
+        const destinationStack = isRedo
+          ? undoMoveStackRef.current
+          : redoMoveStackRef.current;
+        destinationStack.push(entry);
+      });
+    }
+
+    window.addEventListener('keydown', handleMoveHistoryShortcut);
+    return () =>
+      window.removeEventListener('keydown', handleMoveHistoryShortcut);
+  }, [moveDeal]);
 
   const handleAddDeal = useCallback(
     (stageId?: string) => {
