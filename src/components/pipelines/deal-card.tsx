@@ -43,6 +43,7 @@ interface DealCardProps {
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  onCreateTag: (deal: Deal) => void;
   stages?: PipelineStage[];
   onMoveStage?: (dealId: string, stageId: string) => Promise<void>;
   layout?: PipelineCardLayout;
@@ -73,6 +74,7 @@ export function DealCard({
   onAssign,
   tags,
   onToggleTag,
+  onCreateTag,
   stages = [],
   onMoveStage,
   layout = DEFAULT_LAYOUT,
@@ -420,6 +422,17 @@ export function DealCard({
                   );
                 })
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={!deal.contact_id}
+                onSelect={(event) => {
+                  event.stopPropagation();
+                  onCreateTag(deal);
+                }}
+              >
+                <TagIcon className="size-4" />
+                {t('createTag')}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>

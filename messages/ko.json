@@ -588,7 +588,13 @@
       "toastFailedMoveDeal": "딜을 이동하지 못했습니다",
       "toastFailedCreatePipeline": "파이프라인을 만들지 못했습니다",
       "toastPipelineCreated": "파이프라인이 생성되었습니다",
-      "toastNotLinkedToAccount": "프로필이 계정에 연결되어 있지 않습니다."
+      "toastNotLinkedToAccount": "프로필이 계정에 연결되어 있지 않습니다.",
+      "newTag": "새 태그",
+      "tagName": "태그 이름",
+      "tagNamePlaceholder": "예: 높은 우선순위",
+      "createTag": "태그 만들기",
+      "toastTagCreated": "태그가 만들어져 리드에 추가되었습니다",
+      "toastFailedCreateTag": "태그를 만들 수 없습니다"
     },
     "board": {
       "dropDealHere": "여기에 딜을 놓으세요",
@@ -598,6 +604,7 @@
       "noContact": "연락처 없음",
       "openWhatsApp": "WhatsApp에서 열기",
       "scheduleTask": "작업 예약",
+      "createTag": "새 태그 만들기",
       "won": "성사",
       "lost": "실패"
     },

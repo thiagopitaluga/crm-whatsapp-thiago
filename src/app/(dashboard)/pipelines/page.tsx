@@ -159,7 +159,7 @@ export default function PipelinesPage() {
   const t = useTranslations('Pipelines.page');
   const supabase = createClient();
   const canEditSettings = useCan('edit-settings');
-  const { accountId } = useAuth();
+  const { accountId, user } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
@@ -196,6 +196,9 @@ export default function PipelinesPage() {
   const [quickNote, setQuickNote] = useState('');
   const [savingQuickNote, setSavingQuickNote] = useState(false);
   const [taskDeal, setTaskDeal] = useState<Deal | null>(null);
+  const [newTagDeal, setNewTagDeal] = useState<Deal | null>(null);
+  const [newTagName, setNewTagName] = useState('');
+  const [creatingTag, setCreatingTag] = useState(false);
 
   // Guard against double-seeding (React StrictMode double-effect in dev).
   const seedAttemptedForAccount = useRef<string | null>(null);
@@ -678,6 +681,40 @@ export default function PipelinesPage() {
     },
     [supabase, t]
   );
+
+  const handleCreateTag = useCallback(async () => {
+    const name = newTagName.trim();
+    if (!name || !accountId || !user || !newTagDeal) return;
+
+    setCreatingTag(true);
+    const { data, error } = await supabase
+      .from('tags')
+      .insert({
+        user_id: user.id,
+        account_id: accountId,
+        name,
+        color: '#8b5cf6',
+      })
+      .select('*')
+      .single();
+    setCreatingTag(false);
+
+    if (error || !data) {
+      toast.error(t('toastFailedCreateTag'));
+      return;
+    }
+
+    const tag = data as Tag;
+    setTags((current) =>
+      [...current, tag].sort((first, second) =>
+        first.name.localeCompare(second.name)
+      )
+    );
+    await handleToggleTag(newTagDeal, tag);
+    setNewTagName('');
+    setNewTagDeal(null);
+    toast.success(t('toastTagCreated'));
+  }, [accountId, handleToggleTag, newTagDeal, newTagName, supabase, t, user]);
 
   const filteredDeals = deals.filter((deal) => {
     const search = leadSearch.trim().toLocaleLowerCase();
@@ -1235,6 +1272,10 @@ export default function PipelinesPage() {
             onAssign={handleQuickAssign}
             tags={tags}
             onToggleTag={handleToggleTag}
+            onCreateTag={(deal) => {
+              setNewTagName('');
+              setNewTagDeal(deal);
+            }}
             cardLayout={selectedCardLayout}
           />
         </>
@@ -1340,6 +1381,62 @@ export default function PipelinesPage() {
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               Salvar layout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(newTagDeal)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setNewTagDeal(null);
+            setNewTagName('');
+          }
+        }}
+      >
+        <DialogContent className="bg-popover border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">
+              {t('newTag')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label
+              className="text-muted-foreground"
+              htmlFor="pipeline-new-tag-name"
+            >
+              {t('tagName')}
+            </Label>
+            <Input
+              id="pipeline-new-tag-name"
+              autoFocus
+              value={newTagName}
+              onChange={(event) => setNewTagName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void handleCreateTag();
+              }}
+              placeholder={t('tagNamePlaceholder')}
+              className="bg-muted border-border text-foreground"
+            />
+          </div>
+          <DialogFooter className="bg-popover/50 border-border">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setNewTagDeal(null);
+                setNewTagName('');
+              }}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={() => void handleCreateTag()}
+              disabled={creatingTag || !newTagName.trim()}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {creatingTag ? t('creating') : t('createTag')}
             </Button>
           </DialogFooter>
         </DialogContent>

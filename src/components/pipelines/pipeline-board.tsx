@@ -44,6 +44,7 @@ interface PipelineBoardProps {
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  onCreateTag: (deal: Deal) => void;
   cardLayout: PipelineCardLayout;
 }
 
@@ -62,6 +63,7 @@ export function PipelineBoard({
   onAssign,
   tags,
   onToggleTag,
+  onCreateTag,
   cardLayout,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
@@ -219,6 +221,7 @@ export function PipelineBoard({
               onAssign={onAssign}
               tags={tags}
               onToggleTag={onToggleTag}
+              onCreateTag={onCreateTag}
               stages={sortedStages}
               onMoveStage={onDealMoved}
               layout={cardLayout}
@@ -264,6 +267,7 @@ export function PipelineBoard({
               onAssign={async () => {}}
               tags={[]}
               onToggleTag={async () => {}}
+              onCreateTag={() => {}}
               stages={[]}
               layout={cardLayout}
             />
@@ -348,6 +352,7 @@ function StageColumn({
   onAssign,
   tags,
   onToggleTag,
+  onCreateTag,
   stages,
   onMoveStage,
   layout,
@@ -367,6 +372,7 @@ function StageColumn({
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  onCreateTag: (deal: Deal) => void;
   stages: PipelineStage[];
   onMoveStage: (dealId: string, stageId: string) => Promise<void>;
   layout: PipelineCardLayout;
@@ -472,6 +478,7 @@ function StageColumn({
               onAssign={onAssign}
               tags={tags}
               onToggleTag={onToggleTag}
+              onCreateTag={onCreateTag}
               stages={stages}
               onMoveStage={onMoveStage}
               layout={layout}
@@ -495,6 +502,7 @@ function DraggableDealCard({
   onAssign,
   tags,
   onToggleTag,
+  onCreateTag,
   stages,
   onMoveStage,
   layout,
@@ -510,6 +518,7 @@ function DraggableDealCard({
   onAssign: (deal: Deal, assigneeId: string | null) => Promise<void>;
   tags: Tag[];
   onToggleTag: (deal: Deal, tag: Tag) => Promise<void>;
+  onCreateTag: (deal: Deal) => void;
   stages: PipelineStage[];
   onMoveStage: (dealId: string, stageId: string) => Promise<void>;
   layout: PipelineCardLayout;
@@ -537,6 +546,7 @@ function DraggableDealCard({
         onAssign={onAssign}
         tags={tags}
         onToggleTag={onToggleTag}
+        onCreateTag={onCreateTag}
         stages={stages}
         onMoveStage={onMoveStage}
         layout={layout}
