@@ -54,6 +54,7 @@ import {
   UserRound,
   Check,
   Minus,
+  CalendarDays,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
 import {
@@ -200,6 +201,8 @@ export default function ContactsPage() {
   // results. Without this, rapidly toggling tag filters could let a slower
   // earlier request resolve last and render stale rows.
   const fetchSeq = useRef(0);
+  const createdFromInputRef = useRef<HTMLInputElement>(null);
+  const createdToInputRef = useRef<HTMLInputElement>(null);
 
   const fetchTags = useCallback(async () => {
     if (!accountId) {
@@ -814,6 +817,18 @@ export default function ContactsPage() {
     setPage(0);
   }
 
+  function openDatePicker(input: HTMLInputElement | null) {
+    if (!input) return;
+    input.focus();
+    try {
+      input.showPicker?.();
+    } catch {
+      // Browsers without showPicker still open their native calendar after
+      // a regular click on the focused date input.
+      input.click();
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -877,12 +892,13 @@ export default function ContactsPage() {
             />
           </div>
 
-          <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[18.5rem]">
-            <label className="space-y-1">
-              <span className="text-muted-foreground text-xs">
-                {t('createdFrom')}
-              </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-muted-foreground text-xs font-medium">
+              {t('createdFrom')}
+            </span>
+            <div className="relative w-36">
               <Input
+                ref={createdFromInputRef}
                 type="date"
                 value={createdFrom}
                 max={createdTo || undefined}
@@ -891,14 +907,23 @@ export default function ContactsPage() {
                   setPage(0);
                 }}
                 aria-label={t('createdFrom')}
-                className="h-9 text-xs"
+                className="h-9 pr-8 text-xs"
               />
-            </label>
-            <label className="space-y-1">
-              <span className="text-muted-foreground text-xs">
-                {t('createdTo')}
-              </span>
+              <button
+                type="button"
+                aria-label={`Selecionar ${t('createdFrom').toLocaleLowerCase()}`}
+                onClick={() => openDatePicker(createdFromInputRef.current)}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
+              >
+                <CalendarDays className="size-3.5" aria-hidden="true" />
+              </button>
+            </div>
+            <span className="text-muted-foreground text-xs font-medium">
+              {t('createdTo')}
+            </span>
+            <div className="relative w-36">
               <Input
+                ref={createdToInputRef}
                 type="date"
                 value={createdTo}
                 min={createdFrom || undefined}
@@ -907,9 +932,17 @@ export default function ContactsPage() {
                   setPage(0);
                 }}
                 aria-label={t('createdTo')}
-                className="h-9 text-xs"
+                className="h-9 pr-8 text-xs"
               />
-            </label>
+              <button
+                type="button"
+                aria-label={`Selecionar ${t('createdTo').toLocaleLowerCase()}`}
+                onClick={() => openDatePicker(createdToInputRef.current)}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
+              >
+                <CalendarDays className="size-3.5" aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           <Popover>
