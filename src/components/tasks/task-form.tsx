@@ -25,6 +25,8 @@ interface TaskFormProps {
   onOpenChange: (open: boolean) => void;
   task?: Task | null;
   defaultDeal?: Deal | null;
+  /** Preselect a contact when creating a task from that contact's row. */
+  defaultContactId?: string | null;
   defaultDueAt?: string | Date | null;
   onSaved: () => void;
 }
@@ -42,6 +44,7 @@ export function TaskForm({
   onOpenChange,
   task,
   defaultDeal,
+  defaultContactId,
   defaultDueAt,
   onSaved,
 }: TaskFormProps) {
@@ -63,10 +66,10 @@ export function TaskForm({
     if (!open) return;
     setTitle(task?.title ?? t("defaultTitle"));
     setDescription(task?.description ?? "");
-    setContactId(task?.contact_id ?? defaultDeal?.contact_id ?? "");
+    setContactId(task?.contact_id ?? defaultDeal?.contact_id ?? defaultContactId ?? "");
     setAssignedTo(task?.assigned_to ?? defaultDeal?.assigned_to ?? profile?.id ?? "");
     setDueAt(toDateTimeInput(task?.due_at ?? defaultDueAt));
-  }, [defaultDeal, defaultDueAt, open, profile?.id, t, task]);
+  }, [defaultContactId, defaultDeal, defaultDueAt, open, profile?.id, t, task]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {

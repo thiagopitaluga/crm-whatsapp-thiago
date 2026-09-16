@@ -110,6 +110,9 @@ export interface Contact {
   email?: string;
   company?: string;
   avatar_url?: string;
+  /** Team member responsible for this contact. Kept separate from the
+   * immutable/audit `user_id` that records who originally created it. */
+  assigned_to?: string | null;
   created_at: string;
   updated_at: string;
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the

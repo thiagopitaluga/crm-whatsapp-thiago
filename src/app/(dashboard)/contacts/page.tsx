@@ -95,11 +95,15 @@ export default function ContactsPage() {
   const [editContactTags, setEditContactTags] = useState<ContactTag[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailContactId, setDetailContactId] = useState<string | null>(null);
+  const [detailTab, setDetailTab] = useState<ContactDetailTab>('details');
   const [importOpen, setImportOpen] = useState(false);
   const [customFieldsOpen, setCustomFieldsOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [taskContact, setTaskContact] = useState<Contact | null>(null);
+  const [members, setMembers] = useState<Profile[]>([]);
+  const [assigningContactId, setAssigningContactId] = useState<string | null>(null);
 
   // Bulk selection (page-scoped — only the loaded rows are selectable)
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -136,6 +140,31 @@ export default function ContactsPage() {
         return pruned.length === prev.length ? prev : pruned;
       });
     }
+  }, [accountId, supabase]);
+
+  const fetchMembers = useCallback(async () => {
+    if (!accountId) {
+      setMembers([]);
+      return;
+    }
+
+    const { data: memberships, error: membershipsError } = await supabase
+      .from('account_memberships')
+      .select('user_id')
+      .eq('account_id', accountId);
+    if (membershipsError || !memberships?.length) {
+      setMembers([]);
+      return;
+    }
+
+    const memberUserIds = memberships.map((membership) => membership.user_id);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('user_id', memberUserIds)
+      .order('full_name');
+
+    if (!error) setMembers((data ?? []) as Profile[]);
   }, [accountId, supabase]);
 
   const fetchContacts = useCallback(async () => {
@@ -258,6 +287,11 @@ export default function ContactsPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchMembers();
+  }, [fetchMembers]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContacts();
   }, [fetchContacts]);
 
@@ -277,9 +311,34 @@ export default function ContactsPage() {
     setFormOpen(true);
   }
 
-  function openDetail(contactId: string) {
+  function openDetail(contactId: string, tab: ContactDetailTab = 'details') {
     setDetailContactId(contactId);
+    setDetailTab(tab);
     setDetailOpen(true);
+  }
+
+  async function assignContact(contact: Contact, assigneeId: string | null) {
+    if (!accountId || assigningContactId) return;
+    if (assigneeId && !members.some((member) => member.id === assigneeId)) return;
+
+    setAssigningContactId(contact.id);
+    const { error } = await supabase
+      .from('contacts')
+      .update({ assigned_to: assigneeId })
+      .eq('id', contact.id)
+      .eq('account_id', accountId);
+
+    if (error) {
+      toast.error(t('toastFailedAssign'));
+    } else {
+      setContacts((current) =>
+        current.map((item) =>
+          item.id === contact.id ? { ...item, assigned_to: assigneeId } : item
+        )
+      );
+      toast.success(t('toastAssigned'));
+    }
+    setAssigningContactId(null);
   }
 
   function confirmDelete(contact: Contact) {
@@ -666,7 +725,7 @@ export default function ContactsPage() {
               <TableHead className="text-muted-foreground hidden lg:table-cell">{t('tableColumns.company')}</TableHead>
               <TableHead className="text-muted-foreground hidden md:table-cell">{t('tableColumns.tags')}</TableHead>
               <TableHead className="text-muted-foreground hidden lg:table-cell">{t('tableColumns.createdAt')}</TableHead>
-              <TableHead className="text-muted-foreground w-12" />
+              <TableHead className="w-[15.25rem]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -763,47 +822,128 @@ export default function ContactsPage() {
                       year: 'numeric',
                     })}
                   </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
+                  <TableCell
+                    className="w-[15.25rem]"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-end gap-0.5">
+                      <GatedButton
+                        variant="ghost"
+                        size="icon-sm"
+                        canAct={canEdit}
+                        gateReason="edit contacts"
+                        title={t('editAction')}
+                        aria-label={t('editAction')}
+                        onClick={() => openEditForm(contact)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil className="size-4" />
+                      </GatedButton>
+                      <GatedButton
+                        variant="ghost"
+                        size="icon-sm"
+                        canAct={canEdit}
+                        gateReason="add notes"
+                        title={t('addNoteAction')}
+                        aria-label={t('addNoteAction')}
+                        onClick={() => openDetail(contact.id, 'notes')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <StickyNote className="size-4" />
+                      </GatedButton>
+                      <GatedButton
+                        variant="ghost"
+                        size="icon-sm"
+                        canAct={canEdit}
+                        gateReason="schedule tasks"
+                        title={t('createTaskAction')}
+                        aria-label={t('createTaskAction')}
+                        onClick={() => setTaskContact(contact)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <CalendarPlus className="size-4" />
+                      </GatedButton>
+                      <GatedButton
+                        variant="ghost"
+                        size="icon-sm"
+                        canAct={canEdit}
+                        gateReason="manage contact tags"
+                        title={t('manageTagsAction')}
+                        aria-label={t('manageTagsAction')}
+                        onClick={() => openDetail(contact.id, 'tags')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <TagIcon className="size-4" />
+                      </GatedButton>
+                      <Popover>
+                        <PopoverTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              disabled={!canEdit || assigningContactId === contact.id}
+                              title={t('assignOwnerAction')}
+                              aria-label={t('assignOwnerAction')}
+                              className="text-muted-foreground hover:text-foreground"
+                            />
+                          }
+                        >
+                          {assigningContactId === contact.id ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <UserRound className="size-4" />
+                          )}
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="end"
+                          className="w-52 p-1"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                            {t('assignOwnerAction')}
+                          </p>
                           <Button
+                            type="button"
                             variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-foreground"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        }
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => void assignContact(contact, null)}
+                          >
+                            {t('unassigned')}
+                          </Button>
+                          {members.map((member) => (
+                            <Button
+                              key={member.id}
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start"
+                              onClick={() => void assignContact(contact, member.id)}
+                            >
+                              {member.full_name || member.email}
+                            </Button>
+                          ))}
+                          {members.length === 0 && (
+                            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                              {t('noMembersAvailable')}
+                            </p>
+                          )}
+                        </PopoverContent>
+                      </Popover>
+                      <GatedButton
+                        variant="ghost"
+                        size="icon-sm"
+                        canAct={canEdit}
+                        gateReason="delete contacts"
+                        title={t('deleteAction')}
+                        aria-label={t('deleteAction')}
+                        onClick={() => confirmDelete(contact)}
+                        className="text-destructive hover:text-destructive"
                       >
-                        <MoreHorizontal className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        className="bg-popover border-border"
-                      >
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditForm(contact);
-                          }}
-                          className="text-popover-foreground focus:bg-muted focus:text-foreground"
-                        >
-                          <Pencil className="size-4" />
-                          {t('editAction')}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator className="bg-border" />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            confirmDelete(contact);
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                          {t('deleteAction')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        <Trash2 className="size-4" />
+                      </GatedButton>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -869,7 +1009,17 @@ export default function ContactsPage() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         contactId={detailContactId}
+        initialTab={detailTab}
         onUpdated={fetchContacts}
+      />
+
+      <TaskForm
+        open={Boolean(taskContact)}
+        onOpenChange={(open) => {
+          if (!open) setTaskContact(null);
+        }}
+        defaultContactId={taskContact?.id ?? null}
+        onSaved={() => setTaskContact(null)}
       />
 
       {/* Import Modal */}

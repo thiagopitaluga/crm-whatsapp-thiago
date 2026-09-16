@@ -42,10 +42,14 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+export type ContactDetailTab = 'details' | 'tags' | 'notes' | 'custom' | 'deals';
+
 interface ContactDetailViewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contactId: string | null;
+  /** Select a relevant existing tab when opened from a row action. */
+  initialTab?: ContactDetailTab;
   onUpdated: () => void;
 }
 
@@ -53,6 +57,7 @@ export function ContactDetailView({
   open,
   onOpenChange,
   contactId,
+  initialTab = 'details',
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
@@ -96,6 +101,7 @@ export function ContactDetailView({
   // Deals tab
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
+  const [activeTab, setActiveTab] = useState<ContactDetailTab>(initialTab);
 
   const fetchContact = useCallback(async () => {
     if (!contactId) return;
@@ -189,6 +195,10 @@ export function ContactDetailView({
       fetchDeals();
     }
   }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals]);
+
+  useEffect(() => {
+    if (open) setActiveTab(initialTab);
+  }, [contactId, initialTab, open]);
 
   async function copyPhone() {
     if (!contact) return;
@@ -450,7 +460,11 @@ export function ContactDetailView({
             </SheetHeader>
 
             {/* Tabs */}
-            <Tabs defaultValue="details" className="flex-1 flex flex-col min-h-0">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as ContactDetailTab)}
+              className="flex-1 flex flex-col min-h-0"
+            >
               <TabsList className="bg-muted/50 border-b border-border mx-4 mt-3">
                 <TabsTrigger
                   value="details"
