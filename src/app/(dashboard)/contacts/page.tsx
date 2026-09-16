@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import type { Contact, Profile, Tag, ContactTag } from '@/types';
+import type { Contact, Profile, Tag, ContactTag, PipelineStage } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,6 +15,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +61,7 @@ import {
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { TaskForm } from '@/components/tasks/task-form';
+import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
@@ -63,6 +71,21 @@ const PAGE_SIZE = 25;
 
 interface ContactWithTags extends Contact {
   tags?: Tag[];
+  lastMessage?: string | null;
+  openDeals?: ContactListDeal[];
+}
+
+interface ContactListDeal {
+  id: string;
+  contact_id: string;
+  pipeline_id: string;
+  stage_id: string;
+  status: string | null;
+  updated_at: string | null;
+}
+
+interface StageOption extends PipelineStage {
+  pipelineName: string;
 }
 
 function nextDay(date: string) {
@@ -103,13 +126,21 @@ export default function ContactsPage() {
   const [deleting, setDeleting] = useState(false);
   const [taskContact, setTaskContact] = useState<Contact | null>(null);
   const [members, setMembers] = useState<Profile[]>([]);
+  const [stageOptions, setStageOptions] = useState<StageOption[]>([]);
   const [assigningContactId, setAssigningContactId] = useState<string | null>(
     null
   );
+  const [movingDealId, setMovingDealId] = useState<string | null>(null);
 
   // Bulk selection (page-scoped — only the loaded rows are selectable)
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkStageOpen, setBulkStageOpen] = useState(false);
+  const [bulkPipelineId, setBulkPipelineId] = useState('');
+  const [bulkStageId, setBulkStageId] = useState('');
+  const [bulkTagMode, setBulkTagMode] = useState<'add' | 'remove' | null>(null);
+  const [bulkTagIds, setBulkTagIds] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   // All tags for display
   const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
@@ -167,6 +198,47 @@ export default function ContactsPage() {
       .order('full_name');
 
     if (!error) setMembers((data ?? []) as Profile[]);
+  }, [accountId, supabase]);
+
+  const fetchStageOptions = useCallback(async () => {
+    if (!accountId) {
+      setStageOptions([]);
+      return;
+    }
+
+    const { data: pipelines, error: pipelinesError } = await supabase
+      .from('pipelines')
+      .select('id, name')
+      .eq('account_id', accountId)
+      .order('name');
+    if (pipelinesError || !pipelines?.length) {
+      setStageOptions([]);
+      return;
+    }
+
+    const pipelineNames = new Map(
+      pipelines.map((pipeline) => [pipeline.id, pipeline.name])
+    );
+    const { data: stages, error: stagesError } = await supabase
+      .from('pipeline_stages')
+      .select('*')
+      .in(
+        'pipeline_id',
+        pipelines.map((pipeline) => pipeline.id)
+      )
+      .order('position');
+
+    if (stagesError) {
+      setStageOptions([]);
+      return;
+    }
+
+    setStageOptions(
+      (stages ?? []).map((stage) => ({
+        ...(stage as PipelineStage),
+        pipelineName: pipelineNames.get(stage.pipeline_id) ?? '',
+      }))
+    );
   }, [accountId, supabase]);
 
   const fetchContacts = useCallback(async () => {
@@ -255,13 +327,33 @@ export default function ContactsPage() {
       return;
     }
 
-    // Fetch tags for these contacts
+    // Enrich the loaded page with data that is part of the contact-list
+    // experience. Conversations are unique per account/contact, while a
+    // contact may have several open deals, so each one stays explicit in
+    // the UI instead of arbitrarily picking a "current" pipeline.
     const contactIds = contactRows.map((c) => c.id);
-    const { data: contactTags } = await supabase
-      .from('contact_tags')
-      .select('contact_id, tag_id')
-      .in('contact_id', contactIds);
+    const [contactTagsResult, conversationsResult, dealsResult] =
+      await Promise.all([
+        supabase
+          .from('contact_tags')
+          .select('contact_id, tag_id')
+          .in('contact_id', contactIds),
+        supabase
+          .from('conversations')
+          .select('contact_id, last_message_text, last_message_at')
+          .eq('account_id', accountId)
+          .in('contact_id', contactIds),
+        supabase
+          .from('deals')
+          .select('id, contact_id, pipeline_id, stage_id, status, updated_at')
+          .eq('account_id', accountId)
+          .eq('status', 'open')
+          .in('contact_id', contactIds)
+          .order('updated_at', { ascending: false }),
+      ]);
     if (seq !== fetchSeq.current) return; // superseded by a newer fetch
+
+    const contactTags = contactTagsResult.data;
 
     const tagsByContact: Record<string, string[]> = {};
     contactTags?.forEach((ct) => {
@@ -269,8 +361,24 @@ export default function ContactsPage() {
       tagsByContact[ct.contact_id].push(ct.tag_id);
     });
 
+    const lastMessageByContact = new Map(
+      (conversationsResult.data ?? []).map((conversation) => [
+        conversation.contact_id,
+        conversation.last_message_text,
+      ])
+    );
+    const openDealsByContact: Record<string, ContactListDeal[]> = {};
+    (dealsResult.data ?? []).forEach((deal) => {
+      if (!deal.contact_id) return;
+      const list = openDealsByContact[deal.contact_id] ?? [];
+      list.push(deal as ContactListDeal);
+      openDealsByContact[deal.contact_id] = list;
+    });
+
     const enriched: ContactWithTags[] = contactRows.map((c) => ({
       ...c,
+      lastMessage: lastMessageByContact.get(c.id) ?? null,
+      openDeals: openDealsByContact[c.id] ?? [],
       tags: (tagsByContact[c.id] ?? [])
         .map((tid) => tagsMap[tid])
         .filter(Boolean),
@@ -303,6 +411,11 @@ export default function ContactsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchMembers();
   }, [fetchMembers]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStageOptions();
+  }, [fetchStageOptions]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -362,13 +475,14 @@ export default function ContactsPage() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !accountId) return;
     setDeleting(true);
 
     const { error } = await supabase
       .from('contacts')
       .delete()
-      .eq('id', deleteTarget.id);
+      .eq('id', deleteTarget.id)
+      .eq('account_id', accountId);
 
     if (error) {
       toast.error(t('toastFailedDelete'));
@@ -409,10 +523,14 @@ export default function ContactsPage() {
 
   async function handleBulkDelete() {
     const ids = [...selected];
-    if (ids.length === 0) return;
+    if (ids.length === 0 || !accountId) return;
     setDeleting(true);
 
-    const { error } = await supabase.from('contacts').delete().in('id', ids);
+    const { error } = await supabase
+      .from('contacts')
+      .delete()
+      .eq('account_id', accountId)
+      .in('id', ids);
 
     if (error) {
       toast.error(t('toastBulkFailedDelete'));
@@ -424,6 +542,176 @@ export default function ContactsPage() {
 
     setDeleting(false);
     setBulkDeleteOpen(false);
+  }
+
+  function stagesForPipeline(pipelineId: string) {
+    return stageOptions.filter((stage) => stage.pipeline_id === pipelineId);
+  }
+
+  async function moveDealToStage(deal: ContactListDeal, stageId: string) {
+    if (!accountId || deal.stage_id === stageId) return;
+    const targetStage = stageOptions.find((stage) => stage.id === stageId);
+    if (!targetStage || targetStage.pipeline_id !== deal.pipeline_id) {
+      toast.error(t('toastInvalidStage'));
+      return;
+    }
+
+    setMovingDealId(deal.id);
+    const { data, error } = await supabase
+      .from('deals')
+      .update({ stage_id: stageId })
+      .eq('id', deal.id)
+      .eq('account_id', accountId)
+      .eq('pipeline_id', deal.pipeline_id)
+      .eq('status', 'open')
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      toast.error(t('toastFailedMoveStage'));
+    } else {
+      setContacts((current) =>
+        current.map((contact) => ({
+          ...contact,
+          openDeals: contact.openDeals?.map((item) =>
+            item.id === deal.id ? { ...item, stage_id: stageId } : item
+          ),
+        }))
+      );
+      toast.success(t('toastStageMoved'));
+    }
+    setMovingDealId(null);
+  }
+
+  function openBulkStageDialog() {
+    const firstPipelineId = stageOptions[0]?.pipeline_id ?? '';
+    setBulkPipelineId(firstPipelineId);
+    setBulkStageId(stagesForPipeline(firstPipelineId)[0]?.id ?? '');
+    setBulkStageOpen(true);
+  }
+
+  async function handleBulkMoveStage() {
+    const ids = [...selected];
+    const targetStage = stageOptions.find((stage) => stage.id === bulkStageId);
+    if (
+      !accountId ||
+      ids.length === 0 ||
+      !targetStage ||
+      targetStage.pipeline_id !== bulkPipelineId
+    ) {
+      toast.error(t('toastInvalidStage'));
+      return;
+    }
+
+    setBulkSaving(true);
+    const { data, error } = await supabase
+      .from('deals')
+      .update({ stage_id: targetStage.id })
+      .eq('account_id', accountId)
+      .eq('pipeline_id', bulkPipelineId)
+      .eq('status', 'open')
+      .in('contact_id', ids)
+      .select('id');
+
+    if (error) {
+      toast.error(t('toastFailedMoveStage'));
+    } else if (!data?.length) {
+      toast.error(t('toastNoOpenDealsInPipeline'));
+    } else {
+      toast.success(t('toastBulkStageMoved', { count: data.length }));
+      setBulkStageOpen(false);
+      fetchContacts();
+    }
+    setBulkSaving(false);
+  }
+
+  function openBulkTagDialog(mode: 'add' | 'remove') {
+    setBulkTagIds(new Set());
+    setBulkTagMode(mode);
+  }
+
+  function toggleBulkTag(tagId: string) {
+    setBulkTagIds((current) => {
+      const next = new Set(current);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+  }
+
+  async function handleBulkTags() {
+    if (!bulkTagMode || selected.size === 0 || bulkTagIds.size === 0) return;
+    setBulkSaving(true);
+    const ids = [...selected];
+    const tagIds = [...bulkTagIds];
+    const operations = ids.flatMap((contactId) =>
+      tagIds.map((tagId) =>
+        bulkTagMode === 'add'
+          ? addContactTag(contactId, tagId)
+          : deleteContactTag(contactId, tagId)
+      )
+    );
+    const results = await Promise.allSettled(operations);
+    const failed = results.filter((result) => result.status === 'rejected');
+
+    if (failed.length > 0) {
+      toast.error(t('toastBulkTagsPartial', { count: failed.length }));
+    } else {
+      toast.success(
+        t(bulkTagMode === 'add' ? 'toastBulkTagsAdded' : 'toastBulkTagsRemoved')
+      );
+    }
+    setBulkSaving(false);
+    setBulkTagMode(null);
+    fetchContacts();
+  }
+
+  function exportSelectedContacts() {
+    const contactsToExport = contacts.filter((contact) =>
+      selected.has(contact.id)
+    );
+    if (contactsToExport.length === 0) return;
+
+    const csvCell = (value: string | null | undefined) =>
+      `"${(value ?? '').replaceAll('"', '""')}"`;
+    const rows = [
+      [
+        'Nome',
+        'Telefone',
+        'Última mensagem',
+        'Etapas atuais',
+        'Etiquetas',
+        'Criado',
+      ],
+      ...contactsToExport.map(
+        (contact) =>
+          [
+            contact.name ?? '',
+            contact.phone,
+            contact.lastMessage ?? '',
+            (contact.openDeals ?? [])
+              .map((deal) => {
+                const stage = stageOptions.find(
+                  (item) => item.id === deal.stage_id
+                );
+                return stage ? `${stage.pipelineName}: ${stage.name}` : '';
+              })
+              .filter(Boolean)
+              .join(' | '),
+            (contact.tags ?? []).map((tag) => tag.name).join(' | '),
+            new Date(contact.created_at).toISOString(),
+          ] as string[]
+      ),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\n')}`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(
+      new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    );
+    link.download = 'contatos-selecionados.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast.success(t('toastExported', { count: contactsToExport.length }));
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -701,11 +989,45 @@ export default function ContactsPage() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="border-border bg-muted/40 flex items-center justify-between gap-4 rounded-lg border px-4 py-2">
+        <div className="border-border bg-muted/40 flex flex-col gap-3 rounded-lg border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-foreground text-sm">
             {t('selectedCount', { count: selected.size })}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <GatedButton
+              variant="outline"
+              size="sm"
+              canAct={canEdit}
+              gateReason="move contact stages"
+              onClick={openBulkStageDialog}
+            >
+              {t('bulkMoveStage')}
+            </GatedButton>
+            <GatedButton
+              variant="outline"
+              size="sm"
+              canAct={canEdit}
+              gateReason="manage contact tags"
+              onClick={() => openBulkTagDialog('add')}
+            >
+              {t('bulkAddTags')}
+            </GatedButton>
+            <GatedButton
+              variant="outline"
+              size="sm"
+              canAct={canEdit}
+              gateReason="manage contact tags"
+              onClick={() => openBulkTagDialog('remove')}
+            >
+              {t('bulkRemoveTags')}
+            </GatedButton>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportSelectedContacts}
+            >
+              {t('bulkExport')}
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -729,8 +1051,8 @@ export default function ContactsPage() {
       )}
 
       {/* Table */}
-      <div className="border-border overflow-hidden rounded-lg border">
-        <Table>
+      <div className="border-border overflow-x-auto rounded-lg border">
+        <Table className="min-w-[980px]">
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="w-10">
@@ -748,16 +1070,16 @@ export default function ContactsPage() {
               <TableHead className="text-muted-foreground">
                 {t('tableColumns.phone')}
               </TableHead>
-              <TableHead className="text-muted-foreground hidden md:table-cell">
-                {t('tableColumns.email')}
+              <TableHead className="text-muted-foreground">
+                {t('tableColumns.lastMessage')}
               </TableHead>
-              <TableHead className="text-muted-foreground hidden lg:table-cell">
-                {t('tableColumns.company')}
+              <TableHead className="text-muted-foreground min-w-44">
+                {t('tableColumns.currentStage')}
               </TableHead>
-              <TableHead className="text-muted-foreground hidden md:table-cell">
+              <TableHead className="text-muted-foreground min-w-40">
                 {t('tableColumns.tags')}
               </TableHead>
-              <TableHead className="text-muted-foreground hidden lg:table-cell">
+              <TableHead className="text-muted-foreground">
                 {t('tableColumns.createdAt')}
               </TableHead>
               <TableHead className="w-[15.25rem]" />
@@ -825,17 +1147,73 @@ export default function ContactsPage() {
                   <TableCell className="text-muted-foreground font-mono text-xs">
                     {contact.phone}
                   </TableCell>
-                  <TableCell className="text-muted-foreground hidden text-sm md:table-cell">
-                    {contact.email || (
+                  <TableCell className="text-muted-foreground max-w-56 truncate text-sm">
+                    {contact.lastMessage || (
                       <span className="text-muted-foreground">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground hidden text-sm lg:table-cell">
-                    {contact.company || (
-                      <span className="text-muted-foreground">-</span>
+                  <TableCell
+                    className="min-w-44"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {contact.openDeals && contact.openDeals.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {contact.openDeals.map((deal) => {
+                          const currentStage = stageOptions.find(
+                            (stage) => stage.id === deal.stage_id
+                          );
+                          const pipelineStages = stagesForPipeline(
+                            deal.pipeline_id
+                          );
+                          return (
+                            <div key={deal.id} className="space-y-0.5">
+                              {contact.openDeals &&
+                                contact.openDeals.length > 1 && (
+                                  <p className="text-muted-foreground truncate text-[10px]">
+                                    {currentStage?.pipelineName ??
+                                      t('unknownPipeline')}
+                                  </p>
+                                )}
+                              <Select
+                                value={deal.stage_id}
+                                onValueChange={(stageId) => {
+                                  if (stageId)
+                                    void moveDealToStage(deal, stageId);
+                                }}
+                              >
+                                <SelectTrigger
+                                  size="sm"
+                                  disabled={
+                                    !canEdit ||
+                                    movingDealId === deal.id ||
+                                    pipelineStages.length === 0
+                                  }
+                                  className="w-full max-w-48 text-xs"
+                                  aria-label={t('moveContactStage')}
+                                >
+                                  <SelectValue
+                                    placeholder={t('stageUnavailable')}
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {pipelineStages.map((stage) => (
+                                    <SelectItem key={stage.id} value={stage.id}>
+                                      {stage.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">
+                        {t('noOpenDeals')}
+                      </span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {contact.tags && contact.tags.length > 0 ? (
                         contact.tags.slice(0, 3).map((tag) => (
@@ -860,7 +1238,7 @@ export default function ContactsPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground hidden text-xs lg:table-cell">
+                  <TableCell className="text-muted-foreground text-xs">
                     {new Date(contact.created_at).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
@@ -1085,6 +1463,134 @@ export default function ContactsPage() {
           onOpenChange={setCustomFieldsOpen}
         />
       )}
+
+      {/* Bulk move only touches open deals in the selected pipeline. A contact
+          can be in more than one pipeline, so a pipeline is deliberately
+          required instead of guessing which deal the user meant. */}
+      <Dialog open={bulkStageOpen} onOpenChange={setBulkStageOpen}>
+        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('bulkMoveStage')}</DialogTitle>
+            <DialogDescription>
+              {t('bulkMoveStageDesc', { count: selected.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium">{t('pipelineLabel')}</span>
+              <Select
+                value={bulkPipelineId}
+                onValueChange={(pipelineId) => {
+                  if (!pipelineId) return;
+                  setBulkPipelineId(pipelineId);
+                  setBulkStageId(stagesForPipeline(pipelineId)[0]?.id ?? '');
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t('pipelineLabel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[
+                    ...new Map(
+                      stageOptions.map((stage) => [
+                        stage.pipeline_id,
+                        stage.pipelineName,
+                      ])
+                    ),
+                  ].map(([pipelineId, pipelineName]) => (
+                    <SelectItem key={pipelineId} value={pipelineId}>
+                      {pipelineName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium">{t('stageLabel')}</span>
+              <Select
+                value={bulkStageId}
+                onValueChange={(stageId) => setBulkStageId(stageId ?? '')}
+              >
+                <SelectTrigger className="w-full" disabled={!bulkPipelineId}>
+                  <SelectValue placeholder={t('stageLabel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {stagesForPipeline(bulkPipelineId).map((stage) => (
+                    <SelectItem key={stage.id} value={stage.id}>
+                      {stage.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkStageOpen(false)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={() => void handleBulkMoveStage()}
+              disabled={!bulkStageId || bulkSaving}
+            >
+              {bulkSaving && <Loader2 className="size-4 animate-spin" />}
+              {t('bulkMoveStage')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={bulkTagMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setBulkTagMode(null);
+        }}
+      >
+        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t(bulkTagMode === 'remove' ? 'bulkRemoveTags' : 'bulkAddTags')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('bulkTagsDesc', { count: selected.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 space-y-1 overflow-y-auto py-2">
+            {allTags.length === 0 ? (
+              <p className="text-muted-foreground text-sm">{t('noTagsYet')}</p>
+            ) : (
+              allTags.map((tag) => (
+                <label
+                  key={tag.id}
+                  className="hover:bg-muted flex cursor-pointer items-center gap-2 rounded-md px-2 py-2"
+                >
+                  <Checkbox
+                    checked={bulkTagIds.has(tag.id)}
+                    onCheckedChange={() => toggleBulkTag(tag.id)}
+                    aria-label={tag.name}
+                  />
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                  <span className="text-sm">{tag.name}</span>
+                </label>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkTagMode(null)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={() => void handleBulkTags()}
+              disabled={bulkTagIds.size === 0 || bulkSaving}
+            >
+              {bulkSaving && <Loader2 className="size-4 animate-spin" />}
+              {t(bulkTagMode === 'remove' ? 'bulkRemoveTags' : 'bulkAddTags')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
