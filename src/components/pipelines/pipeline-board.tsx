@@ -233,7 +233,7 @@ export function PipelineBoard({
       {stickyScroll.visible && (
         <div
           ref={stickyScrollRef}
-          className="pipeline-sticky-scroll fixed bottom-3 z-40 overflow-x-auto"
+          className="pipeline-sticky-scroll fixed bottom-0 z-40 overflow-x-auto"
           style={{ left: stickyScroll.left, width: stickyScroll.width }}
           onScroll={syncFromStickyScroll}
           tabIndex={0}
