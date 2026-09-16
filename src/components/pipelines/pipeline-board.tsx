@@ -110,7 +110,10 @@ export function PipelineBoard({
       const bottom = dashboardMain
         ? dashboardMain.getBoundingClientRect().bottom
         : window.innerHeight;
-      const availableHeight = Math.max(280, bottom - top);
+      // Main has an internal bottom gutter. Extend the board through that
+      // gutter so the native horizontal scrollbar sits at the real visual
+      // footer instead of leaving an empty strip underneath it.
+      const availableHeight = Math.max(280, bottom - top + 40);
       boardScrollElement.style.setProperty(
         '--pipeline-board-height',
         `${availableHeight}px`
