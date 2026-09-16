@@ -937,11 +937,11 @@ export default function PipelinesPage() {
   return (
     <div className="relative space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-nowrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           {/* Pipeline selector dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="border-border bg-card text-foreground hover:bg-muted data-[popup-open]:bg-muted inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm transition-colors">
+            <DropdownMenuTrigger className="border-border bg-card text-foreground hover:bg-muted data-[popup-open]:bg-muted inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-sm transition-colors sm:px-3">
               <Filter className="text-primary h-4 w-4" />
               <span className="font-semibold">
                 {selectedPipeline?.name ?? t('selectPipeline')}
@@ -995,10 +995,13 @@ export default function PipelinesPage() {
                 setCardLayoutDraft(selectedCardLayout);
                 setLayoutOpen(true);
               }}
-              className="border-border bg-card text-foreground hover:bg-muted h-10"
+              className="border-border bg-card text-foreground hover:bg-muted h-10 shrink-0 px-2 text-[13px] sm:px-3 sm:text-sm"
             >
               <SlidersHorizontal className="mr-1.5 size-4" />
-              Editar layout do cartão
+              <span className="max-[379px]:hidden">
+                Editar layout do cartão
+              </span>
+              <span className="hidden max-[379px]:inline">Layout</span>
             </GatedButton>
           )}
         </div>
