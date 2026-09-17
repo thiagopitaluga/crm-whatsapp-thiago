@@ -841,7 +841,7 @@ export default function ContactsPage() {
               : t('subtitleZero')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {canEditSettings && (
             <Button
               variant="outline"
