@@ -1093,7 +1093,11 @@ async function parseMessageContent(
         `Failed to verify media ${mediaId} with Meta:`,
         error instanceof Error ? error.message : error
       );
-      return null;
+      // Keep a durable application URL even when Meta's media endpoint is
+      // temporarily unavailable. The proxy can retry the download when the
+      // conversation is opened; dropping the URL makes the attachment
+      // permanently render as unavailable.
+      return `/api/whatsapp/media/${mediaId}`;
     }
   };
 
