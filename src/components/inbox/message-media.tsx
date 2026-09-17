@@ -245,31 +245,13 @@ export function MediaAudioBubble({
   message: Message;
   t: Translator;
 }) {
-  const [activated, setActivated] = useState(false);
   const { downloading, download } = useMediaDownload(message, t);
-
-  if (!activated) {
-    return (
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setActivated(true)}
-          className="bg-muted text-muted-foreground hover:bg-muted/80 rounded-md px-3 py-2 text-sm"
-        >
-          {t('audio')}
-        </button>
-        <MediaActionButton
-          icon={Download}
-          label={t('download')}
-          onClick={download}
-          busy={downloading}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="flex items-center gap-2">
+      {/* `preload="none"` keeps every thread lightweight: the browser only
+          fetches the audio after the agent presses play, while still showing
+          the familiar in-context player instead of an opaque attachment. */}
       <audio
         src={message.media_url}
         controls
