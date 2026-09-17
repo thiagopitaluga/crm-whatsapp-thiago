@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *
  * Meta's WhatsApp webhook supplies a source id, but not always the friendly
  * campaign hierarchy.  This module resolves that id only after finding the
- * current CRM tenant's explicitly connected ad account.  It intentionally
+ * current CRM tenant's explicitly connected ad accounts. It intentionally
  * never accepts an ad-account id from a webhook or browser request.
  */
 const META_GRAPH_VERSION = 'v21.0';
@@ -100,13 +100,12 @@ export async function resolveMetaMarketingAttribution(
   const accessToken = getMetaMarketingAccessToken();
   if (!accessToken) return { status: 'skipped', reason: 'missing_token' };
 
-  const { data: integration, error: integrationError } = await input.db
+  const { data: integrations, error: integrationError } = await input.db
     .from('meta_ad_account_integrations')
     .select('meta_ad_account_id')
     .eq('account_id', input.accountId)
     .eq('provider', 'meta')
-    .eq('is_active', true)
-    .maybeSingle();
+    .eq('is_active', true);
 
   if (integrationError) {
     console.error(
@@ -115,10 +114,12 @@ export async function resolveMetaMarketingAttribution(
     );
     return { status: 'skipped', reason: 'no_active_integration' };
   }
-  const expectedAdAccountId = metaId(
-    (integration as ActiveAdAccountIntegration | null)?.meta_ad_account_id
+  const permittedAdAccountIds = new Set(
+    ((integrations as ActiveAdAccountIntegration[] | null) ?? [])
+      .map((integration) => metaId(integration.meta_ad_account_id))
+      .filter((id): id is string => id !== null)
   );
-  if (!expectedAdAccountId) {
+  if (permittedAdAccountIds.size === 0) {
     return { status: 'skipped', reason: 'no_active_integration' };
   }
 
@@ -146,7 +147,7 @@ export async function resolveMetaMarketingAttribution(
   const adId = metaId(payload?.id);
   const actualAdAccountId = metaId(payload?.account_id);
   if (!adId) return { status: 'not_found' };
-  if (actualAdAccountId !== expectedAdAccountId) {
+  if (!actualAdAccountId || !permittedAdAccountIds.has(actualAdAccountId)) {
     console.warn('[attribution] rejected Meta ad from a different ad account');
     return { status: 'source_account_mismatch' };
   }

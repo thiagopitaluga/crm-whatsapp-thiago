@@ -8,7 +8,7 @@ import { resolveMetaMarketingAttribution } from './meta-marketing';
 
 function dbFor(
   options: {
-    integration?: { meta_ad_account_id: string } | null;
+    integrations?: { meta_ad_account_id: string }[] | null;
     integrationError?: { message: string } | null;
     updateError?: { message: string } | null;
   } = {}
@@ -17,9 +17,9 @@ function dbFor(
     row: Record<string, unknown>;
     filters: [string, unknown][];
   }[] = [];
-  const integration = Object.hasOwn(options, 'integration')
-    ? options.integration
-    : { meta_ad_account_id: '23845963072290549' };
+  const integrations = Object.hasOwn(options, 'integrations')
+    ? options.integrations
+    : [{ meta_ad_account_id: '23845963072290549' }];
 
   return {
     updates,
@@ -29,13 +29,11 @@ function dbFor(
           select: () => ({
             eq: () => ({
               eq: () => ({
-                eq: () => ({
-                  maybeSingle: () =>
-                    Promise.resolve({
-                      data: integration,
-                      error: options.integrationError ?? null,
-                    }),
-                }),
+                eq: () =>
+                  Promise.resolve({
+                    data: integrations,
+                    error: options.integrationError ?? null,
+                  }),
               }),
             }),
           }),
@@ -129,7 +127,7 @@ describe('resolveMetaMarketingAttribution', () => {
 
   it('does not call Meta or write attribution when no active tenant mapping exists', async () => {
     vi.stubEnv('META_MARKETING_ACCESS_TOKEN', 'token');
-    const db = dbFor({ integration: null });
+    const db = dbFor({ integrations: null });
     const fetchFn = vi.fn();
 
     await expect(
@@ -164,5 +162,33 @@ describe('resolveMetaMarketingAttribution', () => {
       })
     ).resolves.toEqual({ status: 'source_account_mismatch' });
     expect(db.updates).toHaveLength(0);
+  });
+
+  it('accepts an ad from any active account connected to the same CRM', async () => {
+    vi.stubEnv('META_MARKETING_ACCESS_TOKEN', 'token');
+    const db = dbFor({
+      integrations: [
+        { meta_ad_account_id: '23845963072290549' },
+        { meta_ad_account_id: '11111111111111111' },
+      ],
+    });
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ...resolvedAd, account_id: '11111111111111111' }),
+    }));
+
+    await expect(
+      resolveMetaMarketingAttribution({
+        db: db as never,
+        accountId: 'multi-account-crm',
+        conversationId: 'conversation-4',
+        sourceId: '987654321012345',
+        fetchFn,
+      })
+    ).resolves.toMatchObject({
+      status: 'resolved',
+      adAccountId: '11111111111111111',
+    });
   });
 });
