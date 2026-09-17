@@ -62,6 +62,7 @@ import { toast } from "sonner";
  * changed back to "api" without reintroducing the send flow from scratch.
  */
 const INBOX_TEXT_DELIVERY_MODE: "wa_me" | "api" = "wa_me";
+const SESSION_TIMER_VISIBLE = false;
 
 interface ReplyDraft {
   id: string;
@@ -946,7 +947,7 @@ export function MessageThread({
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
-          <Badge
+          {SESSION_TIMER_VISIBLE && <Badge
             variant="outline"
             className={cn(
               "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
@@ -955,7 +956,7 @@ export function MessageThread({
           >
             <Clock className="h-3 w-3" />
             {sessionInfo.remaining}
-          </Badge>
+          </Badge>}
         </div>
 
         <div className="flex items-center gap-2">

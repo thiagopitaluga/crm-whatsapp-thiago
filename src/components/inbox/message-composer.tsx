@@ -76,6 +76,11 @@ const MAX_RECORDING_SECONDS = 5 * 60;
  * would be misleading.
  */
 const COMPOSER_AUXILIARY_ACTIONS_ENABLED = false;
+// Keep the attachment/template/AI implementations mounted in source while
+// the inbox is operating in the wa.me text workflow. Re-enable this flag
+// when those actions are ready to return to the composer.
+const COMPOSER_AUXILIARY_ACTIONS_VISIBLE = false;
+const SESSION_EXPIRY_NOTICE_VISIBLE = false;
 
 export interface SendMediaPayload {
   kind: ComposerMediaKind;
@@ -197,8 +202,9 @@ export function MessageComposer({
   // every capability — so the disabled branch is a no-op there.
   const canSend = useCan("send-messages");
   const readOnly = !canSend;
-  // Media (like free-form text) is only allowed inside the 24h window.
-  const inputsDisabled = readOnly || sessionExpired;
+  // Text opens the user's WhatsApp app, so it remains available even when
+  // the Meta 24-hour customer-care window has elapsed.
+  const inputsDisabled = readOnly;
   const auxiliaryActionsDisabled =
     inputsDisabled || !COMPOSER_AUXILIARY_ACTIONS_ENABLED;
 
@@ -232,7 +238,7 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sending) return;
 
     setSending(true);
     try {
@@ -244,7 +250,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, onSend, replyTo?.id]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -556,7 +562,7 @@ export function MessageComposer({
           />
         </div>
       )}
-      {sessionExpired && (
+      {sessionExpired && SESSION_EXPIRY_NOTICE_VISIBLE && (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
             {t("sessionExpiredHint")}
@@ -639,7 +645,8 @@ export function MessageComposer({
           </Button>
         </div>
       ) : (
-        <div className="flex items-end gap-2">
+        <div className="flex min-w-0 items-end gap-2">
+          <div className={COMPOSER_AUXILIARY_ACTIONS_VISIBLE ? "contents" : "hidden"}>
           {/* Attach menu — photo / video / document / voice. */}
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -737,6 +744,8 @@ export function MessageComposer({
             )}
           </GatedButton>
 
+          </div>
+
           <textarea
             ref={textareaRef}
             value={text}
@@ -745,19 +754,17 @@ export function MessageComposer({
             placeholder={
               readOnly
                 ? t("readOnlyPlaceholder")
-                : sessionExpired
-                  ? t("sessionExpiredPlaceholder")
-                  : t("typeMessagePlaceholder")
+              : t("typeMessagePlaceholder")
             }
-            disabled={sessionExpired || readOnly}
+            disabled={readOnly}
             rows={1}
             // Textarea keeps its own inline title — the GatedButton
             // wrapping pattern doesn't apply to non-button inputs.
             // The placeholder text also surfaces the read-only state.
             title={readOnly ? t("readOnlyTitle") : undefined}
             className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              "min-w-0 flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
+              readOnly && "cursor-not-allowed opacity-50"
             )}
           />
 
@@ -765,7 +772,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || sending}
             onClick={handleSend}
             className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >
@@ -775,11 +782,10 @@ export function MessageComposer({
       )}
 
       {/* Hint sits outside the flex row so its height doesn't push
-          `items-end` buttons below the textarea. Indented to line up
-          under the textarea left edge. */}
+          `items-end` buttons below the textarea. */}
       {!draft && !recording && (
-        <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
-          {t("draftHint")}
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          {t("sendViaWhatsAppHint")}
         </p>
       )}
 

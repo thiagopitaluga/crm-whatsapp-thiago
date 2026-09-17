@@ -217,6 +217,7 @@
     },
     "composer": {
       "draftHint": "Toque em ✨ para redigir uma resposta com IA – você pode editá-la antes de enviar",
+      "sendViaWhatsAppHint": "Digite sua mensagem e toque em enviar para abrir o WhatsApp com o texto pronto.",
       "sessionExpiredHint": "A sessão de 24 horas expirou. Use um modelo para se engajar novamente.",
       "templates": "Modelos",
       "readOnlyPlaceholder": "Somente leitura – os espectadores podem navegar, mas não podem responder",
