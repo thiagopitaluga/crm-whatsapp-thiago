@@ -746,27 +746,39 @@ export function MessageComposer({
 
           </div>
 
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              readOnly
-                ? t("readOnlyPlaceholder")
-              : t("typeMessagePlaceholder")
-            }
-            disabled={readOnly}
-            rows={1}
-            // Textarea keeps its own inline title — the GatedButton
-            // wrapping pattern doesn't apply to non-button inputs.
-            // The placeholder text also surfaces the read-only state.
-            title={readOnly ? t("readOnlyTitle") : undefined}
-            className={cn(
-              "min-w-0 flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              readOnly && "cursor-not-allowed opacity-50"
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              placeholder=""
+              aria-label={t("typeMessagePlaceholder")}
+              disabled={readOnly}
+              rows={1}
+              // Textarea keeps its own inline title — the GatedButton
+              // wrapping pattern doesn't apply to non-button inputs.
+              title={readOnly ? t("readOnlyTitle") : undefined}
+              className={cn(
+                "min-h-12 w-full resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary/50",
+                readOnly && "cursor-not-allowed opacity-50"
+              )}
+            />
+            {!text && (
+              <div className="pointer-events-none absolute inset-x-4 top-2.5">
+                <div className="text-sm text-muted-foreground">
+                  {readOnly
+                    ? t("readOnlyPlaceholder")
+                    : t("typeMessagePlaceholder")}
+                </div>
+                {!readOnly && (
+                  <div className="text-[10px] leading-3 text-muted-foreground/80">
+                    {t("shiftEnterHint")}
+                  </div>
+                )}
+              </div>
             )}
-          />
+          </div>
 
           <GatedButton
             size="sm"
