@@ -49,11 +49,19 @@ import {
   type SendMediaPayload,
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
+import { sanitizePhoneForMeta } from "@/lib/whatsapp/phone-utils";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
 import { toast } from "sonner";
+
+/**
+ * Free-form replies currently open the user's own WhatsApp via wa.me.
+ * Keep the existing API implementation below dormant so this can later be
+ * changed back to "api" without reintroducing the send flow from scratch.
+ */
+const INBOX_TEXT_DELIVERY_MODE: "wa_me" | "api" = "wa_me";
 
 interface ReplyDraft {
   id: string;
@@ -467,6 +475,19 @@ export function MessageThread({
     async (text: string, replyToId?: string) => {
       if (!conversation) return;
 
+      if (INBOX_TEXT_DELIVERY_MODE === "wa_me") {
+        const phone = sanitizePhoneForMeta(contact?.phone ?? "");
+        if (!phone) {
+          toast.error("Este contato não possui um número válido para abrir o WhatsApp.");
+          return;
+        }
+
+        const target = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+        window.open(target, "_blank", "noopener,noreferrer");
+        setReplyTo(null);
+        return;
+      }
+
       const tempId = `temp-${Date.now()}`;
 
       // Optimistic update — shows the message immediately with "sending" status
@@ -517,7 +538,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    [contact?.phone, conversation, onNewMessage, onUpdateMessage]
   );
 
   const handleSendMedia = useCallback(

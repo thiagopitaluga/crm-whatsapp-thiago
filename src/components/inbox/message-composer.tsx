@@ -69,6 +69,14 @@ export const MEDIA_CAPTION_MAX = 1024;
  *  transcode limits — auto-stops the recorder when reached. */
 const MAX_RECORDING_SECONDS = 5 * 60;
 
+/**
+ * Attachment, interactive, template, and AI-draft actions stay mounted so
+ * their existing implementation can be switched back on later. For now the
+ * inbox sends through the user's WhatsApp app, where these CRM send actions
+ * would be misleading.
+ */
+const COMPOSER_AUXILIARY_ACTIONS_ENABLED = false;
+
 export interface SendMediaPayload {
   kind: ComposerMediaKind;
   /** Public chat-media URL Meta fetches at send time. */
@@ -191,6 +199,8 @@ export function MessageComposer({
   const readOnly = !canSend;
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
+  const auxiliaryActionsDisabled =
+    inputsDisabled || !COMPOSER_AUXILIARY_ACTIONS_ENABLED;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -633,7 +643,7 @@ export function MessageComposer({
           {/* Attach menu — photo / video / document / voice. */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              disabled={inputsDisabled || busy}
+              disabled={auxiliaryActionsDisabled || busy}
               title={
                 readOnly
                   ? t("readOnlyTitle")
@@ -641,7 +651,7 @@ export function MessageComposer({
                     ? undefined
                     : t("attachMedia")
               }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -673,7 +683,7 @@ export function MessageComposer({
               24h window like free-form text (interactive requires it). */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              disabled={inputsDisabled}
+              disabled={auxiliaryActionsDisabled}
               title={
                 readOnly
                   ? t("readOnlyTitle")
@@ -681,7 +691,7 @@ export function MessageComposer({
                     ? undefined
                     : t("moreActions")
               }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Plus className="h-4 w-4" />
             </DropdownMenuTrigger>
@@ -702,8 +712,9 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
+            disabled={auxiliaryActionsDisabled}
             title={readOnly ? undefined : t("sendTemplate")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground disabled:opacity-40"
             onClick={onOpenTemplates}
           >
             <LayoutTemplate className="h-4 w-4" />
@@ -714,9 +725,9 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={drafting}
+            disabled={auxiliaryActionsDisabled || drafting}
             title={readOnly ? undefined : t("draftWithAI")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
+            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary disabled:opacity-40"
             onClick={handleDraft}
           >
             {drafting ? (
