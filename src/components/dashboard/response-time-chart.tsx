@@ -47,8 +47,8 @@ export function ResponseTimeChart({
 
   return (
     <section className="rounded-xl border border-border bg-card">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div>
+      <header className="flex flex-col items-start gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">
             {t('title')}
           </h2>
@@ -56,7 +56,7 @@ export function ResponseTimeChart({
             {t('description')}
           </p>
         </div>
-        <div className="flex items-center gap-3 text-right text-xs">
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 text-left text-xs sm:w-auto sm:justify-end sm:text-right">
           {thresholdMinutes > 0 && (
             <span className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 font-medium text-rose-300 tabular-nums">
               {t('target', { minutes: thresholdMinutes })}
@@ -79,7 +79,7 @@ export function ResponseTimeChart({
         </div>
       </header>
 
-      <div className="p-5">
+      <div className="p-3 sm:p-5">
         {loading || !data ? (
           <Skeleton className="h-[260px] w-full" />
         ) : !hasData ? (
@@ -98,10 +98,10 @@ export function ResponseTimeChart({
             colors={['violet']}
             valueFormatter={(value) => `${value.toFixed(1)}m`}
             showLegend={false}
-            yAxisWidth={48}
+            yAxisWidth={40}
             // Compact height so the chart sits well inside the card
             // without dominating the row alongside the donut + activity feed.
-            className="h-[260px]"
+            className="h-[220px] sm:h-[260px]"
           />
         )}
       </div>

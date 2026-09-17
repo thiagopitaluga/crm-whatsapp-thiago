@@ -68,7 +68,7 @@ import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 const PAGE_SIZE = 25;
 
@@ -76,6 +76,15 @@ interface ContactWithTags extends Contact {
   tags?: Tag[];
   lastMessage?: string | null;
   openDeals?: ContactListDeal[];
+}
+
+function formatContactDate(iso: string, locale: string): string {
+  const dateLocale = locale === 'pt-BR' ? 'pt-BR' : locale === 'ko' ? 'ko-KR' : 'en-US';
+  const options: Intl.DateTimeFormatOptions =
+    dateLocale === 'pt-BR'
+      ? { day: '2-digit', month: '2-digit', year: 'numeric' }
+      : { day: 'numeric', month: 'short', year: 'numeric' };
+  return new Intl.DateTimeFormat(dateLocale, options).format(new Date(iso));
 }
 
 interface ContactListDeal {
@@ -148,6 +157,7 @@ function ContactSelectionCheckbox({
 
 export default function ContactsPage() {
   const t = useTranslations('Contacts.page');
+  const locale = useLocale();
   const supabase = createClient();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
@@ -1354,11 +1364,7 @@ export default function ContactsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
-                    {new Date(contact.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
+                    {formatContactDate(contact.created_at, locale)}
                   </TableCell>
                   <TableCell
                     className="w-[15.25rem]"
