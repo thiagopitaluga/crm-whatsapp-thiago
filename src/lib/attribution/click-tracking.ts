@@ -288,6 +288,7 @@ export async function resolveInboundAttribution(
   if (context.conversationId && !click.resolvedConversationId) {
     update.resolved_conversation_id = context.conversationId;
   }
+  let resolvedClick = click;
   if (Object.keys(update).length) {
     const { error: updateError } = await db
       .from('campaign_attribution_clicks')
@@ -298,7 +299,7 @@ export async function resolveInboundAttribution(
       console.error('[attribution] failed to mark inbound token:', updateError);
       throw new AttributionError('Failed to apply attribution token', 500);
     }
-    return {
+    resolvedClick = {
       ...click,
       resolvedAt: update.resolved_at ?? click.resolvedAt,
       resolvedContactId: update.resolved_contact_id ?? click.resolvedContactId,
@@ -306,5 +307,59 @@ export async function resolveInboundAttribution(
         update.resolved_conversation_id ?? click.resolvedConversationId,
     };
   }
-  return click;
+
+  // Preserve the original click row as the capture-of-record, then project a
+  // normalized touchpoint for cross-channel contact reporting. This remains
+  // best-effort: a newly introduced reporting table must never affect an
+  // otherwise valid inbound WhatsApp delivery.
+  if (resolvedClick.resolvedContactId) {
+    try {
+      await persistTrackingTouchpoint(db, resolvedClick);
+    } catch (touchpointError) {
+      console.error(
+        '[attribution] failed to persist tracking touchpoint:',
+        touchpointError
+      );
+    }
+  }
+  return resolvedClick;
+}
+
+async function persistTrackingTouchpoint(
+  db: SupabaseClient,
+  click: AttributionClick
+) {
+  const provider = click.gclid
+    ? 'google_ads'
+    : click.fbclid || /facebook|instagram|meta/i.test(click.utmSource ?? '')
+      ? 'meta'
+      : 'website';
+
+  const { error } = await db.from('attribution_touchpoints').upsert(
+    {
+      account_id: click.accountId,
+      contact_id: click.resolvedContactId,
+      conversation_id: click.resolvedConversationId,
+      tracking_click_id: click.id,
+      provider,
+      method: 'tracking_link',
+      source_platform: click.utmSource,
+      source_channel: click.utmMedium,
+      utm_source: click.utmSource,
+      utm_medium: click.utmMedium,
+      utm_campaign: click.utmCampaign,
+      utm_term: click.utmTerm,
+      utm_content: click.utmContent,
+      gclid: click.gclid,
+      fbclid: click.fbclid,
+      msclkid: click.msclkid,
+      landing_url: click.landingUrl,
+      referrer: click.referrer,
+      confidence: 'matched',
+      occurred_at: click.capturedAt,
+      raw_metadata: { capture: 'campaign_tracking_link' },
+    },
+    { onConflict: 'tracking_click_id' }
+  );
+  if (error) throw error;
 }

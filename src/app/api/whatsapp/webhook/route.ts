@@ -806,6 +806,45 @@ async function processMessage(
     }
   }
 
+  // Project the signed referral into the provider-neutral touchpoint ledger.
+  // The existing conversation_attributions row remains the Meta-specific
+  // source of truth; this parallel record is what lets contact reporting use
+  // the same shape for Meta, Google Ads and website journeys. It is strictly
+  // best-effort so a reporting migration never affects message delivery.
+  if (ctwaReferral) {
+    try {
+      const { error: touchpointError } = await supabaseAdmin()
+        .from('attribution_touchpoints')
+        .upsert(
+          {
+            account_id: accountId,
+            contact_id: contactRecord.id,
+            conversation_id: conversation.id,
+            provider: 'meta',
+            method: 'ctwa_referral',
+            source_platform: 'meta',
+            source_channel: 'click_to_whatsapp',
+            ctwa_clid: ctwaReferral.ctwaClid,
+            ad_id: ctwaReferral.sourceId,
+            ad_name: ctwaReferral.headline,
+            landing_url: ctwaReferral.sourceUrl,
+            confidence: 'observed',
+            occurred_at: new Date().toISOString(),
+            raw_metadata: ctwaReferral.metadata,
+          },
+          { onConflict: 'account_id,conversation_id,provider,method' }
+        );
+      if (touchpointError) {
+        console.error(
+          '[webhook] failed to persist Meta attribution touchpoint:',
+          touchpointError.message
+        );
+      }
+    } catch (error) {
+      console.error('[webhook] failed to persist Meta attribution touchpoint:', error);
+    }
+  }
+
   // First-party campaign links append a random reference marker to the
   // prefilled WhatsApp message. Resolve it only after the incoming message
   // has crossed the idempotency boundary and its tenant-scoped contact/thread

@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SettingsPanelHead } from './settings-panel-head';
+import { AdvertisingAttributionHub } from './advertising-attribution-hub';
 
 interface TrackingLink {
   id: string;
@@ -109,8 +110,10 @@ export function CampaignTrackingSettings() {
     <section className="animate-in fade-in-50 space-y-6 duration-200">
       <SettingsPanelHead
         title="Rastreamento de campanhas"
-        description="Crie um link por origem ou campanha. Ele salva UTMs, gclid e fbclid antes de abrir o WhatsApp e associa esses dados ao contato quando a conversa começar."
+        description="Centralize a atribuição de Meta Ads, Google Ads e links do site. Os dados ficam isolados neste CRM e acompanham cada contato desde o clique até o negócio."
       />
+
+      <AdvertisingAttributionHub />
 
       <RequireRole min="admin">
         <Card>

@@ -61,6 +61,36 @@ interface WhatsAppConversationAttribution {
   created_at: string;
 }
 
+interface AttributionTouchpoint {
+  id: string;
+  provider: 'meta' | 'google_ads' | 'website' | 'direct' | 'other';
+  method: string;
+  source_platform: string | null;
+  source_channel: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  gclid: string | null;
+  fbclid: string | null;
+  msclkid: string | null;
+  ctwa_clid: string | null;
+  ad_account_id: string | null;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  ad_group_id: string | null;
+  ad_group_name: string | null;
+  ad_id: string | null;
+  ad_name: string | null;
+  placement: string | null;
+  network: string | null;
+  landing_url: string | null;
+  referrer: string | null;
+  confidence: string;
+  occurred_at: string;
+}
+
 function MetaAttributionDetail({
   label,
   value,
@@ -97,6 +127,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [whatsAppAttributions, setWhatsAppAttributions] = useState<
     WhatsAppConversationAttribution[]
   >([]);
+  const [touchpoints, setTouchpoints] = useState<AttributionTouchpoint[]>([]);
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
@@ -114,6 +145,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       tagsRes,
       websiteAttributionsRes,
       whatsAppAttributionsRes,
+      touchpointsRes,
     ] = await Promise.all([
       supabase
         .from('deals')
@@ -145,6 +177,14 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         .eq('contact_id', contact.id)
         .order('created_at', { ascending: false })
         .limit(3),
+      supabase
+        .from('attribution_touchpoints')
+        .select(
+          'id, provider, method, source_platform, source_channel, utm_source, utm_medium, utm_campaign, utm_term, utm_content, gclid, fbclid, msclkid, ctwa_clid, ad_account_id, campaign_id, campaign_name, ad_group_id, ad_group_name, ad_id, ad_name, placement, network, landing_url, referrer, confidence, occurred_at'
+        )
+        .eq('contact_id', contact.id)
+        .order('occurred_at', { ascending: false })
+        .limit(5),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -164,6 +204,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     setWhatsAppAttributions(
       (whatsAppAttributionsRes.data ?? []) as WhatsAppConversationAttribution[]
     );
+    setTouchpoints((touchpointsRes.data ?? []) as AttributionTouchpoint[]);
   }, [contact]);
 
   // Load on contact change. setContactData/setTags run inside async
@@ -225,7 +266,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const displayName = contact.name || contact.phone;
   const initials = displayName.charAt(0).toUpperCase();
   const hasAttribution =
-    websiteAttributions.length > 0 || whatsAppAttributions.length > 0;
+    websiteAttributions.length > 0 ||
+    whatsAppAttributions.length > 0 ||
+    touchpoints.length > 0;
 
   return (
     <div className="border-border bg-card flex h-full w-70 flex-col border-l">
@@ -286,7 +329,73 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   Origem da conversa
                 </div>
                 <div className="mt-2 space-y-2">
-                  {whatsAppAttributions.map((attribution) => (
+                  {touchpoints.map((touchpoint) => {
+                    const providerLabel =
+                      touchpoint.provider === 'google_ads'
+                        ? 'Google Ads'
+                        : touchpoint.provider === 'meta'
+                          ? 'Meta Ads'
+                          : touchpoint.provider === 'website'
+                            ? 'Site'
+                            : touchpoint.source_platform || 'Origem registrada';
+                    const campaign =
+                      touchpoint.campaign_name || touchpoint.utm_campaign;
+                    const hasTechnicalData = Boolean(
+                      touchpoint.utm_source ||
+                        touchpoint.utm_medium ||
+                        touchpoint.utm_term ||
+                        touchpoint.utm_content ||
+                        touchpoint.gclid ||
+                        touchpoint.fbclid ||
+                        touchpoint.msclkid ||
+                        touchpoint.ctwa_clid ||
+                        touchpoint.landing_url ||
+                        touchpoint.referrer
+                    );
+                    return (
+                      <div
+                        key={touchpoint.id}
+                        className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2.5"
+                      >
+                        <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
+                          <Megaphone className="text-primary size-3.5" />
+                          {providerLabel}
+                          {touchpoint.source_channel
+                            ? ` · ${touchpoint.source_channel}`
+                            : ''}
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          <MetaAttributionDetail label="Campanha" value={campaign} />
+                          <MetaAttributionDetail
+                            label={touchpoint.provider === 'google_ads' ? 'Grupo de anúncios' : 'Conjunto de anúncios'}
+                            value={touchpoint.ad_group_name || touchpoint.ad_group_id}
+                          />
+                          <MetaAttributionDetail label="Anúncio" value={touchpoint.ad_name || touchpoint.ad_id} />
+                          <MetaAttributionDetail label="Posicionamento" value={touchpoint.placement || touchpoint.network} />
+                        </div>
+                        {hasTechnicalData && (
+                          <details className="group mt-2">
+                            <summary className="text-muted-foreground cursor-pointer text-[10px] hover:text-foreground">
+                              Ver parâmetros e identificadores
+                            </summary>
+                            <div className="mt-2 grid gap-1.5 border-l pl-2">
+                              <MetaAttributionDetail label="UTM source" value={touchpoint.utm_source} />
+                              <MetaAttributionDetail label="UTM medium" value={touchpoint.utm_medium} />
+                              <MetaAttributionDetail label="UTM term" value={touchpoint.utm_term} />
+                              <MetaAttributionDetail label="UTM content" value={touchpoint.utm_content} />
+                              <MetaAttributionDetail label="gclid" value={touchpoint.gclid} />
+                              <MetaAttributionDetail label="fbclid" value={touchpoint.fbclid} />
+                              <MetaAttributionDetail label="msclkid" value={touchpoint.msclkid} />
+                              <MetaAttributionDetail label="Clique do WhatsApp" value={touchpoint.ctwa_clid} />
+                              <MetaAttributionDetail label="Página de entrada" value={touchpoint.landing_url} />
+                              <MetaAttributionDetail label="Referência" value={touchpoint.referrer} />
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {touchpoints.length === 0 && whatsAppAttributions.map((attribution) => (
                     <div
                       key={attribution.id}
                       className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2.5"
@@ -345,7 +454,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                       )}
                     </div>
                   ))}
-                  {websiteAttributions.map((attribution) => {
+                  {touchpoints.length === 0 && websiteAttributions.map((attribution) => {
                     const source =
                       attribution.utm_source ||
                       (attribution.gclid
