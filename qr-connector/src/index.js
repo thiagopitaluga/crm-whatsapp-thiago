@@ -7,6 +7,7 @@ import P from 'pino';
 import QRCode from 'qrcode';
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
@@ -492,7 +493,11 @@ async function ingestMessage(accountId, message, session) {
   // there is no need to infer or overwrite a name here.
   const name =
     direction === 'inbound' ? message.pushName?.trim() || null : null;
-  const messageContent = getMessageContent(message);
+  const messageContent = await prepareMessageContentForIngest(
+    accountId,
+    message,
+    session
+  );
 
   await sendLeadToCrm(
     accountId,
@@ -504,6 +509,8 @@ async function ingestMessage(accountId, message, session) {
       messageId: message.key.id,
       contentText: messageContent.text,
       contentType: messageContent.type,
+      mediaUrl: messageContent.mediaUrl,
+      mediaType: messageContent.mediaType,
       createdAt: toIsoTimestamp(message.messageTimestamp),
     }
   );
@@ -517,20 +524,21 @@ function getMessageContent(message) {
   }
   if (content.imageMessage) {
     const text = content.imageMessage.caption?.trim() || '[Imagem]';
-    return { preview: text, text, type: 'image' };
+    return { preview: text, text, type: 'image', media: content.imageMessage };
   }
   if (content.videoMessage) {
     const text = content.videoMessage.caption?.trim() || '[Vídeo]';
-    return { preview: text, text, type: 'video' };
+    return { preview: text, text, type: 'video', media: content.videoMessage };
   }
   if (content.documentMessage)
     return {
       preview: content.documentMessage.fileName?.trim() || '[Documento]',
       text: content.documentMessage.fileName?.trim() || '[Documento]',
       type: 'document',
+      media: content.documentMessage,
     };
   if (content.audioMessage)
-    return { preview: '[Áudio]', text: '[Áudio]', type: 'audio' };
+    return { preview: '[Áudio]', text: '[Áudio]', type: 'audio', media: content.audioMessage };
   if (content.stickerMessage)
     return { preview: '[Figurinha]', text: '[Figurinha]', type: 'image' };
   if (content.locationMessage)
@@ -542,6 +550,78 @@ function getMessageContent(message) {
   if (content.contactMessage)
     return { preview: '[Contato]', text: '[Contato]', type: 'text' };
   return { preview: '[Mensagem]', text: '[Mensagem]', type: 'text' };
+}
+
+async function prepareMessageContentForIngest(accountId, message, session) {
+  const content = getMessageContent(message);
+  if (!content.media || !session.socket) return content;
+
+  const mimeType = content.media.mimetype?.split(';')[0]?.trim().toLowerCase();
+  if (!mimeType) return content;
+
+  try {
+    const reservation = await reserveCrmMediaUpload(accountId, message.key.id, {
+      kind: content.type,
+      mimeType,
+      fileName: content.media.fileName,
+    });
+    if (!reservation) return content;
+
+    const bytes = await downloadMediaMessage(
+      message,
+      'buffer',
+      {},
+      { reuploadRequest: session.socket.updateMediaMessage }
+    );
+    if (!bytes?.length) return content;
+
+    const upload = await fetch(reservation.uploadUrl, {
+      method: 'PUT',
+      headers: { 'content-type': mimeType, 'x-upsert': 'true' },
+      body: bytes,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!upload.ok) {
+      console.error('[qr-connector] media upload rejected:', upload.status);
+      return content;
+    }
+    return { ...content, mediaUrl: reservation.mediaUrl, mediaType: mimeType };
+  } catch (error) {
+    console.error('[qr-connector] media preparation failed:', safeError(error));
+    return content;
+  }
+}
+
+async function reserveCrmMediaUpload(accountId, messageId, media) {
+  try {
+    const response = await fetch(`${crmBaseUrl}/api/internal/qr-media-upload`, {
+      method: 'POST',
+      headers: {
+        'x-connector-secret': crmConnectorSecret,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        account_id: accountId,
+        message_id: messageId,
+        kind: media.kind,
+        mime_type: media.mimeType,
+        file_name: media.fileName || null,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      console.error('[qr-connector] media reservation rejected:', response.status);
+      return null;
+    }
+    const payload = await response.json();
+    return typeof payload?.upload_url === 'string' &&
+      typeof payload?.media_url === 'string'
+      ? { uploadUrl: payload.upload_url, mediaUrl: payload.media_url }
+      : null;
+  } catch (error) {
+    console.error('[qr-connector] media reservation failed:', safeError(error));
+    return null;
+  }
 }
 
 async function sendLeadToCrm(
@@ -577,6 +657,8 @@ async function sendLeadToCrm(
               message_id: message.messageId,
               content_text: message.contentText,
               content_type: message.contentType,
+              media_url: message.mediaUrl || null,
+              media_type: message.mediaType || null,
               message_created_at: message.createdAt,
             }
           : {}),

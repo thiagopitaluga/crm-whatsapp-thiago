@@ -34,6 +34,10 @@ export interface IngestExternalWhatsAppMessageInput extends IngestLeadInput {
   messageId: string;
   contentText: string;
   contentType: ExternalMessageContentType;
+  /** Durable Storage URL supplied by the trusted QR connector for media. */
+  mediaUrl?: string | null;
+  /** MIME type supplied by the trusted QR connector for media. */
+  mediaType?: string | null;
   createdAt?: string | null;
 }
 
@@ -183,6 +187,8 @@ export async function ingestExternalWhatsAppMessage(
         sender_type: input.direction === 'inbound' ? 'customer' : 'agent',
         content_type: input.contentType,
         content_text: contentText,
+        media_url: input.mediaUrl ?? null,
+        media_type: input.mediaType ?? null,
         message_id: messageId,
         status: input.direction === 'inbound' ? 'delivered' : 'sent',
         created_at: createdAt,

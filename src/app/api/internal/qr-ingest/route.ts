@@ -35,6 +35,10 @@ export async function POST(request: Request) {
   const contentText =
     typeof body?.content_text === 'string' ? body.content_text : null;
   const contentType = asContentType(body?.content_type);
+  const mediaUrl =
+    typeof body?.media_url === 'string' ? body.media_url.trim() : null;
+  const mediaType =
+    typeof body?.media_type === 'string' ? body.media_type.trim() : null;
   const messageCreatedAt =
     typeof body?.message_created_at === 'string'
       ? body.message_created_at
@@ -69,6 +73,8 @@ export async function POST(request: Request) {
         messageId,
         contentText,
         contentType,
+        mediaUrl,
+        mediaType,
         createdAt: messageCreatedAt,
       });
       return NextResponse.json({
