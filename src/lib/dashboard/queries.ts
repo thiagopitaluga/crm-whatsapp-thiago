@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   daysAgoStart,
-  DOW_SHORT_MON_FIRST,
   lastNDayKeys,
   localDayKey,
   mondayIndex,
@@ -252,10 +251,6 @@ export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
     }
   })
 
-  // Silence unused-label warnings — keep the arrays explicitly named
-  // for readability above.
-  void DOW_SHORT_MON_FIRST
-
   return {
     buckets,
     thisWeekAvg: avg(thisWeekMins),
@@ -319,6 +314,7 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
       id: `msg-${m.id}`,
       kind: 'message',
       text: `New message from ${who}`,
+      translation: { key: 'messageFrom', values: { who } },
       at: m.created_at,
       href: `/inbox?c=${m.conversation_id}`,
     })
@@ -329,6 +325,7 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
       id: `contact-${c.id}`,
       kind: 'contact',
       text: `New contact: ${c.name || c.phone}`,
+      translation: { key: 'newContact', values: { who: c.name || c.phone } },
       at: c.created_at,
       href: '/contacts',
     })
@@ -347,6 +344,9 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
       text: stage?.name
         ? `Deal "${d.title}" in ${stage.name}`
         : `Deal "${d.title}" updated`,
+      translation: stage?.name
+        ? { key: 'dealInStage', values: { title: d.title, stage: stage.name } }
+        : { key: 'dealUpdated', values: { title: d.title } },
       at: d.updated_at,
       href: '/pipelines',
     })
@@ -367,6 +367,10 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
       id: `broadcast-${b.id}`,
       kind: 'broadcast',
       text: `Broadcast "${b.name}" ${label}`,
+      translation:
+        b.status === 'sent'
+          ? { key: 'broadcastSent', values: { name: b.name, count: b.total_recipients } }
+          : { key: 'broadcastStatus', values: { name: b.name, status: b.status, count: b.total_recipients } },
       at: b.created_at,
       href: '/broadcasts',
     })
@@ -388,6 +392,9 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
       id: `auto-${l.id}`,
       kind: 'automation',
       text: `Automation "${autoName}" ${l.status === 'failed' ? 'failed for' : 'triggered for'} ${who}`,
+      translation: l.status === 'failed'
+        ? { key: 'automationFailed', values: { name: autoName, who } }
+        : { key: 'automationTriggered', values: { name: autoName, who } },
       at: l.created_at,
     })
   }

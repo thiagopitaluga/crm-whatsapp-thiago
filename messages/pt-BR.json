@@ -114,7 +114,15 @@
       "timeS": "há {sec}s",
       "timeM": "há {min}min",
       "timeH": "há {hr}h",
-      "timeD": "há {day}d"
+      "timeD": "há {day}d",
+      "messageFrom": "Nova mensagem de {who}",
+      "newContact": "Novo contato: {who}",
+      "dealInStage": "Negócio \"{title}\" em {stage}",
+      "dealUpdated": "Negócio \"{title}\" atualizado",
+      "broadcastSent": "Disparo \"{name}\" enviado para {count} contatos",
+      "broadcastStatus": "Disparo \"{name}\" {status} ({count} destinatários)",
+      "automationFailed": "Automação \"{name}\" falhou para {who}",
+      "automationTriggered": "Automação \"{name}\" acionada para {who}"
     },
     "conversationsChart": {
       "title": "Conversas ao longo do tempo",
@@ -144,7 +152,15 @@
       "thisWeek": "Esta semana:",
       "lastWeek": "Semana passada:",
       "noReplies": "Nenhuma resposta registrada ainda",
-      "noRepliesHint": "Este gráfico é preenchido conforme você responde às mensagens dos clientes."
+      "noRepliesHint": "Este gráfico é preenchido conforme você responde às mensagens dos clientes.",
+      "avgMinutes": "Média (minutos)",
+      "mon": "Seg",
+      "tue": "Ter",
+      "wed": "Qua",
+      "thu": "Qui",
+      "fri": "Sex",
+      "sat": "Sáb",
+      "sun": "Dom"
     },
     "emptyState": {
       "title": "Ainda não há dados suficientes"

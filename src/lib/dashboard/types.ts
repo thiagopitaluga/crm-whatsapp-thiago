@@ -55,11 +55,28 @@ export type ActivityKind =
   | 'automation'
   | 'contact'
 
+export type ActivityTranslationKey =
+  | 'messageFrom'
+  | 'newContact'
+  | 'dealInStage'
+  | 'dealUpdated'
+  | 'broadcastSent'
+  | 'broadcastStatus'
+  | 'automationFailed'
+  | 'automationTriggered'
+
+export interface ActivityTranslation {
+  key: ActivityTranslationKey
+  values: Record<string, string | number>
+}
+
 export interface ActivityItem {
   id: string
   kind: ActivityKind
   /** Primary line of text rendered in the feed. Pre-formatted. */
   text: string
+  /** Locale-aware template metadata. `text` remains a safe fallback. */
+  translation?: ActivityTranslation
   /** ISO timestamp the item happened at, drives relative-time + sort. */
   at: string
   /** Optional deep-link for the whole row (not all items have a target). */

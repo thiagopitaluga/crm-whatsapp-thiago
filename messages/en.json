@@ -114,7 +114,15 @@
       "timeS": "{sec}s ago",
       "timeM": "{min}m ago",
       "timeH": "{hr}h ago",
-      "timeD": "{day}d ago"
+      "timeD": "{day}d ago",
+      "messageFrom": "New message from {who}",
+      "newContact": "New contact: {who}",
+      "dealInStage": "Deal \"{title}\" in {stage}",
+      "dealUpdated": "Deal \"{title}\" updated",
+      "broadcastSent": "Broadcast \"{name}\" sent to {count} contacts",
+      "broadcastStatus": "Broadcast \"{name}\" {status} ({count} recipients)",
+      "automationFailed": "Automation \"{name}\" failed for {who}",
+      "automationTriggered": "Automation \"{name}\" triggered for {who}"
     },
     "conversationsChart": {
       "title": "Conversations Over Time",
@@ -144,7 +152,15 @@
       "thisWeek": "This week:",
       "lastWeek": "Last week:",
       "noReplies": "No replies recorded yet",
-      "noRepliesHint": "This chart fills in as you reply to customer messages."
+      "noRepliesHint": "This chart fills in as you reply to customer messages.",
+      "avgMinutes": "Avg minutes",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
     },
     "emptyState": {
       "title": "Not enough data yet"
