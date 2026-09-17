@@ -1,6 +1,7 @@
-import { downloadMedia } from "./meta-api";
-import { extensionForMime } from "@/lib/media/filename";
-import { buildMediaPath, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
+import { downloadMedia } from './meta-api';
+import { extensionForMime } from '@/lib/media/filename';
+import { buildMediaPath, MEDIA_MAX_BYTES } from '@/lib/storage/upload-media';
+import sharp from 'sharp';
 
 /**
  * Copies inbound WhatsApp media into the `chat-media` bucket so it
@@ -29,14 +30,14 @@ export interface MirrorStorage {
     upload(
       path: string,
       body: Uint8Array | Buffer,
-      options: { contentType: string; cacheControl: string; upsert: boolean },
+      options: { contentType: string; cacheControl: string; upsert: boolean }
     ): Promise<{ error: { message: string } | null }>;
     getPublicUrl(path: string): { data: { publicUrl: string } };
   };
 }
 
 /** Bucket the composer already writes to; inbound joins it. */
-export const MIRROR_BUCKET = "chat-media";
+export const MIRROR_BUCKET = 'chat-media';
 
 /**
  * Second path segment for mirrored inbound objects, so a bucket listing
@@ -44,7 +45,7 @@ export const MIRROR_BUCKET = "chat-media";
  * matches on the FIRST segment (`account-<id>`, migration 023), so an
  * extra level is free.
  */
-export const MIRROR_FOLDER = "inbound";
+export const MIRROR_FOLDER = 'inbound';
 
 export interface MirrorInboundMediaArgs {
   /** Service-role `supabase.storage` — RLS is bypassed, MIME/size limits are not. */
@@ -76,8 +77,8 @@ export interface MirrorInboundMediaArgs {
  */
 export function normalizeMimeType(value?: string | null): string | null {
   if (!value) return null;
-  const base = value.split(";")[0].trim().toLowerCase();
-  return base.includes("/") ? base : null;
+  const base = value.split(';')[0].trim().toLowerCase();
+  return base.includes('/') ? base : null;
 }
 
 /**
@@ -86,11 +87,11 @@ export function normalizeMimeType(value?: string | null): string | null {
  * than the MIME top-level (`application/*` reads as "document").
  */
 function kindForMime(mimeType: string | null): string {
-  if (!mimeType) return "file";
-  const [top] = mimeType.split("/");
-  if (top === "image" || top === "video" || top === "audio") return top;
-  if (top === "text" || top === "application") return "document";
-  return "file";
+  if (!mimeType) return 'file';
+  const [top] = mimeType.split('/');
+  if (top === 'image' || top === 'video' || top === 'audio') return top;
+  if (top === 'text' || top === 'application') return 'document';
+  return 'file';
 }
 
 /**
@@ -123,10 +124,10 @@ export function mirrorFileName(args: {
   // it. Strip any directory part and its extension — `buildMediaPath`
   // re-derives the extension from whatever we hand it, and we'd rather
   // that come from the MIME type than from a sender-controlled string.
-  const stem = (fileName ?? "")
+  const stem = (fileName ?? '')
     .split(/[\\/]/)
     .pop()!
-    .replace(/\.[^.]+$/, "")
+    .replace(/\.[^.]+$/, '')
     .trim();
   if (stem) return `${mediaId}-${stem}.${ext}`;
 
@@ -135,7 +136,7 @@ export function mirrorFileName(args: {
   // the same name — and it's Meta's timestamp, not the clock, so the
   // path stays deterministic across a redelivery.
   const kind = kindForMime(mimeType);
-  const stamp = String(messageTimestamp ?? "").replace(/\D/g, "");
+  const stamp = String(messageTimestamp ?? '').replace(/\D/g, '');
   return `${mediaId}-${stamp ? `${kind}-${stamp}` : kind}.${ext}`;
 }
 
@@ -147,7 +148,7 @@ export function mirrorFileName(args: {
  *          proxy URL.
  */
 export async function mirrorInboundMedia(
-  args: MirrorInboundMediaArgs,
+  args: MirrorInboundMediaArgs
 ): Promise<string | null> {
   const {
     storage,
@@ -168,22 +169,25 @@ export async function mirrorInboundMedia(
   // rejects anything past its 16 MB `file_size_limit` anyway, and Meta
   // allows documents up to 100 MB, so this is a real case rather than a
   // defensive one.
-  if (typeof fileSize === "number" && fileSize > MEDIA_MAX_BYTES) {
+  if (typeof fileSize === 'number' && fileSize > MEDIA_MAX_BYTES) {
     console.warn(
-      `[mirror-media] skipping ${mediaId}: ${fileSize} bytes exceeds the ${MEDIA_MAX_BYTES}-byte bucket limit`,
+      `[mirror-media] skipping ${mediaId}: ${fileSize} bytes exceeds the ${MEDIA_MAX_BYTES}-byte bucket limit`
     );
     return null;
   }
 
   try {
-    const { buffer, contentType } = await download({ downloadUrl, accessToken });
+    const { buffer, contentType } = await download({
+      downloadUrl,
+      accessToken,
+    });
 
     // Meta's `file_size` is advisory; the transfer is the truth. Check
     // again so an understated size can't push a rejected upload onto
     // the bucket.
     if (buffer.byteLength > MEDIA_MAX_BYTES) {
       console.warn(
-        `[mirror-media] skipping ${mediaId}: downloaded ${buffer.byteLength} bytes, over the ${MEDIA_MAX_BYTES}-byte bucket limit`,
+        `[mirror-media] skipping ${mediaId}: downloaded ${buffer.byteLength} bytes, over the ${MEDIA_MAX_BYTES}-byte bucket limit`
       );
       return null;
     }
@@ -191,10 +195,35 @@ export async function mirrorInboundMedia(
     // Meta's metadata MIME wins over the CDN response header: it's what
     // the message row records, so mirroring it keeps `media_type` and
     // the stored object describing the same thing.
-    const uploadType =
+    let uploadBuffer: Uint8Array = buffer;
+    let uploadType =
       normalizedMime ??
       normalizeMimeType(contentType) ??
-      "application/octet-stream";
+      'application/octet-stream';
+
+    // Images are resized and encoded as WebP before persistence. This keeps
+    // the original aspect ratio while substantially reducing Storage usage.
+    // Skip formats Sharp cannot decode and retain the original on failure.
+    if (uploadType.startsWith('image/') && uploadType !== 'image/svg+xml') {
+      try {
+        const optimized = await sharp(buffer)
+          .rotate()
+          .resize({
+            width: 1920,
+            height: 1920,
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .webp({ quality: 82 })
+          .toBuffer();
+        if (optimized.byteLength < buffer.byteLength) {
+          uploadBuffer = optimized;
+          uploadType = 'image/webp';
+        }
+      } catch {
+        // Preserve the original if the incoming image is unsupported/corrupt.
+      }
+    }
 
     const objectName = mirrorFileName({
       mediaId,
@@ -210,18 +239,20 @@ export async function mirrorInboundMedia(
     // `upsert: true` for that same reason: on the rare Meta redelivery
     // the second pass rewrites byte-identical content at the same key
     // instead of erroring or orphaning a duplicate.
-    const { error } = await storage.from(MIRROR_BUCKET).upload(path, buffer, {
-      contentType: uploadType,
-      cacheControl: "3600",
-      upsert: true,
-    });
+    const { error } = await storage
+      .from(MIRROR_BUCKET)
+      .upload(path, uploadBuffer, {
+        contentType: uploadType,
+        cacheControl: '3600',
+        upsert: true,
+      });
     if (error) {
       // Most likely a MIME outside the bucket's allow-list (migration
       // 039 covers what Meta realistically sends, but a document can be
       // any type at all). Log and let the caller keep the proxy URL.
       console.warn(
         `[mirror-media] upload failed for ${mediaId} (${uploadType}):`,
-        error.message,
+        error.message
       );
       return null;
     }
@@ -233,7 +264,7 @@ export async function mirrorInboundMedia(
   } catch (error) {
     console.warn(
       `[mirror-media] could not mirror ${mediaId}:`,
-      error instanceof Error ? error.message : error,
+      error instanceof Error ? error.message : error
     );
     return null;
   }

@@ -101,6 +101,7 @@ export function WhatsAppConfig() {
   // a viewer's toggle would match zero rows and appear to work.
   const [mirrorMedia, setMirrorMedia] = useState(true);
   const [savingMirror, setSavingMirror] = useState(false);
+  const [mediaRetentionDays, setMediaRetentionDays] = useState('365');
 
   // True once /register has succeeded on Meta's side (timestamp set
   // in the row). When false, the saved config is metadata-only and
@@ -157,6 +158,7 @@ export function WhatsAppConfig() {
           // Undefined on a row read before migration 039 — treat that as
           // on, matching the webhook's own default.
           setMirrorMedia(data.mirror_inbound_media !== false);
+          setMediaRetentionDays(String(data.media_retention_days ?? ''));
         } else {
           setConfig(null);
           setPhoneNumberId('');
@@ -166,6 +168,7 @@ export function WhatsAppConfig() {
           setPin('');
           setTokenEdited(false);
           setMirrorMedia(true);
+          setMediaRetentionDays('365');
         }
         // Clear any stale probe result when reloading the row.
         setRegistrationProbe(null);
@@ -265,6 +268,34 @@ export function WhatsAppConfig() {
       console.error('Failed to update media retention setting:', error);
       setMirrorMedia(previous);
       toast.error(t('mirrorInboundSaveFailed'));
+    } finally {
+      setSavingMirror(false);
+    }
+  }
+
+  async function handleSaveMediaRetention() {
+    if (!config || !accountId || savingMirror) return;
+    const parsed =
+      mediaRetentionDays.trim() === '' ? null : Number(mediaRetentionDays);
+    if (
+      parsed !== null &&
+      (!Number.isInteger(parsed) || parsed < 30 || parsed > 3650)
+    ) {
+      toast.error(t('retentionInvalid'));
+      return;
+    }
+    setSavingMirror(true);
+    try {
+      const { error } = await supabase
+        .from('whatsapp_config')
+        .update({ media_retention_days: parsed })
+        .eq('account_id', accountId);
+      if (error) throw new Error(error.message);
+      setConfig({ ...config, media_retention_days: parsed });
+      toast.success(t('retentionSaved'));
+    } catch (error) {
+      console.error('Failed to update media retention:', error);
+      toast.error(t('retentionSaveFailed'));
     } finally {
       setSavingMirror(false);
     }
@@ -870,6 +901,42 @@ export function WhatsAppConfig() {
                         disabled={savingMirror || !canEditSettings}
                         aria-label={t('mirrorInbound')}
                       />
+                    </div>
+                    <div className="border-border mt-3 flex flex-wrap items-end justify-between gap-3 rounded-md border p-3">
+                      <div className="min-w-0">
+                        <p className="text-foreground text-sm font-medium">
+                          {t('retentionTitle')}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {t('retentionDesc')}
+                        </p>
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <div className="w-28">
+                          <Label className="text-muted-foreground text-xs">
+                            {t('retentionDays')}
+                          </Label>
+                          <Input
+                            type="number"
+                            min={30}
+                            max={3650}
+                            value={mediaRetentionDays}
+                            onChange={(event) =>
+                              setMediaRetentionDays(event.target.value)
+                            }
+                            placeholder={t('retentionForever')}
+                            disabled={savingMirror || !canEditSettings}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleSaveMediaRetention}
+                          disabled={savingMirror || !canEditSettings}
+                        >
+                          {t('retentionSave')}
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

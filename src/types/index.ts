@@ -304,6 +304,8 @@ export interface WhatsAppConfig {
    * inbound attachments expire. Migration 039.
    */
   mirror_inbound_media?: boolean;
+  /** Number of days persisted attachments are kept. NULL disables cleanup. */
+  media_retention_days?: number | null;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)
