@@ -1090,7 +1090,7 @@ export default function PipelinesPage() {
 
       {/* Board */}
       {pipelines.length > 0 && (
-        <div className="flex flex-col gap-2 lg:absolute lg:top-0 lg:right-[216px] lg:left-[168px] lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-2 lg:absolute lg:top-0 lg:right-[216px] lg:left-[184px] lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
             <Input
