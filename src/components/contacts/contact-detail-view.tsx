@@ -48,11 +48,70 @@ import {
   X,
   DollarSign,
   LayoutTemplate,
+  Megaphone,
+  MousePointerClick,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 export type ContactDetailTab =
-  'details' | 'tags' | 'notes' | 'custom' | 'deals';
+  'details' | 'tags' | 'notes' | 'custom' | 'attribution' | 'deals';
+
+interface MetaConversationAttribution {
+  id: string;
+  attribution_type: string;
+  source_id: string | null;
+  ctwa_clid: string | null;
+  headline: string | null;
+  source_url: string | null;
+  meta_ad_account_id: string | null;
+  meta_campaign_id: string | null;
+  meta_campaign_name: string | null;
+  meta_adset_id: string | null;
+  meta_adset_name: string | null;
+  meta_ad_id: string | null;
+  meta_ad_name: string | null;
+  meta_marketing_resolved_at: string | null;
+  created_at: string;
+}
+
+interface AttributionTouchpoint {
+  id: string;
+  provider: string;
+  method: string;
+  source_platform: string | null;
+  source_channel: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  gclid: string | null;
+  fbclid: string | null;
+  msclkid: string | null;
+  landing_url: string | null;
+  referrer: string | null;
+  occurred_at: string;
+}
+
+function AttributionField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null | undefined;
+}) {
+  if (!value) return null;
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
+        {label}
+      </p>
+      <p className="text-foreground truncate text-xs" title={value}>
+        {value}
+      </p>
+    </div>
+  );
+}
 
 interface ContactDetailViewProps {
   open: boolean;
@@ -111,6 +170,13 @@ export function ContactDetailView({
   // Deals tab
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
+  // Attribution tab — acquisition history stays normalized outside custom
+  // fields so one contact can retain multiple campaigns and conversations.
+  const [metaAttributions, setMetaAttributions] = useState<
+    MetaConversationAttribution[]
+  >([]);
+  const [touchpoints, setTouchpoints] = useState<AttributionTouchpoint[]>([]);
+  const [loadingAttribution, setLoadingAttribution] = useState(false);
   const [activeTab, setActiveTab] = useState<ContactDetailTab>(initialTab);
 
   const fetchContact = useCallback(async () => {
@@ -199,6 +265,32 @@ export function ContactDetailView({
     setLoadingDeals(false);
   }, [contactId, supabase]);
 
+  const fetchAttribution = useCallback(async () => {
+    if (!contactId) return;
+    setLoadingAttribution(true);
+    const [metaRes, touchpointsRes] = await Promise.all([
+      supabase
+        .from('conversation_attributions')
+        .select(
+          'id, attribution_type, source_id, ctwa_clid, headline, source_url, meta_ad_account_id, meta_campaign_id, meta_campaign_name, meta_adset_id, meta_adset_name, meta_ad_id, meta_ad_name, meta_marketing_resolved_at, created_at'
+        )
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('attribution_touchpoints')
+        .select(
+          'id, provider, method, source_platform, source_channel, utm_source, utm_medium, utm_campaign, utm_term, utm_content, gclid, fbclid, msclkid, landing_url, referrer, occurred_at'
+        )
+        .eq('contact_id', contactId)
+        .order('occurred_at', { ascending: false }),
+    ]);
+    setMetaAttributions(
+      (metaRes.data ?? []) as MetaConversationAttribution[]
+    );
+    setTouchpoints((touchpointsRes.data ?? []) as AttributionTouchpoint[]);
+    setLoadingAttribution(false);
+  }, [contactId, supabase]);
+
   useEffect(() => {
     if (open && contactId) {
       fetchContact();
@@ -206,6 +298,7 @@ export function ContactDetailView({
       fetchNotes();
       fetchCustomFields();
       fetchDeals();
+      fetchAttribution();
     }
   }, [
     open,
@@ -215,6 +308,7 @@ export function ContactDetailView({
     fetchNotes,
     fetchCustomFields,
     fetchDeals,
+    fetchAttribution,
   ]);
 
   useEffect(() => {
@@ -490,7 +584,7 @@ export function ContactDetailView({
                 }
                 className="flex min-h-0 flex-1 flex-col"
               >
-                <TabsList className="bg-muted/50 border-border mx-4 mt-3 border-b">
+                <TabsList className="bg-muted/50 border-border mx-4 mt-3 flex max-w-[calc(100%-2rem)] justify-start overflow-x-auto border-b">
                   <TabsTrigger
                     value="details"
                     className="data-active:bg-muted data-active:text-primary text-muted-foreground"
@@ -511,13 +605,19 @@ export function ContactDetailView({
                   </TabsTrigger>
                   <TabsTrigger
                     value="custom"
-                    className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="shrink-0 data-active:bg-muted data-active:text-primary text-muted-foreground"
                   >
                     {t('tabs.custom')}
                   </TabsTrigger>
                   <TabsTrigger
+                    value="attribution"
+                    className="shrink-0 data-active:bg-muted data-active:text-primary text-muted-foreground"
+                  >
+                    Atribuição
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="deals"
-                    className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="shrink-0 data-active:bg-muted data-active:text-primary text-muted-foreground"
                   >
                     {t('tabs.deals')}
                   </TabsTrigger>
@@ -746,6 +846,151 @@ export function ContactDetailView({
                         )}
                         {t('saveCustomFieldsBtn')}
                       </Button>
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Attribution Tab */}
+                <TabsContent
+                  value="attribution"
+                  className="flex-1 overflow-y-auto px-4 py-3"
+                >
+                  {loadingAttribution ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="text-primary size-5 animate-spin" />
+                    </div>
+                  ) : metaAttributions.length === 0 && touchpoints.length === 0 ? (
+                    <div className="border-border bg-muted/20 rounded-lg border border-dashed p-5 text-center">
+                      <MousePointerClick className="text-muted-foreground mx-auto size-5" />
+                      <p className="mt-2 text-sm font-medium">
+                        Nenhuma atribuição registrada ainda
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-xs leading-5">
+                        Quando este contato chegar por uma campanha ou link
+                        rastreável, a origem, UTMs e identificadores aparecerão aqui.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                        <p className="text-primary flex items-center gap-1.5 text-xs font-semibold">
+                          <Megaphone className="size-3.5" />
+                          Dados de campanhas e rastreamento
+                        </p>
+                        <p className="text-muted-foreground mt-1 text-[11px] leading-5">
+                          Os nomes de campanha, conjunto e anúncio são
+                          enriquecidos pela integração de anúncios. UTMs e IDs
+                          de clique são preservados como evidência de origem.
+                        </p>
+                      </div>
+
+                      {metaAttributions.map((attribution) => (
+                        <div
+                          key={attribution.id}
+                          className="border-primary/20 bg-primary/5 rounded-lg border p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold">Meta Ads</p>
+                              <p className="text-muted-foreground text-xs">
+                                Clique para WhatsApp
+                              </p>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={
+                                attribution.meta_marketing_resolved_at
+                                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                  : ''
+                              }
+                            >
+                              {attribution.meta_marketing_resolved_at
+                                ? 'Dados do Ads carregados'
+                                : 'Aguardando ads_read'}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <AttributionField
+                              label="Campanha"
+                              value={
+                                attribution.meta_campaign_name ||
+                                attribution.meta_campaign_id
+                              }
+                            />
+                            <AttributionField
+                              label="Conjunto de anúncios"
+                              value={
+                                attribution.meta_adset_name ||
+                                attribution.meta_adset_id
+                              }
+                            />
+                            <AttributionField
+                              label="Anúncio"
+                              value={
+                                attribution.meta_ad_name ||
+                                attribution.headline ||
+                                attribution.meta_ad_id
+                              }
+                            />
+                            <AttributionField
+                              label="Conta de anúncios"
+                              value={attribution.meta_ad_account_id}
+                            />
+                          </div>
+                          <details className="mt-3">
+                            <summary className="text-muted-foreground cursor-pointer text-xs hover:text-foreground">
+                              Ver identificadores e origem
+                            </summary>
+                            <div className="mt-3 grid gap-3 border-l pl-3 sm:grid-cols-2">
+                              <AttributionField label="ID da campanha" value={attribution.meta_campaign_id} />
+                              <AttributionField label="ID do conjunto" value={attribution.meta_adset_id} />
+                              <AttributionField label="ID do anúncio" value={attribution.meta_ad_id || attribution.source_id} />
+                              <AttributionField label="Clique do WhatsApp" value={attribution.ctwa_clid} />
+                              <AttributionField label="URL de origem" value={attribution.source_url} />
+                            </div>
+                          </details>
+                        </div>
+                      ))}
+
+                      {touchpoints
+                        .filter(
+                          (touchpoint) =>
+                            touchpoint.provider !== 'meta' ||
+                            metaAttributions.length === 0
+                        )
+                        .map((touchpoint) => {
+                          const provider =
+                            touchpoint.provider === 'google_ads'
+                              ? 'Google Ads'
+                              : touchpoint.provider === 'website'
+                                ? 'Site / link rastreável'
+                                : touchpoint.source_platform || 'Origem registrada';
+                          return (
+                            <div key={touchpoint.id} className="border-border rounded-lg border p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold">{provider}</p>
+                                  <p className="text-muted-foreground text-xs">
+                                    {touchpoint.source_channel || touchpoint.method}
+                                  </p>
+                                </div>
+                                <p className="text-muted-foreground text-[10px]">
+                                  {new Date(touchpoint.occurred_at).toLocaleDateString('pt-BR')}
+                                </p>
+                              </div>
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <AttributionField label="Campanha (UTM)" value={touchpoint.utm_campaign} />
+                                <AttributionField label="Origem / mídia" value={[touchpoint.utm_source, touchpoint.utm_medium].filter(Boolean).join(' · ') || null} />
+                                <AttributionField label="UTM term" value={touchpoint.utm_term} />
+                                <AttributionField label="UTM content" value={touchpoint.utm_content} />
+                                <AttributionField label="gclid" value={touchpoint.gclid} />
+                                <AttributionField label="fbclid" value={touchpoint.fbclid} />
+                                <AttributionField label="msclkid" value={touchpoint.msclkid} />
+                                <AttributionField label="Página de entrada" value={touchpoint.landing_url} />
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
                   )}
                 </TabsContent>
