@@ -601,6 +601,11 @@ export interface TagStepConfig {
 export interface AssignConversationStepConfig {
   mode: 'specific' | 'round_robin';
   agent_id?: string;
+  /**
+   * Optional recipient group for an equal distribution. When omitted, all
+   * eligible members of the CRM (owner, admins and agents) participate.
+   */
+  agent_ids?: string[];
 }
 
 export interface UpdateContactFieldStepConfig {

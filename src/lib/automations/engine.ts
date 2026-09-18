@@ -484,24 +484,40 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'assign_conversation': {
       const cfg = step.step_config as AssignConversationStepConfig
       if (!args.contactId) throw new Error('assign_conversation needs a contact')
-      let agentId = cfg.agent_id
+      const conversationId = await resolveConversationId(args)
+
       if (cfg.mode === 'round_robin') {
-        // Pick any member of the account. The existing implementation
-        // only ever returned the automation's author; preserving that
-        // shape until a real round-robin algorithm replaces it.
-        const { data: profiles } = await db
-          .from('profiles')
-          .select('user_id')
-          .eq('account_id', args.automation.account_id)
-          .limit(1)
-        agentId = profiles?.[0]?.user_id
+        // The database function locks a cursor row per automation before it
+        // selects the next person and assigns the conversation. Keeping both
+        // operations in one transaction makes the distribution fair even
+        // when several WhatsApp webhooks arrive at the same moment.
+        const configuredAgents = Array.isArray(cfg.agent_ids)
+          ? cfg.agent_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+          : null
+        const { data: agentId, error } = await db.rpc(
+          'assign_conversation_round_robin',
+          {
+            p_automation_id: args.automation.id,
+            p_account_id: args.automation.account_id,
+            p_conversation_id: conversationId,
+            p_contact_id: args.contactId,
+            p_member_ids: configuredAgents?.length ? configuredAgents : null,
+          },
+        )
+        if (error) throw new Error(`conversation distribution failed: ${error.message}`)
+        if (!agentId) return 'no eligible recipient resolved'
+        return `distributed to ${agentId}`
       }
+
+      const agentId = cfg.agent_id
       if (!agentId) return 'no agent resolved'
-      await db
+      const { error } = await db
         .from('conversations')
         .update({ assigned_agent_id: agentId })
+        .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId)
+      if (error) throw new Error(`conversation assignment failed: ${error.message}`)
       return `assigned to ${agentId}`
     }
 

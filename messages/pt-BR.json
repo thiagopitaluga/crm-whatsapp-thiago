@@ -1079,7 +1079,7 @@
         "send_template": "Enviar modelo",
         "add_tag": "Adicionar etiqueta",
         "remove_tag": "Remover etiqueta",
-        "assign_conversation": "Atribuir conversa",
+        "assign_conversation": "Distribuir conversa",
         "update_contact_field": "Atualizar campo de contato",
         "create_deal": "Criar negócio",
         "wait": "Espere",
@@ -1187,12 +1187,14 @@
         "messageText": "Texto da mensagem",
         "placeholderMessageText": "Olá! Obrigado por entrar em contato…",
         "tagLabel": "Etiqueta",
-        "modeLabel": "",
+        "modeLabel": "Como atribuir",
         "modes": {
-          "round_robin": "Rodada",
-          "specific": "Agente específico"
+          "round_robin": "Distribuir igualmente entre atendentes",
+          "specific": "Atribuir a um atendente específico"
         },
         "agentLabel": "Atendente",
+        "distributionRecipientsLabel": "Atendentes da distribuição",
+        "distributionRecipientsHint": "Selecione quem participa. Sem seleção, todos os atendentes elegíveis da conta recebem conversas alternadamente.",
         "fieldLabel": "Campo",
         "valueLabel": "Valor",
         "placeholderValue": "Texto ou {{ vars.x }} / {{ message.text }}",

@@ -1053,7 +1053,7 @@
         "send_template": "템플릿 보내기",
         "add_tag": "태그 추가",
         "remove_tag": "태그 제거",
-        "assign_conversation": "대화 담당자 지정",
+        "assign_conversation": "대화 균등 배정",
         "update_contact_field": "연락처 필드 업데이트",
         "create_deal": "딜 생성",
         "wait": "대기",
@@ -1163,10 +1163,12 @@
         "tagLabel": "태그",
         "modeLabel": "모드",
         "modes": {
-          "round_robin": "순차 배정",
-          "specific": "특정 상담원"
+          "round_robin": "상담원에게 균등 배정",
+          "specific": "특정 상담원에게 배정"
         },
         "agentLabel": "상담원",
+        "distributionRecipientsLabel": "배정 대상 상담원",
+        "distributionRecipientsHint": "참여할 상담원을 선택하세요. 선택하지 않으면 계정의 모든 적격 상담원에게 차례로 배정됩니다.",
         "fieldLabel": "필드",
         "valueLabel": "값",
         "placeholderValue": "텍스트 또는 {{ vars.x }} / {{ message.text }}",

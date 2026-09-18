@@ -452,6 +452,65 @@ function AgentSelect({
   )
 }
 
+/** Recipient picker for equal conversation distribution. An empty selection
+ * deliberately means the whole eligible team, which keeps the common
+ * "share every new conversation" setup quick while still allowing a smaller
+ * sales/support squad to be selected. */
+function DistributionRecipients({
+  value,
+  onChange,
+  t,
+}: {
+  value: string[]
+  onChange: (value: string[]) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { members } = useResources()
+  const eligibleMembers = members.filter((member) => member.role !== "viewer")
+  const selected = new Set(value)
+
+  if (eligibleMembers.length === 0) {
+    return (
+      <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+        {t("config.distributionRecipientsHint")}
+      </p>
+    )
+  }
+
+  function toggle(userId: string) {
+    const next = new Set(selected)
+    if (next.has(userId)) next.delete(userId)
+    else next.add(userId)
+    onChange([...next])
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {t("config.distributionRecipientsHint")}
+      </p>
+      <div className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-border bg-muted/40 p-1.5">
+        {eligibleMembers.map((member) => (
+          <label
+            key={member.user_id}
+            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-background"
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(member.user_id)}
+              onChange={() => toggle(member.user_id)}
+              className="size-3.5 accent-primary"
+            />
+            <span className="min-w-0 truncate">
+              {member.full_name || member.email || member.user_id}
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Pipeline + stage picker for Create Deal. The automation stores ids because
  *  the engine writes directly to deals, but authors should choose by name. */
 function DealPipelineFields({
@@ -1347,6 +1406,10 @@ function StepEditor({
         </FieldBlock>
       )
     case "assign_conversation":
+      {
+        const selectedRecipients = Array.isArray(cfg.agent_ids)
+          ? cfg.agent_ids.filter((id): id is string => typeof id === "string")
+          : []
       return (
         <>
           <FieldBlock label={t("config.modeLabel")}>
@@ -1368,8 +1431,18 @@ function StepEditor({
               />
             </FieldBlock>
           )}
+          {cfg.mode !== "specific" && (
+            <FieldBlock label={t("config.distributionRecipientsLabel")}>
+              <DistributionRecipients
+                value={selectedRecipients}
+                onChange={(agent_ids) => set({ agent_ids })}
+                t={t}
+              />
+            </FieldBlock>
+          )}
         </>
       )
+      }
     case "update_contact_field":
       return (
         <>

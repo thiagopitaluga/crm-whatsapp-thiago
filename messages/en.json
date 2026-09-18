@@ -1079,7 +1079,7 @@
         "send_template": "Send Template",
         "add_tag": "Add Tag",
         "remove_tag": "Remove Tag",
-        "assign_conversation": "Assign Conversation",
+        "assign_conversation": "Distribute Conversation",
         "update_contact_field": "Update Contact Field",
         "create_deal": "Create Deal",
         "wait": "Wait",
@@ -1189,10 +1189,12 @@
         "tagLabel": "Tag",
         "modeLabel": "Mode",
         "modes": {
-          "round_robin": "Round-robin",
-          "specific": "Specific agent"
+          "round_robin": "Distribute evenly between agents",
+          "specific": "Assign to a specific agent"
         },
         "agentLabel": "Agent",
+        "distributionRecipientsLabel": "Distribution recipients",
+        "distributionRecipientsHint": "Select who participates. With no selection, all eligible account agents receive conversations in turn.",
         "fieldLabel": "Field",
         "valueLabel": "Value",
         "placeholderValue": "Text or {{ vars.x }} / {{ message.text }}",

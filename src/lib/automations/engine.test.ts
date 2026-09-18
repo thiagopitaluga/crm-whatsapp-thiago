@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
     fromCalls: [] as string[],
     updateCalls: [] as { table: string; filters: [string, string, unknown][] }[],
     upsertCalls: [] as { table: string; payload: unknown }[],
+    rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
     logInserts: [] as Record<string, unknown>[],
     logUpdates: [] as Record<string, unknown>[],
   },
@@ -93,7 +94,10 @@ vi.mock("./admin-client", () => {
         state.fromCalls.push(t);
         return builder(t);
       },
-      rpc: () => Promise.resolve({ error: null }),
+      rpc: (name: string, args: Record<string, unknown>) => {
+        state.rpcCalls.push({ name, args });
+        return Promise.resolve({ data: "agent-2", error: null });
+      },
     }),
   };
 });
@@ -117,6 +121,7 @@ beforeEach(() => {
   h.state.fromCalls = [];
   h.state.updateCalls = [];
   h.state.upsertCalls = [];
+  h.state.rpcCalls = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
 });
@@ -274,6 +279,39 @@ describe("update_contact_field — custom fields", () => {
 
     expect(h.state.upsertCalls).toHaveLength(0);
     expect(h.state.updateCalls).toHaveLength(0);
+  });
+});
+
+describe("assign_conversation — equal distribution", () => {
+  it("delegates recipient selection and assignment to the atomic database function", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [{
+      id: "s1",
+      automation_id: "a1",
+      step_type: "assign_conversation",
+      position: 0,
+      parent_step_id: null,
+      step_config: { mode: "round_robin", agent_ids: ["agent-1", "agent-2"] },
+    }];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conversation-1" },
+    });
+
+    expect(h.state.rpcCalls).toContainEqual({
+      name: "assign_conversation_round_robin",
+      args: {
+        p_automation_id: "a1",
+        p_account_id: ACCOUNT,
+        p_conversation_id: "conversation-1",
+        p_contact_id: "c1",
+        p_member_ids: ["agent-1", "agent-2"],
+      },
+    });
   });
 });
 
