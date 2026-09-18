@@ -425,7 +425,10 @@ export function DealCard({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 disabled={!deal.contact_id}
-                onSelect={(event) => {
+                // Base UI dispatches activation through the native click
+                // event. `onSelect` looked correct but never opened the
+                // dialog for pointer users, leaving this menu item inert.
+                onClick={(event) => {
                   event.stopPropagation();
                   onCreateTag(deal);
                 }}

@@ -47,7 +47,6 @@ import {
   Save,
   X,
   DollarSign,
-  LayoutTemplate,
   Megaphone,
   MousePointerClick,
 } from 'lucide-react';
@@ -559,21 +558,9 @@ export function ContactDetailView({
                     </div>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <Button
-                    size="sm"
-                    onClick={() => setTemplatePickerOpen(true)}
-                    disabled={sendingTemplate}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  >
-                    {sendingTemplate ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <LayoutTemplate className="size-4" />
-                    )}
-                    {t('sendTemplateBtn')}
-                  </Button>
-                </div>
+                {/* Template sending remains available through the existing
+                    picker/API, but is intentionally hidden from this contact
+                    profile until the workflow is reintroduced. */}
               </SheetHeader>
 
               {/* Tabs */}
@@ -584,40 +571,41 @@ export function ContactDetailView({
                 }
                 className="flex min-h-0 flex-1 flex-col"
               >
-                <TabsList className="bg-muted/50 border-border mx-4 mt-3 flex max-w-[calc(100%-2rem)] justify-start overflow-x-auto border-b">
+                <TabsList className="border-border bg-muted/50 mx-4 mt-3 grid h-auto w-auto grid-cols-3 gap-1 rounded-xl border p-1">
                   <TabsTrigger
                     value="details"
-                    className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="h-8 min-w-0 px-2 text-xs data-active:bg-background data-active:text-primary"
                   >
                     {t('tabs.details')}
                   </TabsTrigger>
                   <TabsTrigger
                     value="tags"
-                    className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="h-8 min-w-0 px-2 text-xs data-active:bg-background data-active:text-primary"
                   >
                     {t('tabs.tags')}
                   </TabsTrigger>
                   <TabsTrigger
                     value="notes"
-                    className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="h-8 min-w-0 px-2 text-xs data-active:bg-background data-active:text-primary"
                   >
                     {t('tabs.notes')}
                   </TabsTrigger>
                   <TabsTrigger
                     value="custom"
-                    className="shrink-0 data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="h-8 min-w-0 px-2 text-xs data-active:bg-background data-active:text-primary"
                   >
-                    {t('tabs.custom')}
+                    <span className="sm:hidden">Campos</span>
+                    <span className="hidden sm:inline">{t('tabs.custom')}</span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="attribution"
-                    className="shrink-0 data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="h-8 min-w-0 px-2 text-xs data-active:bg-background data-active:text-primary"
                   >
                     Atribuição
                   </TabsTrigger>
                   <TabsTrigger
                     value="deals"
-                    className="shrink-0 data-active:bg-muted data-active:text-primary text-muted-foreground"
+                    className="h-8 min-w-0 px-2 text-xs data-active:bg-background data-active:text-primary"
                   >
                     {t('tabs.deals')}
                   </TabsTrigger>
