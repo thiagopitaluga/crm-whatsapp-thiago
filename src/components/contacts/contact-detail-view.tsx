@@ -571,7 +571,19 @@ export function ContactDetailView({
                 }
                 className="flex min-h-0 flex-1 flex-col"
               >
-                <TabsList className="border-border bg-muted/50 mx-4 mt-3 grid h-auto w-[calc(100%-2rem)] grid-cols-3 gap-1 rounded-xl border p-1">
+                <TabsList
+                  className="border-border bg-muted/50 mx-4 mt-3 grid w-[calc(100%-2rem)] grid-cols-3 gap-1 rounded-xl border p-1"
+                  // The base tabs primitive defaults to a fixed 32px height.
+                  // Six tabs need two rows in the narrow contact drawer, so
+                  // use explicit layout values instead of letting the second
+                  // row overflow over the tab content.
+                  style={{
+                    display: 'grid',
+                    height: 'auto',
+                    // 2 × 32px tab rows + gap + padding/border.
+                    minHeight: '5rem',
+                  }}
+                >
                   <TabsTrigger
                     value="details"
                     className="h-8 min-w-0 px-2 text-xs data-active:bg-background data-active:text-primary"
