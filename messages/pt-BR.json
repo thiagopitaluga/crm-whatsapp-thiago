@@ -1453,6 +1453,14 @@
       "tagNone": "{mode} (nenhuma escolhida)"
     }
   },
+  "PwaInstall": {
+    "title": "Instale o OrganiZAP",
+    "description": "Acesse o CRM mais rápido pelo ícone na tela inicial.",
+    "iosDescription": "No Safari, toque em Compartilhar e em “Adicionar à Tela de Início”.",
+    "install": "Instalar",
+    "later": "Agora não",
+    "close": "Fechar aviso de instalação"
+  },
   "Settings": {
     "pageTitle": "Configurações",
     "pageDesc": "Tudo em um só lugar: sua conta e seu espaço de trabalho. Escolha uma seção para gerenciá-la.",

@@ -1453,6 +1453,14 @@
       "tagNone": "{mode} tag (none picked)"
     }
   },
+  "PwaInstall": {
+    "title": "Install OrganiZAP",
+    "description": "Access the CRM faster from an icon on your home screen.",
+    "iosDescription": "In Safari, tap Share and then Add to Home Screen.",
+    "install": "Install",
+    "later": "Not now",
+    "close": "Close installation notice"
+  },
   "Settings": {
     "pageTitle": "Settings",
     "pageDesc": "Everything in one place — your account and your workspace. Pick a section to manage it.",

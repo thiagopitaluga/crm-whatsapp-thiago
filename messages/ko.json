@@ -1427,6 +1427,14 @@
       "tagNone": "태그 {mode} (선택된 태그 없음)"
     }
   },
+  "PwaInstall": {
+    "title": "OrganiZAP 설치",
+    "description": "홈 화면의 아이콘에서 CRM에 더 빠르게 접속하세요.",
+    "iosDescription": "Safari에서 공유를 누른 다음 홈 화면에 추가를 선택하세요.",
+    "install": "설치",
+    "later": "나중에",
+    "close": "설치 안내 닫기"
+  },
   "Settings": {
     "pageTitle": "설정",
     "pageDesc": "계정과 워크스페이스에 관한 모든 것을 한곳에서 관리하세요. 관리할 섹션을 선택하세요.",
