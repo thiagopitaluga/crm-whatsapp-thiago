@@ -151,6 +151,17 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // This must follow the broad page rule above: for duplicate header
+        // names Next.js uses the last matching value. Revalidation lets a
+        // deployed service-worker update reach devices immediately.
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+      {
         // Security headers on every response, including /_next/static
         // assets (nosniff matters there) and /api/* (HSTS + referrer-
         // policy don't hurt).

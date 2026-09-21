@@ -6,6 +6,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
+import { PwaRegistration } from "@/components/pwa/pwa-registration";
 import {
   DEFAULT_MODE,
   DEFAULT_THEME,
@@ -31,7 +32,16 @@ export const metadata: Metadata = {
     follow: false,
   },
   icons: {
-    icon: [{ url: "/organizap-mark.png", type: "image/png" }],
+    icon: [
+      { url: "/pwa/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/pwa/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/pwa/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "OrganiZAP",
+    statusBarStyle: "default",
   },
   formatDetection: {
     email: false,
@@ -110,6 +120,7 @@ export default async function RootLayout({
       <body className="min-h-full bg-background text-foreground font-sans">
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ThemeProvider>
+            <PwaRegistration />
             {children}
             <ThemedToaster />
           </ThemeProvider>
