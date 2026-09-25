@@ -3,9 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import type { Contact, Profile, Tag, ContactTag, PipelineStage } from '@/types';
+import type {
+  Contact,
+  Profile,
+  Tag,
+  ContactTag,
+  PipelineStage,
+  CustomField,
+} from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -15,6 +23,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  endOfMonth,
+  endOfYear,
+  format,
+  startOfMonth,
+  startOfYear,
+  subDays,
+  subMonths,
+} from 'date-fns';
 import {
   Select,
   SelectContent,
@@ -46,7 +63,6 @@ import {
   ChevronLeft,
   ChevronRight,
   SlidersHorizontal,
-  Filter,
   X,
   CalendarPlus,
   StickyNote,
@@ -72,6 +88,60 @@ import { useLocale, useTranslations } from 'next-intl';
 
 const PAGE_SIZE = 25;
 
+type DateRangePreset =
+  | 'all'
+  | 'today'
+  | 'yesterday'
+  | 'last7Days'
+  | 'last14Days'
+  | 'last30Days'
+  | 'thisMonth'
+  | 'lastMonth'
+  | 'thisYear';
+
+const DATE_RANGE_PRESETS: DateRangePreset[] = [
+  'all',
+  'today',
+  'yesterday',
+  'last7Days',
+  'last14Days',
+  'last30Days',
+  'thisMonth',
+  'lastMonth',
+  'thisYear',
+];
+
+function getDateRange(
+  preset: Exclude<DateRangePreset, 'all'>,
+  now = new Date()
+) {
+  switch (preset) {
+    case 'today':
+      return { from: now, to: now };
+    case 'yesterday': {
+      const yesterday = subDays(now, 1);
+      return { from: yesterday, to: yesterday };
+    }
+    case 'last7Days':
+      return { from: subDays(now, 6), to: now };
+    case 'last14Days':
+      return { from: subDays(now, 13), to: now };
+    case 'last30Days':
+      return { from: subDays(now, 29), to: now };
+    case 'thisMonth':
+      return { from: startOfMonth(now), to: endOfMonth(now) };
+    case 'lastMonth': {
+      const previousMonth = subMonths(now, 1);
+      return {
+        from: startOfMonth(previousMonth),
+        to: endOfMonth(previousMonth),
+      };
+    }
+    case 'thisYear':
+      return { from: startOfYear(now), to: endOfYear(now) };
+  }
+}
+
 interface ContactWithTags extends Contact {
   tags?: Tag[];
   lastMessage?: string | null;
@@ -79,7 +149,8 @@ interface ContactWithTags extends Contact {
 }
 
 function formatContactDate(iso: string, locale: string): string {
-  const dateLocale = locale === 'pt-BR' ? 'pt-BR' : locale === 'ko' ? 'ko-KR' : 'en-US';
+  const dateLocale =
+    locale === 'pt-BR' ? 'pt-BR' : locale === 'ko' ? 'ko-KR' : 'en-US';
   const options: Intl.DateTimeFormatOptions =
     dateLocale === 'pt-BR'
       ? { day: '2-digit', month: '2-digit', year: 'numeric' }
@@ -111,11 +182,10 @@ interface StageOption extends PipelineStage {
   pipelineName: string;
 }
 
-function nextDay(date: string) {
-  const [year, month, day] = date.split('-').map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day));
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value.toISOString().slice(0, 10);
+function dateBoundary(value: string, endExclusive = false) {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day + (endExclusive ? 1 : 0));
+  return date.toISOString();
 }
 
 function ContactSelectionCheckbox({
@@ -172,6 +242,9 @@ export default function ContactsPage() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [createdFrom, setCreatedFrom] = useState('');
   const [createdTo, setCreatedTo] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+  const [customFieldId, setCustomFieldId] = useState('');
+  const [customFieldValue, setCustomFieldValue] = useState('');
 
   // Modals
   const [formOpen, setFormOpen] = useState(false);
@@ -205,6 +278,7 @@ export default function ContactsPage() {
 
   // All tags for display
   const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
 
   // Guards against out-of-order fetch responses: each fetchContacts run
   // claims a sequence number and only the latest is allowed to commit its
@@ -304,6 +378,20 @@ export default function ContactsPage() {
     );
   }, [accountId, supabase]);
 
+  const fetchCustomFields = useCallback(async () => {
+    if (!accountId) {
+      setCustomFields([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('custom_fields')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('field_name');
+    if (!error) setCustomFields((data ?? []) as CustomField[]);
+  }, [accountId, supabase]);
+
   const fetchContacts = useCallback(async () => {
     const seq = ++fetchSeq.current;
     setLoading(true);
@@ -323,64 +411,66 @@ export default function ContactsPage() {
     const to = from + PAGE_SIZE - 1;
     const term = search.trim();
 
-    let contactRows: Contact[];
-    let count: number;
+    const createdFromBoundary = createdFrom ? dateBoundary(createdFrom) : null;
+    const createdToBoundary = createdTo ? dateBoundary(createdTo, true) : null;
+
+    // The inner embeds apply filters before pagination and counting. This
+    // matches the Kanban criteria while keeping a single server-side query.
+    const selectClause = [
+      '*',
+      selectedTagIds.length > 0 ? 'tag_filter:contact_tags!inner(tag_id)' : '',
+      customFieldId
+        ? 'field_filter:contact_custom_values!inner(custom_field_id,value)'
+        : '',
+    ]
+      .filter(Boolean)
+      .join(',');
+    let query = supabase
+      .from('contacts')
+      .select(selectClause, { count: 'exact' })
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to);
 
     if (selectedTagIds.length > 0) {
-      // Tag filter active — resolve it server-side (join + distinct +
-      // windowed total count + pagination) so a tag covering many
-      // contacts can't silently truncate the result or overflow an IN
-      // clause. See migration 025_filter_contacts_by_tags.
-      const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
-        p_tag_ids: selectedTagIds,
-        p_search: term || null,
-        p_limit: PAGE_SIZE,
-        p_offset: from,
-        p_created_from: createdFrom || null,
-        p_created_to: createdTo || null,
-      });
-      if (seq !== fetchSeq.current) return; // superseded by a newer fetch
-      if (error) {
-        toast.error(t('toastFailedLoad'));
-        setLoading(false);
-        return;
-      }
-      const rows = (data ?? []) as { contact: Contact; total_count: number }[];
-      contactRows = rows.map((r) => r.contact);
-      count = rows.length > 0 ? Number(rows[0].total_count) : 0;
-    } else {
-      let query = supabase
-        .from('contacts')
-        .select('*', { count: 'exact' })
-        .eq('account_id', accountId)
-        .order('created_at', { ascending: false })
-        .range(from, to);
-
-      if (term) {
-        const like = `%${term}%`;
-        query = query.or(
-          `name.ilike.${like},phone.ilike.${like},email.ilike.${like}`
+      query = query.in('tag_filter.tag_id', selectedTagIds);
+    }
+    if (assignedTo) query = query.eq('assigned_to', assignedTo);
+    if (customFieldId) {
+      query = query
+        .eq('field_filter.custom_field_id', customFieldId)
+        .neq('field_filter.value', '');
+      if (customFieldValue.trim()) {
+        query = query.ilike(
+          'field_filter.value',
+          `%${customFieldValue.trim()}%`
         );
       }
-
-      if (createdFrom) {
-        query = query.gte('created_at', `${createdFrom}T00:00:00.000Z`);
-      }
-
-      if (createdTo) {
-        query = query.lt('created_at', `${nextDay(createdTo)}T00:00:00.000Z`);
-      }
-
-      const { data, count: exactCount, error } = await query;
-      if (seq !== fetchSeq.current) return; // superseded by a newer fetch
-      if (error) {
-        toast.error(t('toastFailedLoad'));
-        setLoading(false);
-        return;
-      }
-      contactRows = data ?? [];
-      count = exactCount ?? 0;
     }
+    if (term) {
+      const like = `%${term}%`;
+      query = query.or(
+        `name.ilike.${like},phone.ilike.${like},email.ilike.${like}`
+      );
+    }
+    if (createdFromBoundary)
+      query = query.gte('created_at', createdFromBoundary);
+    if (createdToBoundary) query = query.lt('created_at', createdToBoundary);
+
+    const { data, count: exactCount, error } = await query;
+    if (seq !== fetchSeq.current) return; // superseded by a newer fetch
+    if (error) {
+      toast.error(t('toastFailedLoad'));
+      setContacts([]);
+      setTotalCount(0);
+      setLoading(false);
+      return;
+    }
+    // Conditional embeds make the generated Supabase type broader than the
+    // contact rows consumed by the list. The extra embed fields are ignored.
+    const contactRows = (data ?? []) as unknown as Contact[];
+    const count = exactCount ?? 0;
 
     setTotalCount(count);
 
@@ -469,6 +559,9 @@ export default function ContactsPage() {
     selectedTagIds,
     createdFrom,
     createdTo,
+    assignedTo,
+    customFieldId,
+    customFieldValue,
     tagsMap,
     t,
   ]);
@@ -491,6 +584,11 @@ export default function ContactsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchStageOptions();
   }, [fetchStageOptions]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchCustomFields();
+  }, [fetchCustomFields]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -805,11 +903,16 @@ export default function ContactsPage() {
     search.trim().length > 0 ||
     selectedTagIds.length > 0 ||
     Boolean(createdFrom) ||
-    Boolean(createdTo);
-  const activeFilterCount =
-    selectedTagIds.length +
-    Number(Boolean(createdFrom)) +
-    Number(Boolean(createdTo));
+    Boolean(createdTo) ||
+    Boolean(assignedTo) ||
+    Boolean(customFieldId);
+  const activeFilterCount = [
+    selectedTagIds.length > 0,
+    Boolean(createdFrom),
+    Boolean(createdTo),
+    Boolean(assignedTo),
+    Boolean(customFieldId),
+  ].filter(Boolean).length;
 
   function toggleTagFilter(tagId: string) {
     setSelectedTagIds((prev) =>
@@ -821,9 +924,25 @@ export default function ContactsPage() {
   }
 
   function clearFilters() {
+    setSearch('');
     setSelectedTagIds([]);
     setCreatedFrom('');
     setCreatedTo('');
+    setAssignedTo('');
+    setCustomFieldId('');
+    setCustomFieldValue('');
+    setPage(0);
+  }
+
+  function applyDateRange(preset: DateRangePreset) {
+    if (preset === 'all') {
+      setCreatedFrom('');
+      setCreatedTo('');
+    } else {
+      const range = getDateRange(preset);
+      setCreatedFrom(format(range.from, 'yyyy-MM-dd'));
+      setCreatedTo(format(range.to, 'yyyy-MM-dd'));
+    }
     setPage(0);
   }
 
@@ -884,209 +1003,239 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* Search + filters */}
-      <div className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="relative w-full max-w-sm">
-            <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                // Reset pagination when the query changes — the result
-                // set shrinks/grows, page N may no longer be valid.
-                setPage(0);
-              }}
-              placeholder={t('searchPlaceholder')}
-              className="bg-card border-border text-foreground placeholder:text-muted-foreground pl-8"
-            />
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-muted-foreground text-xs font-medium">
-              {t('createdFrom')}
-            </span>
-            <div className="relative w-36">
-              <Input
-                ref={createdFromInputRef}
-                type="date"
-                value={createdFrom}
-                max={createdTo || undefined}
-                onChange={(event) => {
-                  setCreatedFrom(event.target.value);
-                  setPage(0);
-                }}
-                aria-label={t('createdFrom')}
-                className="h-9 pr-8 text-xs"
-              />
+      {/* Same filter layout and criteria as the Kanban. */}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(0);
+            }}
+            placeholder={t('searchPlaceholder')}
+            aria-label={t('searchPlaceholder')}
+            className="border-border bg-muted text-foreground h-10 pl-9"
+          />
+        </div>
+        <Popover>
+          <PopoverTrigger
+            render={
               <button
                 type="button"
-                aria-label={`Selecionar ${t('createdFrom').toLocaleLowerCase()}`}
-                onClick={() => openDatePicker(createdFromInputRef.current)}
-                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
-              >
-                <CalendarDays className="size-3.5" aria-hidden="true" />
-              </button>
-            </div>
-            <span className="text-muted-foreground text-xs font-medium">
-              {t('createdTo')}
-            </span>
-            <div className="relative w-36">
-              <Input
-                ref={createdToInputRef}
-                type="date"
-                value={createdTo}
-                min={createdFrom || undefined}
-                onChange={(event) => {
-                  setCreatedTo(event.target.value);
-                  setPage(0);
-                }}
-                aria-label={t('createdTo')}
-                className="h-9 pr-8 text-xs"
+                className="border-border bg-muted text-foreground hover:bg-accent inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium"
               />
-              <button
-                type="button"
-                aria-label={`Selecionar ${t('createdTo').toLocaleLowerCase()}`}
-                onClick={() => openDatePicker(createdToInputRef.current)}
-                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
-              >
-                <CalendarDays className="size-3.5" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-
-          <Popover>
-            <PopoverTrigger
-              render={
-                <Button
-                  variant="outline"
-                  className="border-border text-muted-foreground hover:bg-muted shrink-0"
-                />
-              }
-            >
-              <Filter className="size-4" />
-              {t('filters')}
-              {activeFilterCount > 0 && (
-                <span className="bg-primary text-primary-foreground ml-1 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
-                  {activeFilterCount}
-                </span>
-              )}
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-64 p-0">
-              <div className="border-border flex items-center justify-between border-b px-3 py-2">
-                <span className="text-popover-foreground text-sm font-medium">
-                  {t('filters')}
-                </span>
-                {activeFilterCount > 0 && (
-                  <button
-                    onClick={clearFilters}
-                    className="text-muted-foreground hover:text-foreground text-xs"
-                  >
-                    {t('clearAll')}
-                  </button>
-                )}
-              </div>
-              <div className="space-y-3 p-3">
-                <div>
-                  <p className="text-muted-foreground mb-1 text-xs font-medium">
-                    {t('filterByTags')}
-                  </p>
+            }
+          >
+            <SlidersHorizontal className="size-4" />
+            {t('filterContacts')}
+            {activeFilterCount > 0 && (
+              <span className="bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-[11px]">
+                {activeFilterCount}
+              </span>
+            )}
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="max-h-[min(32rem,calc(100dvh-5rem))] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto p-3"
+          >
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-xs">
+                  {t('tagsLabel')}
+                </Label>
+                <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
                   {allTags.length === 0 ? (
-                    <p className="text-muted-foreground py-2 text-center text-sm">
+                    <span className="text-muted-foreground text-xs">
                       {t('noTagsYet')}
-                    </p>
+                    </span>
                   ) : (
-                    <div className="-mx-1 max-h-48 overflow-y-auto py-1">
-                      {allTags.map((tag) => (
-                        <label
+                    allTags.map((tag) => {
+                      const isSelected = selectedTagIds.includes(tag.id);
+                      return (
+                        <button
                           key={tag.id}
-                          className="hover:bg-muted/50 flex cursor-pointer items-center gap-2.5 px-1 py-1.5"
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => toggleTagFilter(tag.id)}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors ${
+                            isSelected
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border text-muted-foreground hover:bg-muted'
+                          }`}
                         >
-                          <Checkbox
-                            checked={selectedTagIds.includes(tag.id)}
-                            onCheckedChange={() => toggleTagFilter(tag.id)}
-                            aria-label={`Filter by ${tag.name}`}
-                          />
                           <span
-                            className="size-2.5 shrink-0 rounded-full"
+                            className="size-1.5 rounded-full"
                             style={{ backgroundColor: tag.color }}
                           />
-                          <span className="text-popover-foreground truncate text-sm">
-                            {tag.name}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
+                          {tag.name}
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>
-            </PopoverContent>
-          </Popover>
-        </div>
 
-        {/* Active filter chips */}
-        {(selectedTagIds.length > 0 || createdFrom || createdTo) && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {selectedTagIds.map((id) => {
-              const tag = tagsMap[id];
-              if (!tag) return null;
-              return (
-                <span
-                  key={id}
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                  style={{
-                    backgroundColor: tag.color + '20',
-                    color: tag.color,
-                  }}
-                >
-                  {tag.name}
-                  <button
-                    onClick={() => toggleTagFilter(id)}
-                    aria-label={`Remove ${tag.name} filter`}
-                    className="hover:opacity-70"
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="contacts-created-from"
+                    className="text-muted-foreground text-xs"
                   >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              );
-            })}
-            {createdFrom && (
-              <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium">
-                {t('createdFrom')}: {createdFrom}
-                <button
-                  onClick={() => {
-                    setCreatedFrom('');
+                    {t('createdFrom')}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      ref={createdFromInputRef}
+                      id="contacts-created-from"
+                      type="date"
+                      value={createdFrom}
+                      max={createdTo || undefined}
+                      onChange={(event) => {
+                        setCreatedFrom(event.target.value);
+                        setPage(0);
+                      }}
+                      className="h-8 pr-9 [color-scheme:light] dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:hidden"
+                    />
+                    <button
+                      type="button"
+                      aria-label={t('selectStartDate')}
+                      onClick={() =>
+                        openDatePicker(createdFromInputRef.current)
+                      }
+                      className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
+                    >
+                      <CalendarDays aria-hidden="true" className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="contacts-created-to"
+                    className="text-muted-foreground text-xs"
+                  >
+                    {t('createdTo')}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      ref={createdToInputRef}
+                      id="contacts-created-to"
+                      type="date"
+                      value={createdTo}
+                      min={createdFrom || undefined}
+                      onChange={(event) => {
+                        setCreatedTo(event.target.value);
+                        setPage(0);
+                      }}
+                      className="h-8 pr-9 [color-scheme:light] dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:hidden"
+                    />
+                    <button
+                      type="button"
+                      aria-label={t('selectEndDate')}
+                      onClick={() => openDatePicker(createdToInputRef.current)}
+                      className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm"
+                    >
+                      <CalendarDays aria-hidden="true" className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-xs">
+                  {t('quickSelection')}
+                </Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {DATE_RANGE_PRESETS.map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => applyDateRange(preset)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      {t(`datePresets.${preset}`)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label
+                  htmlFor="contacts-assigned-to"
+                  className="text-muted-foreground text-xs"
+                >
+                  {t('assignee')}
+                </Label>
+                <select
+                  id="contacts-assigned-to"
+                  value={assignedTo}
+                  onChange={(event) => {
+                    setAssignedTo(event.target.value);
                     setPage(0);
                   }}
-                  aria-label={t('clearCreatedFrom')}
-                  className="hover:opacity-70"
+                  className="border-input bg-background text-foreground h-8 w-full rounded-md border px-2 text-sm"
                 >
-                  <X className="size-3" />
-                </button>
-              </span>
-            )}
-            {createdTo && (
-              <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium">
-                {t('createdTo')}: {createdTo}
-                <button
-                  onClick={() => {
-                    setCreatedTo('');
+                  <option value="">{t('allUsers')}</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name || member.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="border-border space-y-2 border-t pt-3">
+                <Label
+                  htmlFor="contacts-custom-field"
+                  className="text-muted-foreground text-xs"
+                >
+                  {t('contactCustomField')}
+                </Label>
+                <select
+                  id="contacts-custom-field"
+                  value={customFieldId}
+                  onChange={(event) => {
+                    setCustomFieldId(event.target.value);
+                    setCustomFieldValue('');
                     setPage(0);
                   }}
-                  aria-label={t('clearCreatedTo')}
-                  className="hover:opacity-70"
+                  className="border-input bg-background text-foreground h-8 w-full rounded-md border px-2 text-sm"
                 >
-                  <X className="size-3" />
-                </button>
-              </span>
-            )}
-            <button
-              onClick={clearFilters}
-              className="text-muted-foreground hover:text-foreground px-1 text-xs"
-            >
-              {t('clearAll')}
-            </button>
-          </div>
+                  <option value="">{t('selectField')}</option>
+                  {customFields.map((field) => (
+                    <option key={field.id} value={field.id}>
+                      {field.field_name}
+                    </option>
+                  ))}
+                </select>
+                {customFieldId && (
+                  <Input
+                    value={customFieldValue}
+                    onChange={(event) => {
+                      setCustomFieldValue(event.target.value);
+                      setPage(0);
+                    }}
+                    placeholder={t('containsValue')}
+                    aria-label={t('containsValue')}
+                    className="h-8"
+                  />
+                )}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearFilters}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X className="mr-1 size-3.5" />
+            {t('clearAll')}
+          </Button>
         )}
       </div>
 
