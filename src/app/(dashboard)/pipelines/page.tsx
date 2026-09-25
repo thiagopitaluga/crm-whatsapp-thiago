@@ -17,7 +17,6 @@ import { PipelineBoard } from '@/components/pipelines/pipeline-board';
 import { PipelineSettings } from '@/components/pipelines/pipeline-settings';
 import { DealForm } from '@/components/pipelines/deal-form';
 import { TaskForm } from '@/components/tasks/task-form';
-import { PipelineAnalytics } from '@/components/pipelines/pipeline-analytics';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -57,7 +56,6 @@ import {
   GitBranch,
   Plus,
   ChevronDown,
-  ChevronRight,
   Settings,
   Search,
   SlidersHorizontal,
@@ -90,6 +88,8 @@ const DEFAULT_CARD_LAYOUT: PipelineCardLayout = {
   show_created_at: true,
   show_last_message: true,
   show_notes: true,
+  show_whatsapp_button: true,
+  show_quick_actions: true,
   custom_field_ids: [],
 };
 
@@ -191,7 +191,6 @@ export default function PipelinesPage() {
     undoMoveStackRef.current = [];
     redoMoveStackRef.current = [];
   }, [selectedPipelineId]);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [cardLayoutDraft, setCardLayoutDraft] =
     useState<PipelineCardLayout>(DEFAULT_CARD_LAYOUT);
@@ -1320,59 +1319,37 @@ export default function PipelinesPage() {
           </GatedButton>
         </div>
       ) : (
-        <>
-          <div className="border-border bg-card/60 rounded-xl border">
-            <button
-              type="button"
-              onClick={() => setAnalyticsOpen((open) => !open)}
-              className="text-foreground hover:bg-muted/50 flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold"
-              aria-expanded={analyticsOpen}
-            >
-              <span>Resumo do funil</span>
-              {analyticsOpen ? (
-                <ChevronDown className="size-4" />
-              ) : (
-                <ChevronRight className="size-4" />
-              )}
-            </button>
-            {analyticsOpen && (
-              <div className="border-border border-t p-3">
-                <PipelineAnalytics stages={stages} deals={filteredDeals} />
-              </div>
-            )}
-          </div>
-          <PipelineBoard
-            stages={stages}
-            deals={filteredDeals}
-            onDealMoved={handleDealMoved}
-            onRenameStage={handleRenameStage}
-            onAddDeal={handleAddDeal}
-            onEditDeal={handleEditDeal}
-            members={members}
-            onValueChange={handleQuickValue}
-            onStatusChange={handleQuickStatus}
-            onAddNote={(deal) => setQuickNoteDeal(deal)}
-            onScheduleTask={(deal) => setTaskDeal(deal)}
-            onAssign={handleQuickAssign}
-            tags={tags}
-            onToggleTag={handleToggleTag}
-            onCreateTag={(deal) => {
-              setNewTagName('');
-              setNewTagDeal(deal);
-            }}
-            cardLayout={selectedCardLayout}
-          />
-        </>
+        <PipelineBoard
+          stages={stages}
+          deals={filteredDeals}
+          onDealMoved={handleDealMoved}
+          onRenameStage={handleRenameStage}
+          onAddDeal={handleAddDeal}
+          onEditDeal={handleEditDeal}
+          members={members}
+          onValueChange={handleQuickValue}
+          onStatusChange={handleQuickStatus}
+          onAddNote={(deal) => setQuickNoteDeal(deal)}
+          onScheduleTask={(deal) => setTaskDeal(deal)}
+          onAssign={handleQuickAssign}
+          tags={tags}
+          onToggleTag={handleToggleTag}
+          onCreateTag={(deal) => {
+            setNewTagName('');
+            setNewTagDeal(deal);
+          }}
+          cardLayout={selectedCardLayout}
+        />
       )}
 
       <Dialog open={layoutOpen} onOpenChange={setLayoutOpen}>
-        <DialogContent className="bg-popover border-border sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="bg-popover border-border flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-md">
+          <DialogHeader className="shrink-0 pr-8">
             <DialogTitle className="text-popover-foreground">
               Layout do cartão
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain py-2 pr-1">
             <p className="text-muted-foreground text-sm">
               Escolha as informações que aparecerão nos cartões deste funil.
             </p>
@@ -1381,6 +1358,8 @@ export default function PipelinesPage() {
               ['show_created_at', 'Data de criação do contato'],
               ['show_last_message', 'Última mensagem'],
               ['show_notes', 'Notas'],
+              ['show_whatsapp_button', 'Botão do WhatsApp'],
+              ['show_quick_actions', 'Ícones de atalho'],
             ].map(([key, label]) => {
               const layoutKey = key as keyof Pick<
                 PipelineCardLayout,
@@ -1388,6 +1367,8 @@ export default function PipelinesPage() {
                 | 'show_created_at'
                 | 'show_last_message'
                 | 'show_notes'
+                | 'show_whatsapp_button'
+                | 'show_quick_actions'
               >;
               return (
                 <label
@@ -1412,7 +1393,7 @@ export default function PipelinesPage() {
                 Campos personalizados
               </p>
               <p className="text-muted-foreground text-xs">
-                Eles aparecem abaixo do botão para chamar no WhatsApp.
+                Eles aparecem na área de informações do cartão.
               </p>
               {customFields.length === 0 ? (
                 <p className="text-muted-foreground text-sm">

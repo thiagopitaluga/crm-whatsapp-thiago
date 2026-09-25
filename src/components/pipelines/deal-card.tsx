@@ -55,6 +55,8 @@ const DEFAULT_LAYOUT: PipelineCardLayout = {
   show_created_at: true,
   show_last_message: true,
   show_notes: true,
+  show_whatsapp_button: true,
+  show_quick_actions: true,
   custom_field_ids: [],
 };
 
@@ -279,7 +281,7 @@ export function DealCard({
         </p>
       )}
 
-      {whatsappUrl && !isOverlay && (
+      {layout.show_whatsapp_button && whatsappUrl && !isOverlay && (
         <a
           href={whatsappUrl}
           target="_blank"
@@ -326,7 +328,7 @@ export function DealCard({
         </div>
       )}
 
-      {!isOverlay && (
+      {!isOverlay && layout.show_quick_actions && (
         <div
           className="border-border/70 mt-3 flex items-center justify-between gap-0.5 border-t pt-2"
           onPointerDown={stopCardInteraction}

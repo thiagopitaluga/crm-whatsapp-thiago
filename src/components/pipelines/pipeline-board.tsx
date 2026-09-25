@@ -23,6 +23,7 @@ import type {
   Tag,
 } from '@/types';
 import { DealCard } from './deal-card';
+import { KanbanNavigator } from './kanban-navigator';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
@@ -96,6 +97,45 @@ export function PipelineBoard({
   const activeDeal = activeDealId
     ? (deals.find((d) => d.id === activeDealId) ?? null)
     : null;
+
+  // A two-finger sideways gesture on a laptop touchpad emits wheel deltaX.
+  // Listen on the Kanban's main area, including search and filters: a gesture
+  // started above the columns should move them too. Leave vertical gestures
+  // and any open dialog's own scrolling to the browser.
+  useEffect(() => {
+    const board = boardScrollRef.current;
+    const main = board?.closest('main');
+    if (!board || !main) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY))
+        return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest('[role="dialog"], [role="menu"]')
+      )
+        return;
+
+      const maxScroll = board.scrollWidth - board.clientWidth;
+      if (maxScroll <= 0) return;
+
+      const unit =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? board.clientWidth
+            : 1;
+      const next = Math.max(
+        0,
+        Math.min(maxScroll, board.scrollLeft + event.deltaX * unit)
+      );
+      event.preventDefault();
+      board.scrollLeft = next;
+    };
+
+    main.addEventListener('wheel', handleWheel, { passive: false });
+    return () => main.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // Lets users reveal stages without having to first drag the native scrollbar.
   // The listener is restricted to the board's visible vertical area, so moving
@@ -239,6 +279,8 @@ export function PipelineBoard({
         })}
       </div>
 
+      <KanbanNavigator boardRef={boardScrollRef} stages={sortedStages} />
+
       <DragOverlay
         dropAnimation={{
           duration: 200,
@@ -272,7 +314,7 @@ export function PipelineBoard({
 
       <style jsx>{`
         .pipeline-scroll {
-          scroll-behavior: smooth;
+          overscroll-behavior-x: contain;
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
