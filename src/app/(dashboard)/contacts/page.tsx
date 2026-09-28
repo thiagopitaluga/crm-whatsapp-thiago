@@ -231,7 +231,7 @@ export default function ContactsPage() {
   const supabase = createClient();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
-  const { accountId } = useAuth();
+  const { accountId, profile, accountRole } = useAuth();
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -274,6 +274,8 @@ export default function ContactsPage() {
   const [bulkStageId, setBulkStageId] = useState('');
   const [bulkTagMode, setBulkTagMode] = useState<'add' | 'remove' | null>(null);
   const [bulkTagIds, setBulkTagIds] = useState<Set<string>>(new Set());
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const [bulkAssigneeId, setBulkAssigneeId] = useState('unassigned');
   const [bulkSaving, setBulkSaving] = useState(false);
 
   // All tags for display
@@ -400,7 +402,7 @@ export default function ContactsPage() {
     // act on rows the user can no longer see.
     setSelected(new Set());
 
-    if (!accountId) {
+    if (!accountId || (accountRole === 'agent' && !profile?.id)) {
       setContacts([]);
       setTotalCount(0);
       setLoading(false);
@@ -436,6 +438,7 @@ export default function ContactsPage() {
     if (selectedTagIds.length > 0) {
       query = query.in('tag_filter.tag_id', selectedTagIds);
     }
+    if (accountRole === 'agent') query = query.eq('assigned_to', profile!.id);
     if (assignedTo) query = query.eq('assigned_to', assignedTo);
     if (customFieldId) {
       query = query
@@ -553,6 +556,8 @@ export default function ContactsPage() {
     setLoading(false);
   }, [
     accountId,
+    accountRole,
+    profile?.id,
     supabase,
     page,
     search,
@@ -623,11 +628,10 @@ export default function ContactsPage() {
       return;
 
     setAssigningContactId(contact.id);
-    const { error } = await supabase
-      .from('contacts')
-      .update({ assigned_to: assigneeId })
-      .eq('id', contact.id)
-      .eq('account_id', accountId);
+    const { error } = await supabase.rpc('assign_contact_owner', {
+      p_contact_id: contact.id,
+      p_assignee_id: assigneeId,
+    });
 
     if (error) {
       toast.error(t('toastFailedAssign'));
@@ -638,6 +642,7 @@ export default function ContactsPage() {
         )
       );
       toast.success(t('toastAssigned'));
+      if (accountRole === 'agent') void fetchContacts();
     }
     setAssigningContactId(null);
   }
@@ -801,6 +806,32 @@ export default function ContactsPage() {
   function openBulkTagDialog(mode: 'add' | 'remove') {
     setBulkTagIds(new Set());
     setBulkTagMode(mode);
+  }
+
+  function openBulkAssignDialog() {
+    setBulkAssigneeId('unassigned');
+    setBulkAssignOpen(true);
+  }
+
+  async function handleBulkAssign() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+
+    setBulkSaving(true);
+    const { data, error } = await supabase.rpc('assign_contacts_owner_bulk', {
+      p_contact_ids: ids,
+      p_assignee_id: bulkAssigneeId === 'unassigned' ? null : bulkAssigneeId,
+    });
+
+    if (error) {
+      toast.error(t('toastBulkFailedAssign'));
+    } else {
+      toast.success(t('toastBulkAssigned', { count: data ?? ids.length }));
+      setSelected(new Set());
+      setBulkAssignOpen(false);
+      await fetchContacts();
+    }
+    setBulkSaving(false);
   }
 
   function toggleBulkTag(tagId: string) {
@@ -1246,6 +1277,16 @@ export default function ContactsPage() {
             {t('selectedCount', { count: selected.size })}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            <GatedButton
+              variant="outline"
+              size="sm"
+              canAct={canEdit}
+              gateReason="assign contact owners"
+              onClick={openBulkAssignDialog}
+            >
+              <UserRound className="size-4" />
+              {t('bulkAssignOwner')}
+            </GatedButton>
             <GatedButton
               variant="outline"
               size="sm"
@@ -1718,6 +1759,48 @@ export default function ContactsPage() {
         defaultContactId={taskContact?.id ?? null}
         onSaved={() => setTaskContact(null)}
       />
+
+      <Dialog open={bulkAssignOpen} onOpenChange={setBulkAssignOpen}>
+        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('bulkAssignOwner')}</DialogTitle>
+            <DialogDescription>
+              {t('bulkAssignOwnerDesc', { count: selected.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium">{t('assignee')}</span>
+            <Select
+              value={bulkAssigneeId}
+              onValueChange={(value) => setBulkAssigneeId(value ?? 'unassigned')}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t('assignee')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">{t('unassigned')}</SelectItem>
+                {members.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.full_name || member.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAssignOpen(false)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={() => void handleBulkAssign()}
+              disabled={bulkSaving}
+            >
+              {bulkSaving && <Loader2 className="size-4 animate-spin" />}
+              {t('bulkAssignOwner')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Import Modal */}
       <ImportModal

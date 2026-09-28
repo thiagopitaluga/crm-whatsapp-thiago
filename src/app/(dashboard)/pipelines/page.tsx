@@ -165,7 +165,7 @@ export default function PipelinesPage() {
   const t = useTranslations('Pipelines.page');
   const supabase = createClient();
   const canEditSettings = useCan('edit-settings');
-  const { accountId, user } = useAuth();
+  const { accountId, user, profile, accountRole } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
@@ -248,16 +248,21 @@ export default function PipelinesPage() {
 
   const loadDeals = useCallback(
     async (pipelineId: string) => {
-      if (!accountId) return [];
+      if (!accountId || (accountRole === 'agent' && !profile?.id)) return [];
 
-      const { data } = await supabase
+      let query = supabase
         .from('deals')
         .select(
-          '*, contact:contacts(*, conversations(last_message_text,last_message_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
+          '*, contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
         )
         .eq('pipeline_id', pipelineId)
         .eq('account_id', accountId)
         .order('created_at', { ascending: false });
+      if (accountRole === 'agent') {
+        query = query.eq('contact.assigned_to', profile!.id);
+      }
+
+      const { data } = await query;
       return (data ?? []).map((row) => {
         const contact = row.contact as
           | (Contact & {
@@ -282,7 +287,7 @@ export default function PipelinesPage() {
         } as Deal;
       });
     },
-    [accountId, supabase]
+    [accountId, accountRole, profile?.id, supabase]
   );
 
   useEffect(() => {
@@ -602,20 +607,31 @@ export default function PipelinesPage() {
       setDeals((previous) =>
         previous.map((item) =>
           item.id === deal.id
-            ? { ...item, assigned_to: assigneeId ?? undefined, assignee }
+            ? {
+                ...item,
+                assigned_to: assigneeId ?? undefined,
+                assignee,
+                contact: item.contact
+                  ? { ...item.contact, assigned_to: assigneeId }
+                  : item.contact,
+              }
             : item
         )
       );
-      const { error } = await supabase
-        .from('deals')
-        .update({ assigned_to: assigneeId })
-        .eq('id', deal.id);
+      const { error } = await supabase.rpc('assign_deal_owner', {
+        p_deal_id: deal.id,
+        p_assignee_id: assigneeId,
+      });
       if (error) {
         toast.error(t('toastFailedQuickUpdate'));
         void refreshDeals();
         return;
       }
       toast.success(t('toastLeadAssigned'));
+      // An agent who assigns a lead to somebody else no longer has access to
+      // it. Reload from the account-scoped query so the card disappears
+      // immediately instead of surviving in optimistic local state.
+      void refreshDeals();
     },
     [members, refreshDeals, supabase, t]
   );
