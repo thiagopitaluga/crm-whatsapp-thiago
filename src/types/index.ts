@@ -370,6 +370,10 @@ export interface PipelineCardLayout {
   show_created_at: boolean;
   show_last_message: boolean;
   show_notes: boolean;
+  /** Shows the member currently responsible for the lead. */
+  show_assignee: boolean;
+  /** Shows the contact's labels on the Kanban card. */
+  show_tags: boolean;
   /** Shows the direct WhatsApp button on the Kanban card. */
   show_whatsapp_button: boolean;
   /** Shows the quick-action icon row below the card details. */

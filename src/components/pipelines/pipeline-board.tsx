@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -49,6 +55,12 @@ interface PipelineBoardProps {
   cardLayout: PipelineCardLayout;
 }
 
+interface BoardPanState {
+  pointerId: number;
+  startX: number;
+  startScrollLeft: number;
+}
+
 export function PipelineBoard({
   stages,
   deals,
@@ -69,7 +81,9 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
+  const [isBoardPanning, setIsBoardPanning] = useState(false);
   const boardScrollRef = useRef<HTMLDivElement>(null);
+  const boardPanRef = useRef<BoardPanState | null>(null);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -183,6 +197,13 @@ export function PipelineBoard({
         return;
       }
 
+      // Manual board panning owns the horizontal axis until the pointer is
+      // released. This keeps the hand gesture predictable near a screen edge.
+      if (boardPanRef.current) {
+        stop();
+        return;
+      }
+
       const fromLeft = event.clientX;
       const fromRight = window.innerWidth - event.clientX;
       if (fromLeft <= edgeThreshold) {
@@ -211,6 +232,63 @@ export function PipelineBoard({
       document.removeEventListener('visibilitychange', handlePointerLeave);
     };
   }, [deals.length, sortedStages.length]);
+
+  function finishBoardPan(pointerId?: number) {
+    const pan = boardPanRef.current;
+    if (!pan || (pointerId !== undefined && pan.pointerId !== pointerId)) {
+      return;
+    }
+
+    const board = boardScrollRef.current;
+    boardPanRef.current = null;
+    setIsBoardPanning(false);
+
+    if (!board) return;
+    board.style.scrollBehavior = '';
+    board.style.scrollSnapType = '';
+    if (board.hasPointerCapture(pan.pointerId)) {
+      board.releasePointerCapture(pan.pointerId);
+    }
+  }
+
+  function handleBoardPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    // Cards retain their normal drag-and-drop behavior. The hand gesture is
+    // deliberately reserved for the board's empty/background areas and does
+    // not interfere with buttons, inputs, menus, or links inside a card.
+    if (event.pointerType === 'touch' || event.button !== 0) return;
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest(
+        'a, button, input, textarea, select, [role="button"], [role="menu"]'
+      )
+    ) {
+      return;
+    }
+
+    const board = event.currentTarget;
+    if (board.scrollWidth <= board.clientWidth) return;
+
+    event.preventDefault();
+    board.setPointerCapture(event.pointerId);
+    board.style.scrollBehavior = 'auto';
+    board.style.scrollSnapType = 'none';
+    boardPanRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: board.scrollLeft,
+    };
+    setIsBoardPanning(true);
+  }
+
+  function handleBoardPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = boardPanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    event.currentTarget.scrollLeft =
+      pan.startScrollLeft - (event.clientX - pan.startX);
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
@@ -244,7 +322,14 @@ export function PipelineBoard({
     >
       <div
         ref={boardScrollRef}
-        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none"
+        className={`pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none ${
+          isBoardPanning ? 'cursor-grabbing select-none' : 'cursor-grab'
+        }`}
+        onPointerDown={handleBoardPointerDown}
+        onPointerMove={handleBoardPointerMove}
+        onPointerUp={(event) => finishBoardPan(event.pointerId)}
+        onPointerCancel={(event) => finishBoardPan(event.pointerId)}
+        onLostPointerCapture={(event) => finishBoardPan(event.pointerId)}
       >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];

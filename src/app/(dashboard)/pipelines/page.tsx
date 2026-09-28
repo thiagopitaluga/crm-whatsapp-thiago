@@ -88,6 +88,8 @@ const DEFAULT_CARD_LAYOUT: PipelineCardLayout = {
   show_created_at: true,
   show_last_message: true,
   show_notes: true,
+  show_assignee: true,
+  show_tags: true,
   show_whatsapp_button: true,
   show_quick_actions: true,
   custom_field_ids: [],
@@ -1374,6 +1376,8 @@ export default function PipelinesPage() {
               ['show_created_at', 'Data de criação do contato'],
               ['show_last_message', 'Última mensagem'],
               ['show_notes', 'Notas'],
+              ['show_assignee', 'Responsável pela atribuição'],
+              ['show_tags', 'Etiquetas'],
               ['show_whatsapp_button', 'Botão do WhatsApp'],
               ['show_quick_actions', 'Ícones de atalho'],
             ].map(([key, label]) => {
@@ -1383,6 +1387,8 @@ export default function PipelinesPage() {
                 | 'show_created_at'
                 | 'show_last_message'
                 | 'show_notes'
+                | 'show_assignee'
+                | 'show_tags'
                 | 'show_whatsapp_button'
                 | 'show_quick_actions'
               >;

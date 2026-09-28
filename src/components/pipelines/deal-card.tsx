@@ -55,6 +55,8 @@ const DEFAULT_LAYOUT: PipelineCardLayout = {
   show_created_at: true,
   show_last_message: true,
   show_notes: true,
+  show_assignee: true,
+  show_tags: true,
   show_whatsapp_button: true,
   show_quick_actions: true,
   custom_field_ids: [],
@@ -107,6 +109,9 @@ export function DealCard({
   const lastMessage = latestConversation?.last_message_text;
   const whatsappPhone = deal.contact?.phone?.replace(/\D/g, '');
   const whatsappUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}` : null;
+  const assigneeName =
+    deal.assignee?.full_name?.trim() || deal.assignee?.email || null;
+  const contactTags = deal.contact?.tags ?? [];
   const customValues = (deal.contact?.custom_values ?? []).filter(
     (item) =>
       item.custom_field &&
@@ -279,6 +284,45 @@ export function DealCard({
         >
           {lastMessage || t('noRecentMessage')}
         </p>
+      )}
+
+      {layout.show_assignee && assigneeName && (
+        <div
+          className="border-border/70 text-muted-foreground mt-3 flex min-w-0 items-center gap-1.5 border-l-2 pl-2 text-xs"
+          title={`Responsável: ${assigneeName}`}
+        >
+          <UserRound className="text-primary size-3.5 shrink-0" />
+          <span className="shrink-0">Responsável:</span>
+          <span className="text-foreground min-w-0 truncate font-medium">
+            {assigneeName}
+          </span>
+        </div>
+      )}
+
+      {layout.show_tags && contactTags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1 pl-1" aria-label="Etiquetas">
+          {contactTags.slice(0, 3).map((tag) => (
+            <span
+              key={tag.id}
+              className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{
+                backgroundColor: `${tag.color}20`,
+                color: tag.color,
+              }}
+              title={tag.name}
+            >
+              {tag.name}
+            </span>
+          ))}
+          {contactTags.length > 3 && (
+            <span
+              className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              title={`${contactTags.length - 3} etiquetas adicionais`}
+            >
+              +{contactTags.length - 3}
+            </span>
+          )}
+        </div>
       )}
 
       {layout.show_whatsapp_button && whatsappUrl && !isOverlay && (
