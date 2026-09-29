@@ -20,6 +20,7 @@ import {
   StickyNote,
   Tag as TagIcon,
   UserRound,
+  Check,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/currency';
 import { useTranslations } from 'next-intl';
@@ -226,7 +227,38 @@ export function DealCard({
             </span>
           ) : null}
         </p>
+
+        {layout.show_assignee && assigneeName ? (
+          <div
+            className="text-muted-foreground mt-2 flex min-w-0 items-center gap-1.5 text-[11px]"
+            title={`Responsável: ${assigneeName}`}
+          >
+            <span className="bg-primary/10 text-primary flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold">
+              {assigneeName.slice(0, 1).toLocaleUpperCase()}
+            </span>
+            <span className="truncate">{assigneeName}</span>
+          </div>
+        ) : null}
       </div>
+
+      {layout.show_tags && contactTags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1 pl-1" aria-label="Etiquetas">
+          {contactTags.map((tag) => (
+            <span
+              key={tag.id}
+              title={tag.name}
+              className="border-border bg-background/80 text-foreground inline-flex max-w-full min-w-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+            >
+              <span
+                aria-hidden
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: tag.color }}
+              />
+              <span className="truncate">{tag.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {layout.show_value && (
         <div className="mt-3 pl-1">
@@ -284,45 +316,6 @@ export function DealCard({
         >
           {lastMessage || t('noRecentMessage')}
         </p>
-      )}
-
-      {layout.show_assignee && assigneeName && (
-        <div
-          className="border-border/70 text-muted-foreground mt-3 flex min-w-0 items-center gap-1.5 border-l-2 pl-2 text-xs"
-          title={`Responsável: ${assigneeName}`}
-        >
-          <UserRound className="text-primary size-3.5 shrink-0" />
-          <span className="shrink-0">Responsável:</span>
-          <span className="text-foreground min-w-0 truncate font-medium">
-            {assigneeName}
-          </span>
-        </div>
-      )}
-
-      {layout.show_tags && contactTags.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1 pl-1" aria-label="Etiquetas">
-          {contactTags.slice(0, 3).map((tag) => (
-            <span
-              key={tag.id}
-              className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-medium"
-              style={{
-                backgroundColor: `${tag.color}20`,
-                color: tag.color,
-              }}
-              title={tag.name}
-            >
-              {tag.name}
-            </span>
-          ))}
-          {contactTags.length > 3 && (
-            <span
-              className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-              title={`${contactTags.length - 3} etiquetas adicionais`}
-            >
-              +{contactTags.length - 3}
-            </span>
-          )}
-        </div>
       )}
 
       {layout.show_whatsapp_button && whatsappUrl && !isOverlay && (
@@ -501,6 +494,7 @@ export function DealCard({
               onPointerDown={stopCardInteraction}
             >
               <DropdownMenuItem
+                disabled={deal.assigned_to == null}
                 onSelect={(event) => {
                   event.stopPropagation();
                   void onAssign(deal, null);
@@ -512,12 +506,21 @@ export function DealCard({
               {members.map((member) => (
                 <DropdownMenuItem
                   key={member.id}
+                  disabled={deal.assigned_to === member.id}
                   onSelect={(event) => {
                     event.stopPropagation();
                     void onAssign(deal, member.id);
                   }}
                 >
-                  {member.full_name || member.email}
+                  <span className="flex-1">
+                    {member.full_name || member.email}
+                  </span>
+                  {deal.assigned_to === member.id ? (
+                    <Check
+                      className="ml-2 size-4"
+                      aria-label="Responsável atual"
+                    />
+                  ) : null}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

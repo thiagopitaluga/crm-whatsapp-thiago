@@ -82,6 +82,7 @@ export function PipelineBoard({
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
   const [isBoardPanning, setIsBoardPanning] = useState(false);
+  const [edgeAutoScrollEnabled, setEdgeAutoScrollEnabled] = useState(true);
   const boardScrollRef = useRef<HTMLDivElement>(null);
   const boardPanRef = useRef<BoardPanState | null>(null);
 
@@ -156,7 +157,7 @@ export function PipelineBoard({
   // through controls above or below the Kanban cannot move its columns.
   useEffect(() => {
     const board = boardScrollRef.current;
-    if (!board) return;
+    if (!board || !edgeAutoScrollEnabled) return;
 
     const edgeThreshold = 56;
     const maxSpeed = 72;
@@ -231,7 +232,7 @@ export function PipelineBoard({
       window.removeEventListener('blur', handlePointerLeave);
       document.removeEventListener('visibilitychange', handlePointerLeave);
     };
-  }, [deals.length, sortedStages.length]);
+  }, [deals.length, edgeAutoScrollEnabled, sortedStages.length]);
 
   function finishBoardPan(pointerId?: number) {
     const pan = boardPanRef.current;
@@ -364,7 +365,12 @@ export function PipelineBoard({
         })}
       </div>
 
-      <KanbanNavigator boardRef={boardScrollRef} stages={sortedStages} />
+      <KanbanNavigator
+        boardRef={boardScrollRef}
+        stages={sortedStages}
+        edgeAutoScrollEnabled={edgeAutoScrollEnabled}
+        onEdgeAutoScrollEnabledChange={setEdgeAutoScrollEnabled}
+      />
 
       <DragOverlay
         dropAnimation={{
@@ -619,6 +625,8 @@ function DraggableDealCard({
       {...listeners}
       {...attributes}
       style={{ opacity: isDragging ? 0.3 : 1, touchAction: 'none' }}
+      data-kanban-card
+      className="cursor-default"
     >
       <DealCard
         deal={deal}

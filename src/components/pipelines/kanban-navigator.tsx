@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Lock, Unlock } from 'lucide-react';
 import type { PipelineStage } from '@/types';
 
 interface KanbanNavigatorProps {
   boardRef: RefObject<HTMLDivElement | null>;
   stages: PipelineStage[];
+  edgeAutoScrollEnabled: boolean;
+  onEdgeAutoScrollEnabledChange: (enabled: boolean) => void;
 }
 
 interface ScrollMetrics {
@@ -21,7 +24,12 @@ const EMPTY_METRICS: ScrollMetrics = { left: 0, width: 0, scrollWidth: 0 };
  * board fits on screen, and lets mouse, touch and keyboard users jump between
  * distant stages without exposing a native scrollbar.
  */
-export function KanbanNavigator({ boardRef, stages }: KanbanNavigatorProps) {
+export function KanbanNavigator({
+  boardRef,
+  stages,
+  edgeAutoScrollEnabled,
+  onEdgeAutoScrollEnabledChange,
+}: KanbanNavigatorProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const [metrics, setMetrics] = useState<ScrollMetrics>(EMPTY_METRICS);
@@ -63,6 +71,7 @@ export function KanbanNavigator({ boardRef, stages }: KanbanNavigatorProps) {
   const viewportLeft = (metrics.left / metrics.scrollWidth) * 100;
   const viewportWidth = (metrics.width / metrics.scrollWidth) * 100;
   const progress = Math.round((metrics.left / maxScroll) * 100);
+  const edgeAutoScrollLocked = !edgeAutoScrollEnabled;
 
   const scrollToPointer = (clientX: number) => {
     const board = boardRef.current;
@@ -93,7 +102,29 @@ export function KanbanNavigator({ boardRef, stages }: KanbanNavigatorProps) {
   };
 
   return (
-    <div className="border-border bg-popover/95 fixed right-5 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 w-48 rounded-lg border p-1 shadow-lg backdrop-blur-sm">
+    <div className="border-border bg-popover/95 fixed right-5 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 flex w-56 items-center gap-1 rounded-lg border p-1 shadow-lg backdrop-blur-sm">
+      <button
+        type="button"
+        aria-pressed={edgeAutoScrollLocked}
+        aria-label={
+          edgeAutoScrollLocked
+            ? 'Liberar rolagem automática nas bordas'
+            : 'Bloquear rolagem automática nas bordas'
+        }
+        title={
+          edgeAutoScrollLocked
+            ? 'Liberar rolagem automática nas bordas'
+            : 'Bloquear rolagem automática nas bordas'
+        }
+        onClick={() => onEdgeAutoScrollEnabledChange(edgeAutoScrollLocked)}
+        className="border-border bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 items-center justify-center rounded-md border outline-none focus-visible:ring-2"
+      >
+        {edgeAutoScrollLocked ? (
+          <Lock className="size-3.5" />
+        ) : (
+          <Unlock className="size-3.5" />
+        )}
+      </button>
       <div
         ref={trackRef}
         role="slider"
@@ -104,7 +135,7 @@ export function KanbanNavigator({ boardRef, stages }: KanbanNavigatorProps) {
         aria-valuenow={progress}
         aria-valuetext={`${progress}% do funil percorrido`}
         title="Clique ou arraste para percorrer as etapas"
-        className="focus-visible:ring-ring relative flex h-7 cursor-grab touch-none gap-0.5 rounded-md outline-none focus-visible:ring-2 active:cursor-grabbing"
+        className="focus-visible:ring-ring relative flex h-7 min-w-0 flex-1 cursor-grab touch-none gap-0.5 rounded-md outline-none focus-visible:ring-2 active:cursor-grabbing"
         onPointerDown={(event) => {
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
