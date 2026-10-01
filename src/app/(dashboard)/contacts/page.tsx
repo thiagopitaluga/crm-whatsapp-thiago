@@ -438,7 +438,6 @@ export default function ContactsPage() {
     if (selectedTagIds.length > 0) {
       query = query.in('tag_filter.tag_id', selectedTagIds);
     }
-    if (accountRole === 'agent') query = query.eq('assigned_to', profile!.id);
     if (assignedTo) query = query.eq('assigned_to', assignedTo);
     if (customFieldId) {
       query = query
@@ -1345,7 +1344,7 @@ export default function ContactsPage() {
 
       {/* Table */}
       <div className="border-border overflow-x-auto rounded-lg border">
-        <Table className="min-w-[980px]">
+        <Table className="min-w-[1100px]">
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="w-12 min-w-12 px-3">
@@ -1372,6 +1371,9 @@ export default function ContactsPage() {
               <TableHead className="text-muted-foreground min-w-40">
                 {t('tableColumns.tags')}
               </TableHead>
+              <TableHead className="text-muted-foreground min-w-40">
+                {t('assignee')}
+              </TableHead>
               <TableHead className="text-muted-foreground">
                 {t('tableColumns.createdAt')}
               </TableHead>
@@ -1381,7 +1383,7 @@ export default function ContactsPage() {
           <TableBody>
             {loading ? (
               <TableRow className="border-border">
-                <TableCell colSpan={8} className="py-12 text-center">
+                <TableCell colSpan={9} className="py-12 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="text-primary size-6 animate-spin" />
                     <p className="text-muted-foreground text-sm">
@@ -1392,7 +1394,7 @@ export default function ContactsPage() {
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow className="border-border">
-                <TableCell colSpan={8} className="py-12 text-center">
+                <TableCell colSpan={9} className="py-12 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="text-muted-foreground size-8" />
                     <p className="text-muted-foreground text-sm">
@@ -1552,6 +1554,17 @@ export default function ContactsPage() {
                         </span>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">
+                    {contact.assigned_to
+                      ? members.find(
+                          (member) => member.id === contact.assigned_to
+                        )?.full_name ||
+                        members.find(
+                          (member) => member.id === contact.assigned_to
+                        )?.email ||
+                        '-'
+                      : t('unassigned')}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
                     {formatContactDate(contact.created_at, locale)}
@@ -1772,7 +1785,9 @@ export default function ContactsPage() {
             <span className="text-sm font-medium">{t('assignee')}</span>
             <Select
               value={bulkAssigneeId}
-              onValueChange={(value) => setBulkAssigneeId(value ?? 'unassigned')}
+              onValueChange={(value) =>
+                setBulkAssigneeId(value ?? 'unassigned')
+              }
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('assignee')} />

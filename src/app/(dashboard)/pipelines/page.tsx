@@ -252,7 +252,7 @@ export default function PipelinesPage() {
     async (pipelineId: string) => {
       if (!accountId || (accountRole === 'agent' && !profile?.id)) return [];
 
-      let query = supabase
+      const query = supabase
         .from('deals')
         .select(
           '*, contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
@@ -260,10 +260,6 @@ export default function PipelinesPage() {
         .eq('pipeline_id', pipelineId)
         .eq('account_id', accountId)
         .order('created_at', { ascending: false });
-      if (accountRole === 'agent') {
-        query = query.eq('contact.assigned_to', profile!.id);
-      }
-
       const { data } = await query;
       return (data ?? []).map((row) => {
         const contact = row.contact as
@@ -297,13 +293,13 @@ export default function PipelinesPage() {
     let cancelled = false;
 
     (async () => {
-      const [profilesResult, tagsResult, customFieldsResult] =
+      const [membershipsResult, tagsResult, customFieldsResult] =
         await Promise.all([
           supabase
-            .from('profiles')
-            .select('*')
+            .from('account_memberships')
+            .select('user_id')
             .eq('account_id', accountId)
-            .order('full_name'),
+            .order('created_at'),
           supabase
             .from('tags')
             .select('*')
@@ -317,8 +313,21 @@ export default function PipelinesPage() {
         ]);
 
       if (cancelled) return;
-      if (!profilesResult.error)
-        setMembers((profilesResult.data ?? []) as Profile[]);
+      if (!membershipsResult.error) {
+        const userIds = (membershipsResult.data ?? []).map(
+          (member) => member.user_id
+        );
+        const profilesResult = userIds.length
+          ? await supabase
+              .from('profiles')
+              .select('*')
+              .in('user_id', userIds)
+              .order('full_name')
+          : { data: [], error: null };
+        if (!cancelled && !profilesResult.error)
+          setMembers((profilesResult.data ?? []) as Profile[]);
+      }
+      if (cancelled) return;
       if (!tagsResult.error) setTags((tagsResult.data ?? []) as Tag[]);
       if (!customFieldsResult.error)
         setCustomFields((customFieldsResult.data ?? []) as CustomField[]);
@@ -368,6 +377,8 @@ export default function PipelinesPage() {
   // Initial load + seed-if-empty
   useEffect(() => {
     if (!accountId) {
+      // Clearing account-scoped data when the active account is removed.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPipelines([]);
       setSelectedPipelineId('');
       setStages([]);
@@ -411,7 +422,6 @@ export default function PipelinesPage() {
     if (!selectedPipelineId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStages([]);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeals([]);
       return;
     }
@@ -840,7 +850,9 @@ export default function PipelinesPage() {
       !createdFrom || (createdDate && createdDate >= createdFrom);
     const matchesCreatedTo =
       !createdTo || (createdDate && createdDate <= createdTo);
-    const matchesAssignee = !assignedTo || deal.assigned_to === assignedTo;
+    const matchesAssignee =
+      !assignedTo ||
+      (deal.contact?.assigned_to ?? deal.assigned_to) === assignedTo;
     const customValue =
       (deal.contact?.custom_values ?? [])
         .find((item) => item.custom_field?.id === customFieldId)
