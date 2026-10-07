@@ -31,6 +31,7 @@ const port = Number(process.env.PORT ?? 3001);
 const authRoot = process.env.AUTH_ROOT ?? '/app/data/sessions';
 const legacyAuthDir = process.env.AUTH_DIR ?? '/app/data/auth';
 const crmBaseUrl = required('CRM_BASE_URL').replace(/\/$/, '');
+const storageOrigin = new URL(process.env.SUPABASE_STORAGE_ORIGIN || 'https://jsglzezkiwsypoonifxm.supabase.co').origin;
 const connectorApiSecret = required('CONNECTOR_API_SECRET');
 const crmConnectorSecret = process.env.CRM_CONNECTOR_SECRET?.trim() || null;
 const legacyIngestKey = process.env.CRM_INGEST_API_KEY?.trim() || null;
@@ -106,6 +107,147 @@ app.post('/v1/sessions/:accountId/import', async (req, res) => {
     res.status(500).json({ error: 'history_import_start_failed' });
   }
 });
+
+// Groups deliberately have their own surface. They never enter the CRM inbox
+// or create contacts/deals; this endpoint returns only the metadata needed by
+// the Groups screen and uses the authenticated session for the account.
+app.get('/v1/sessions/:accountId/groups', async (req, res) => {
+  const accountId = parseAccountId(req.params.accountId);
+  if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
+  const session = sessions.get(accountId);
+  if (!session?.socket || session.status !== 'connected') {
+    return res.status(409).json({ error: 'whatsapp_not_connected' });
+  }
+
+  try {
+    const groups = await session.socket.groupFetchAllParticipating();
+    const result = Object.values(groups)
+      .map((group) => ({
+        id: group.id,
+        subject:
+          typeof group.subject === 'string' && group.subject.trim()
+            ? group.subject.trim()
+            : 'Grupo sem nome',
+        participant_count: Array.isArray(group.participants)
+          ? group.participants.length
+          : 0,
+        is_admin: Boolean(
+          group.participants?.some(
+            (p) => p.id === session.socket?.user?.id && p.admin
+          )
+        ),
+      }))
+      .filter(
+        (group) => typeof group.id === 'string' && group.id.endsWith('@g.us')
+      )
+      .sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
+    res.set('cache-control', 'no-store').json({ groups: result });
+  } catch (error) {
+    console.error('[qr-connector] failed to fetch groups:', safeError(error));
+    res.status(502).json({ error: 'groups_fetch_failed' });
+  }
+});
+
+// Called only by the CRM's scheduled worker. Group ids are re-validated
+// against the active WhatsApp session, so a caller can never send to a JID
+// that does not belong to the linked account. The worker records one outcome
+// per group and can therefore retry only failed targets later.
+app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
+  const accountId = parseAccountId(req.params.accountId);
+  if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
+  const session = sessions.get(accountId);
+  if (!session?.socket || session.status !== 'connected') {
+    return res.status(409).json({ error: 'whatsapp_not_connected' });
+  }
+
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  const kind = typeof req.body?.kind === 'string' ? req.body.kind : 'text';
+  const mediaUrl = typeof req.body?.media_url === 'string' ? req.body.media_url : '';
+  const mediaName = typeof req.body?.media_name === 'string' ? req.body.media_name.slice(0, 255) : 'Arquivo';
+  const pollOptions = Array.isArray(req.body?.poll_options) ? req.body.poll_options : [];
+  const groupIds = Array.isArray(req.body?.group_ids)
+    ? [...new Set(req.body.group_ids.filter((id) => typeof id === 'string'))]
+    : [];
+  // Keep one worker run comfortably below Vercel's 60s function ceiling and
+  // avoid a burst that is unlike normal human group activity.
+  if (
+    !['text', 'image', 'video', 'audio', 'document', 'poll'].includes(kind) ||
+    (!text && (kind === 'text' || kind === 'poll')) ||
+    text.length > 4096 ||
+    (kind === 'poll' && (pollOptions.length < 2 || pollOptions.length > 12 || pollOptions.some((value) => typeof value !== 'string' || !value.trim()))) ||
+    (['image', 'video', 'audio', 'document'].includes(kind) && !validGroupMediaUrl(mediaUrl, accountId)) ||
+    groupIds.length === 0 ||
+    groupIds.length > 30
+  ) {
+    return res.status(400).json({ error: 'invalid_group_send_payload' });
+  }
+
+  try {
+    const groups = await session.socket.groupFetchAllParticipating();
+    const allowed = new Set(Object.keys(groups));
+    const results = [];
+    for (const [index, groupId] of groupIds.entries()) {
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1250));
+      if (!groupId.endsWith('@g.us') || !allowed.has(groupId)) {
+        results.push({
+          group_id: groupId,
+          status: 'failed',
+          error: 'group_not_available',
+        });
+        continue;
+      }
+      try {
+        const personalText = renderGroupText(text, groups[groupId]?.subject);
+        const content = kind === 'text' ? { text: personalText }
+          : kind === 'poll' ? { poll: { name: personalText, values: pollOptions, selectableCount: 1 } }
+          : kind === 'image' ? { image: { url: mediaUrl }, caption: personalText }
+          : kind === 'video' ? { video: { url: mediaUrl }, caption: personalText }
+          : kind === 'audio' ? { audio: { url: mediaUrl }, mimetype: groupAudioMimeType(mediaName) }
+          : { document: { url: mediaUrl }, fileName: mediaName, mimetype: 'application/octet-stream', caption: personalText };
+        const sent = await session.socket.sendMessage(groupId, content);
+        results.push({
+          group_id: groupId,
+          status: 'sent',
+          message_id: sent?.key?.id ?? null,
+        });
+      } catch (error) {
+        results.push({
+          group_id: groupId,
+          status: 'failed',
+          error: safeError(error),
+        });
+      }
+    }
+    res.json({ results });
+  } catch (error) {
+    console.error('[qr-connector] failed group send:', safeError(error));
+    res.status(502).json({ error: 'groups_send_failed' });
+  }
+});
+
+function validGroupMediaUrl(value, accountId) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.origin === storageOrigin &&
+      url.pathname.startsWith(`/storage/v1/object/public/chat-media/account-${accountId}/group-broadcast/`);
+  } catch { return false; }
+}
+
+function renderGroupText(template, subject) {
+  const safeSubject = typeof subject === 'string' && subject.trim() ? subject.trim() : 'grupo';
+  const date = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
+  return template.replaceAll('{{grupo}}', safeSubject).replaceAll('{{data}}', date);
+}
+
+function groupAudioMimeType(fileName) {
+  const extension = fileName.toLowerCase().split('.').pop();
+  if (extension === 'mp3') return 'audio/mpeg';
+  if (extension === 'ogg' || extension === 'opus') return 'audio/ogg; codecs=opus';
+  if (extension === 'wav') return 'audio/wav';
+  if (extension === 'aac') return 'audio/aac';
+  return 'audio/mp4';
+}
+
 
 app.delete('/v1/sessions/:accountId', async (req, res) => {
   const accountId = parseAccountId(req.params.accountId);
@@ -253,8 +395,13 @@ async function startSession(accountId) {
         `[qr-connector] message event for account ${accountId}: type=${type}, count=${messages.length}`
       );
       if (type !== 'notify') return;
-      for (const message of messages)
-        void ingestMessage(accountId, message, session);
+      for (const message of messages) {
+        if (message?.key?.remoteJid?.endsWith('@g.us')) {
+          void ingestGroupMessage(accountId, message);
+        } else {
+          void ingestMessage(accountId, message, session);
+        }
+      }
     });
   } catch (error) {
     session.lastError = safeError(error);
@@ -515,6 +662,32 @@ async function ingestMessage(accountId, message, session) {
     }
   );
 }
+
+async function ingestGroupMessage(accountId, message) {
+  if (!crmConnectorSecret || !message?.key?.id) return;
+  const content = getMessageContent(message);
+  if (!content) return;
+  try {
+    const response = await fetch(`${crmBaseUrl}/api/internal/qr-group-message`, {
+      method: 'POST',
+      headers: { 'x-connector-secret': crmConnectorSecret, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        account_id: accountId, group_jid: message.key.remoteJid,
+        message_id: message.key.id, participant_jid: message.key.participant || null,
+        participant_name: message.pushName?.trim() || null,
+        from_me: message.key.fromMe === true, message_type: content.type,
+        content_text: content.text, created_at: toIsoTimestamp(message.messageTimestamp),
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok && response.status !== 404) {
+      console.error('[qr-connector] group ingest rejected:', response.status);
+    }
+  } catch (error) {
+    console.error('[qr-connector] group ingest failed:', safeError(error));
+  }
+}
+
 
 function getMessageContent(message) {
   const content = message.message || {};

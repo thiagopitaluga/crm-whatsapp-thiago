@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type {
   Contact,
@@ -59,6 +60,7 @@ import {
   Settings,
   Search,
   SlidersHorizontal,
+  History,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -173,6 +175,7 @@ export default function PipelinesPage() {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [dealLoadError, setDealLoadError] = useState(false);
   const undoMoveStackRef = useRef<DealMoveHistoryEntry[]>([]);
   const redoMoveStackRef = useRef<DealMoveHistoryEntry[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
@@ -260,7 +263,13 @@ export default function PipelinesPage() {
         .eq('pipeline_id', pipelineId)
         .eq('account_id', accountId)
         .order('created_at', { ascending: false });
-      const { data } = await query;
+      const { data, error } = await query;
+      if (error) {
+        console.error('Failed to load Kanban deals:', error);
+        setDealLoadError(true);
+        return [];
+      }
+      setDealLoadError(false);
       return (data ?? []).map((row) => {
         const contact = row.contact as
           | (Contact & {
@@ -383,6 +392,7 @@ export default function PipelinesPage() {
       setSelectedPipelineId('');
       setStages([]);
       setDeals([]);
+      setDealLoadError(false);
       setLoading(false);
       return;
     }
@@ -423,6 +433,7 @@ export default function PipelinesPage() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStages([]);
       setDeals([]);
+      setDealLoadError(false);
       return;
     }
     let cancelled = false;
@@ -1349,7 +1360,27 @@ export default function PipelinesPage() {
           </GatedButton>
         </div>
       ) : (
-        <PipelineBoard
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Link
+              href={`/movimentacoes?pipeline_id=${selectedPipelineId}`}
+              className="border-border bg-card text-foreground hover:bg-muted inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors"
+            >
+              <History className="size-4" /> Movimentações do funil
+            </Link>
+          </div>
+          {dealLoadError && (
+            <div
+              role="alert"
+              className="border-destructive/40 bg-destructive/10 text-destructive flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm"
+            >
+              <span>Não foi possível carregar os leads deste funil.</span>
+              <Button variant="outline" size="sm" onClick={() => void refreshDeals()}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+          <PipelineBoard
           stages={stages}
           deals={filteredDeals}
           onDealMoved={handleDealMoved}
@@ -1369,7 +1400,8 @@ export default function PipelinesPage() {
             setNewTagDeal(deal);
           }}
           cardLayout={selectedCardLayout}
-        />
+          />
+        </div>
       )}
 
       <Dialog open={layoutOpen} onOpenChange={setLayoutOpen}>

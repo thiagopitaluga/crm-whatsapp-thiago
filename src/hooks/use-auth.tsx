@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { usePathname } from "next/navigation";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import {
   canEditSettings as canEditSettingsFor,
@@ -171,6 +172,7 @@ interface ProfileRow {
  * component, avoiding internal lock contention in the Supabase client.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
@@ -186,15 +188,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(true);
 
   // Tracks the user ID we've successfully initiated/completed fetching
-  // a profile for. This prevents redundant re-fetches and toggling
-  // profileLoading back to true on window focus events/token refresh.
+  // a profile for. This prevents redundant re-fetches on token refresh;
+  // foreground and route checks below still refresh stale account context.
   const lastFetchedUserIdRef = useRef<string | null>(null);
+  const lastProfileCheckAtRef = useRef(0);
 
   // Shared across init, auth-state-change listener, and the exposed
   // refreshProfile() callback. Reads the current session's user id and
   // pulls the matching profile row along with its account summary.
   const fetchProfile = useCallback(async (userId: string) => {
     const supabase = createClient();
+    lastProfileCheckAtRef.current = Date.now();
     setProfileLoading(true);
     setStatusDetail(null);
     lastFetchedUserIdRef.current = userId;
@@ -230,6 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           continue;
         }
         lastFetchedUserIdRef.current = null;
+        lastProfileCheckAtRef.current = 0;
         setStatusDetail(error.message);
         return;
       }
@@ -358,11 +363,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else {
         lastFetchedUserIdRef.current = null;
+        lastProfileCheckAtRef.current = 0;
         setStatusDetail("no profiles row for the signed-in user");
       }
     } catch (err) {
       console.error("[AuthProvider] fetchProfile threw:", err);
       lastFetchedUserIdRef.current = null;
+      lastProfileCheckAtRef.current = 0;
       setStatusDetail(err instanceof Error ? err.message : "profile fetch failed");
     } finally {
       setProfileLoading(false);
@@ -429,6 +436,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else {
         lastFetchedUserIdRef.current = null;
+        lastProfileCheckAtRef.current = 0;
         setProfile(null);
         setAccount(null);
         setAccounts([]);
@@ -444,6 +452,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, [fetchProfile]);
+
+  // An active account can change while a tab remains open. Token refresh
+  // retains the same user id, so refresh stale account context when the user
+  // returns to the app or navigates within it.
+  useEffect(() => {
+    if (!user?.id) return;
+    const refreshIfStale = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastProfileCheckAtRef.current < 60_000) return;
+      void fetchProfile(user.id);
+    };
+    window.addEventListener("focus", refreshIfStale);
+    document.addEventListener("visibilitychange", refreshIfStale);
+    return () => {
+      window.removeEventListener("focus", refreshIfStale);
+      document.removeEventListener("visibilitychange", refreshIfStale);
+    };
+  }, [user?.id, fetchProfile]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (Date.now() - lastProfileCheckAtRef.current < 60_000) return;
+    void fetchProfile(user.id);
+  }, [pathname, user?.id, fetchProfile]);
 
   const signOut = useCallback(async () => {
     const supabase = createClient();

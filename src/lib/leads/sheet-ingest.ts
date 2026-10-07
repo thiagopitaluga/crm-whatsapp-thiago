@@ -17,6 +17,7 @@ export interface SheetLeadInput {
   phone: string;
   name?: string | null;
   email?: string | null;
+  company?: string | null;
   /** Account-scoped pipeline name; resolved server-side before any write. */
   pipeline: string;
   /** Blank means the pipeline's first stage. */
@@ -31,6 +32,9 @@ export interface SheetLeadInput {
   source: string;
   /** Stable, upstream-specific row id used to make retries idempotent. */
   sourceId: string;
+  /** Original fields from a Meta form or another consented form source. */
+  formData?: Record<string, string>;
+  submittedAt?: string | null;
 }
 
 export interface SheetLeadIngestResult {
@@ -70,7 +74,26 @@ export async function ingestSheetLead(
     phone: input.phone,
     name: input.name,
     email: input.email,
+    company: input.company,
   });
+
+  if (input.formData) {
+    const { error: submissionError } = await db.from('lead_form_submissions').upsert(
+      {
+        account_id: accountId,
+        contact_id: contact.id,
+        source_type: input.source,
+        source_external_id: input.sourceId,
+        submitted_at: input.submittedAt ?? null,
+        fields: input.formData,
+      },
+      { onConflict: 'account_id,source_type,source_external_id' }
+    );
+    if (submissionError) {
+      console.error('[sheet-ingest] failed to store form submission:', submissionError);
+      throw new SheetLeadIngestError('Failed to store form submission', 500);
+    }
+  }
 
   await upsertSourceNote(
     db,

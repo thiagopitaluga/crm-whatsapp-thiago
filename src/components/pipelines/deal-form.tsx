@@ -29,6 +29,7 @@ import {
   MessageSquare,
   DollarSign,
   Loader2,
+  History,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
@@ -42,6 +43,21 @@ interface DealFormProps {
   defaultStageId?: string;
   onSaved: () => void;
 }
+
+interface DealStageEvent {
+  id: string;
+  event_type: 'created' | 'moved';
+  from_stage_name: string | null;
+  to_stage_name: string;
+  changed_by_name: string | null;
+  occurred_at: string;
+}
+
+const BRAZIL_DATE_TIME = new Intl.DateTimeFormat('pt-BR', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+  timeZone: 'America/Sao_Paulo',
+});
 
 export function DealForm({
   open,
@@ -71,6 +87,9 @@ export function DealForm({
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [stageHistory, setStageHistory] = useState<DealStageEvent[]>([]);
+  const [stageHistoryError, setStageHistoryError] = useState(false);
+  const [historyForDealId, setHistoryForDealId] = useState<string | null>(null);
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
@@ -129,6 +148,25 @@ export function DealForm({
       cancelled = true;
     };
   }, [open, accountId, supabase]);
+
+  useEffect(() => {
+    if (!open || !deal?.id || !accountId) return;
+    let cancelled = false;
+    void supabase
+      .from('deal_stage_events')
+      .select('id, event_type, from_stage_name, to_stage_name, changed_by_name, occurred_at')
+      .eq('account_id', accountId)
+      .eq('deal_id', deal.id)
+      .order('occurred_at', { ascending: false })
+      .limit(50)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setStageHistory((data ?? []) as DealStageEvent[]);
+        setStageHistoryError(Boolean(error));
+        setHistoryForDealId(deal.id);
+      });
+    return () => { cancelled = true; };
+  }, [open, deal?.id, accountId, supabase]);
 
   const selectedContact = contacts.find((contact) => contact.id === contactId);
   const whatsappUrl = selectedContact?.phone
@@ -406,6 +444,39 @@ export function DealForm({
                   </Button>
                 )}
               </div>
+            )}
+            {deal && (
+              <details className="border-border bg-muted/20 rounded-xl border p-3.5">
+                <summary className="text-foreground flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
+                  <History className="text-primary size-4" /> Histórico de etapas
+                  <span className="text-muted-foreground ml-auto text-xs font-normal">
+                    {historyForDealId === deal.id ? stageHistory.length : 0} registros
+                  </span>
+                </summary>
+                {historyForDealId !== deal.id ? (
+                  <p className="text-muted-foreground mt-3 text-xs">Carregando histórico...</p>
+                ) : stageHistoryError ? (
+                  <p className="text-muted-foreground mt-3 text-xs">Histórico indisponível no momento.</p>
+                ) : stageHistory.length === 0 ? (
+                  <p className="text-muted-foreground mt-3 text-xs">Nenhuma movimentação registrada desde a ativação do histórico.</p>
+                ) : (
+                  <ol className="border-border mt-3 max-h-52 space-y-3 overflow-y-auto border-l pl-3">
+                    {stageHistory.map((event) => (
+                      <li key={event.id} className="text-xs">
+                        <p className="text-foreground">
+                          {event.event_type === 'created'
+                            ? `Criado em ${event.to_stage_name}`
+                            : `${event.from_stage_name ?? 'Etapa anterior'} → ${event.to_stage_name}`}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {BRAZIL_DATE_TIME.format(new Date(event.occurred_at))}
+                          {' · '}{event.changed_by_name ?? 'Integração ou sistema'}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </details>
             )}
           </div>
 
