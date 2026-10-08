@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OrganiZAP group broadcasts every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=false
+Unit=organizap-group-broadcast.service
+
+[Install]
+WantedBy=timers.target

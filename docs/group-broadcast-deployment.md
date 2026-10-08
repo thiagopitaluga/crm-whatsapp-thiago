@@ -30,12 +30,22 @@ grupo no painel sem afetar as conversas individuais.
    https://organizap.tpxdigital.com/api/whatsapp/group-broadcasts/cron`
    a cada minuto com `Authorization: Bearer <CRON_SECRET>`. A rota valida o
    segredo e responde com a quantidade de campanhas processadas.
+   Na VPS, as unidades versionadas em `qr-connector/systemd/` fazem essa
+   chamada. Guarde `CRON_SECRET=<valor>` em
+   `/etc/organizap/group-broadcast-cron.env` com permissão `0600`, instale as
+   unidades em `/etc/systemd/system/` e habilite o timer. O serviço roda com
+   usuário dinâmico isolado, não precisa do segredo do conector e nunca recebe dados das
+   sessões WhatsApp.
 3. Confirme que a rota retorna `200` e que o conector responde à lista de
    grupos antes de configurar `GROUP_BROADCAST_SCHEDULER_ENABLED=true` em
    **Production**. Essa chave é a trava de segurança para novos disparos.
 4. Faça um teste controlado com um grupo administrado pela própria conta,
    verificando o resultado no painel e no WhatsApp. Não repita uma entrega
    marcada como **incerta** sem conferi-la no WhatsApp.
+
+O timer pode operar com `GROUP_BROADCAST_SCHEDULER_ENABLED` ausente enquanto
+não houver campanhas agendadas. Mantenha essa chave desativada até o teste
+controlado; a API do painel recusará a criação de novos disparos.
 
 As campanhas têm limite diário e intervalo configuráveis. O worker registra
 cada alvo separadamente, não reenvia entregas incertas automaticamente e

@@ -1,0 +1,14 @@
+[Unit]
+Description=Process due OrganiZAP group broadcasts
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/organizap/group-broadcast-cron.env
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 50 --header "Authorization: Bearer ${CRON_SECRET}" https://organizap.tpxdigital.com/api/whatsapp/group-broadcasts/cron
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
