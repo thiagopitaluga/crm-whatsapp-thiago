@@ -11,7 +11,7 @@ export async function GET() {
     const { supabase, accountId } = await requireRole('agent')
     const { data, error } = await supabase
       .from('group_broadcasts')
-      .select('id, name, message_text, content_kind, media_url, media_name, poll_options, recurrence, series_id, occurrence_no, retry_of, status, scheduled_at, sent_at, total_groups, sent_count, failed_count, last_error, created_at, group_broadcast_targets(group_jid, group_subject, status, sent_at, error_message)')
+      .select('id, name, message_text, content_kind, media_url, media_name, poll_options, recurrence, series_id, occurrence_no, retry_of, status, scheduled_at, sent_at, total_groups, sent_count, failed_count, last_error, created_at, group_broadcast_targets:group_broadcast_targets!group_broadcast_targets_broadcast_account_fkey(group_jid, group_subject, status, sent_at, error_message)')
       .eq('account_id', accountId)
       .order('created_at', { ascending: false })
       .limit(100)
