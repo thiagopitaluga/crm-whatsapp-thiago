@@ -32,6 +32,7 @@ const authRoot = process.env.AUTH_ROOT ?? '/app/data/sessions';
 const legacyAuthDir = process.env.AUTH_DIR ?? '/app/data/auth';
 const crmBaseUrl = required('CRM_BASE_URL').replace(/\/$/, '');
 const storageOrigin = new URL(process.env.SUPABASE_STORAGE_ORIGIN || 'https://jsglzezkiwsypoonifxm.supabase.co').origin;
+const groupMonitorEnabled = process.env.QR_GROUP_MONITOR_ENABLED === 'true';
 const connectorApiSecret = required('CONNECTOR_API_SECRET');
 const crmConnectorSecret = process.env.CRM_CONNECTOR_SECRET?.trim() || null;
 const legacyIngestKey = process.env.CRM_INGEST_API_KEY?.trim() || null;
@@ -397,7 +398,7 @@ async function startSession(accountId) {
       if (type !== 'notify') return;
       for (const message of messages) {
         if (message?.key?.remoteJid?.endsWith('@g.us')) {
-          void ingestGroupMessage(accountId, message);
+          if (groupMonitorEnabled) void ingestGroupMessage(accountId, message);
         } else {
           void ingestMessage(accountId, message, session);
         }

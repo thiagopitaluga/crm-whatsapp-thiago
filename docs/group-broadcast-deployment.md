@@ -17,6 +17,9 @@ mas não deve exigir novo QR se as sessões persistidas forem mantidas.
 
 Configure `SUPABASE_STORAGE_ORIGIN=https://jsglzezkiwsypoonifxm.supabase.co`
 no `.env` do conector para restringir as mídias ao Storage deste projeto.
+Mantenha `QR_GROUP_MONITOR_ENABLED=false` até publicar a rota de ingestão de
+grupos no CRM em produção; depois ative a chave para receber mensagens de
+grupo no painel sem afetar as conversas individuais.
 
 ## Agendador
 
