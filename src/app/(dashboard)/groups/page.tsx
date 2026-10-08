@@ -50,6 +50,8 @@ export default function GroupsPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [settings, setSettings] = useState<Settings>({ daily_group_cap: 100, min_interval_ms: 1500, pause_on_error: true })
   const [folderFilter, setFolderFilter] = useState('')
+  const [adminOnly, setAdminOnly] = useState(false)
+  const [adminFilterAvailable, setAdminFilterAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,12 +80,14 @@ export default function GroupsPage() {
         fetch('/api/whatsapp/group-broadcasts', { cache: 'no-store' }),
         fetch('/api/whatsapp/group-center', { cache: 'no-store' }),
       ])
-      const groupData = await groupResponse.json() as { groups?: Group[]; error?: string; warning?: string }
+      const groupData = await groupResponse.json() as { groups?: Group[]; admin_filter_available?: boolean; error?: string; warning?: string }
       const broadcastData = await broadcastResponse.json() as { broadcasts?: Broadcast[]; scheduler_enabled?: boolean; error?: string }
       const centerData = await centerResponse.json() as { audiences?: Audience[]; templates?: Template[]; settings?: Settings; error?: string }
       if (!broadcastResponse.ok) throw new Error(broadcastData.error ?? 'Não foi possível carregar os agendamentos.')
       if (!centerResponse.ok) throw new Error(centerData.error ?? 'Não foi possível carregar as preferências.')
       setGroups(groupResponse.ok ? groupData.groups ?? [] : [])
+      setAdminFilterAvailable(groupResponse.ok && groupData.admin_filter_available === true)
+      if (groupData.admin_filter_available !== true) setAdminOnly(false)
       setBroadcasts(broadcastData.broadcasts ?? [])
       setSchedulerEnabled(broadcastData.scheduler_enabled === true)
       setAudiences(centerData.audiences ?? []); setTemplates(centerData.templates ?? [])
@@ -101,9 +105,11 @@ export default function GroupsPage() {
 
   const selectedGroups = useMemo(() => groups.filter((group) => selected.has(group.group_jid)), [groups, selected])
   const visibleGroups = useMemo(() => groups.filter((group) =>
+    (!adminOnly || group.is_admin) &&
     (!folderFilter || (group.folder ?? '') === folderFilter) &&
     [group.subject, group.folder ?? '', ...(group.labels ?? [])].join(' ').toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR').trim()),
-  ), [groups, search, folderFilter])
+  ), [groups, search, folderFilter, adminOnly])
+  const adminGroupCount = useMemo(() => groups.filter((group) => group.is_admin).length, [groups])
   const folders = useMemo(() => [...new Set(groups.map((group) => group.folder).filter((folder): folder is string => !!folder))].sort(), [groups])
   const report = useMemo(() => ({
     scheduled: broadcasts.filter((item) => item.status === 'scheduled').length,
@@ -250,7 +256,7 @@ export default function GroupsPage() {
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="size-6 animate-spin text-primary" /></div>
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground"><UsersRound className="size-6 text-primary" />Grupos</h1>
@@ -272,26 +278,27 @@ export default function GroupsPage() {
         ['Entregas confirmadas', report.sent], ['Falhas ou incertas', report.failed],
       ].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>)}</section>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.05fr]">
-        <section className="rounded-xl border border-border bg-card">
-          <div className="flex items-center justify-between border-b border-border p-4">
-            <div><h2 className="font-semibold">Grupos disponíveis</h2><p className="text-xs text-muted-foreground">{groups.length} grupo{groups.length === 1 ? '' : 's'} na conta conectada</p></div>
-            <span className="text-sm font-medium text-primary">{selected.size}/{MAX_BROADCAST_GROUPS} selecionado{selected.size === 1 ? '' : 's'}</span>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+        <section className="min-w-0 rounded-xl border border-border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
+            <div className="min-w-0"><h2 className="font-semibold">Grupos disponíveis</h2><p className="text-xs text-muted-foreground">{visibleGroups.length !== groups.length ? `${visibleGroups.length} de ` : ''}{groups.length} grupo{groups.length === 1 ? '' : 's'} na conta conectada</p></div>
+            <span className="shrink-0 text-sm font-medium text-primary">{selected.size}/{MAX_BROADCAST_GROUPS} selecionado{selected.size === 1 ? '' : 's'}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-            <div className="relative min-w-40 flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <div className="relative min-w-0 flex-[1_1_12rem]"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input aria-label="Buscar grupos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar grupos..." className="pl-9" /></div>
             <Button variant="outline" size="sm" onClick={selectAllVisible} disabled={visibleGroups.length === 0}>
               {allVisibleSelected ? 'Desmarcar todos' : `Selecionar todos${search ? ' encontrados' : ''}`}
             </Button>
-            <select aria-label="Filtrar por pasta" value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-xs"><option value="">Todas as pastas</option>{folders.map((folder) => <option key={folder} value={folder}>{folder}</option>)}</select>
+            <select aria-label="Filtrar por pasta" value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)} className="h-9 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-xs"><option value="">Todas as pastas</option>{folders.map((folder) => <option key={folder} value={folder}>{folder}</option>)}</select>
+            {adminFilterAvailable ? <label className="flex min-w-0 items-center gap-2 text-xs text-foreground"><input type="checkbox" checked={adminOnly} onChange={(event) => { const checked = event.target.checked; setAdminOnly(checked); if (checked) setSelected((current) => new Set([...current].filter((jid) => groups.some((group) => group.group_jid === jid && group.is_admin)))) }} />Somente grupos que administro ({adminGroupCount})</label> : null}
           </div>
           {canSchedule ? <div className="flex flex-wrap gap-2 border-b border-border p-3">
             <Button variant="ghost" size="sm" disabled={selected.size === 0} onClick={saveAudience}>Salvar seleção</Button>
-            <select aria-label="Carregar seleção salva" defaultValue="" onChange={(event) => { const audience = audiences.find((item) => item.id === event.target.value); if (audience) setSelected(new Set(audience.group_jids.filter((jid) => groups.some((group) => group.group_jid === jid)).slice(0, MAX_BROADCAST_GROUPS))) }} className="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-xs"><option value="">Seleções salvas</option>{audiences.map((audience) => <option key={audience.id} value={audience.id}>{audience.name}</option>)}</select>
+            <select aria-label="Carregar seleção salva" defaultValue="" onChange={(event) => { const audience = audiences.find((item) => item.id === event.target.value); if (audience) setSelected(new Set(audience.group_jids.filter((jid) => groups.some((group) => group.group_jid === jid && (!adminOnly || group.is_admin))).slice(0, MAX_BROADCAST_GROUPS))) }} className="h-9 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-xs"><option value="">Seleções salvas</option>{audiences.map((audience) => <option key={audience.id} value={audience.id}>{audience.name}</option>)}</select>
           </div> : null}
           <div className="max-h-[540px] divide-y divide-border overflow-y-auto">
-            {visibleGroups.length === 0 ? <div className="p-8 text-center text-sm text-muted-foreground">{groups.length ? 'Nenhum grupo corresponde à busca.' : 'Nenhum grupo encontrado. Confirme que o WhatsApp está conectado por QR e atualize a lista.'}</div> : visibleGroups.map((group) => {
+            {visibleGroups.length === 0 ? <div className="p-8 text-center text-sm text-muted-foreground">{groups.length ? adminOnly && adminGroupCount === 0 ? 'Nenhum grupo administrado por esta conta foi encontrado. Atualize a lista para conferir novamente.' : 'Nenhum grupo corresponde aos filtros.' : 'Nenhum grupo encontrado. Confirme que o WhatsApp está conectado por QR e atualize a lista.'}</div> : visibleGroups.map((group) => {
               const active = selected.has(group.group_jid)
               return <div key={group.group_jid} className="flex items-center hover:bg-muted/60"><button type="button" onClick={() => toggle(group.group_jid)} className="flex min-w-0 flex-1 items-center gap-3 p-4 text-left">
                 <span className={`flex size-5 shrink-0 items-center justify-center rounded border ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>{active ? <Check className="size-3.5" /> : null}</span>
@@ -302,7 +309,7 @@ export default function GroupsPage() {
           </div>
         </section>
 
-        <section id="group-broadcast-form" className="rounded-xl border border-border bg-card p-5">
+        <section id="group-broadcast-form" className="min-w-0 rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 font-semibold"><CalendarClock className="size-4 text-primary" />{editingId ? 'Editar disparo agendado' : 'Programar disparo'}</h2>
             {editingId ? <Button variant="ghost" size="sm" onClick={resetForm}>Cancelar edição</Button> : null}
@@ -317,7 +324,7 @@ export default function GroupsPage() {
             <p className="text-xs text-muted-foreground">Use <code>{'{{grupo}}'}</code> para o nome de cada grupo e <code>{'{{data}}'}</code> para a data do envio.</p>
             {canSchedule ? <div className="flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={!message.trim()} onClick={saveTemplate}>Salvar modelo</Button><select aria-label="Usar modelo salvo" defaultValue="" onChange={(event) => { const template = templates.find((item) => item.id === event.target.value); if (template) setMessage(template.message_text) }} className="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-xs"><option value="">Usar modelo salvo</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></div> : null}
             {kind === 'poll' ? <label className="block text-sm font-medium">Opções (uma por linha)<textarea value={pollOptions} onChange={(event) => setPollOptions(event.target.value)} placeholder={'Sim\nNão'} className="mt-1.5 min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" /></label> : null}
-            {kind !== 'text' && kind !== 'poll' ? <label className="block text-sm font-medium">Arquivo<input type="file" accept={kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : kind === 'audio' ? 'audio/*' : undefined} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file) }} className="mt-1.5 block w-full text-sm" />
+            {kind !== 'text' && kind !== 'poll' ? <label className="block text-sm font-medium">Arquivo<input type="file" accept={kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : kind === 'audio' ? 'audio/*' : undefined} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file) }} className="mt-1.5 block w-full min-w-0 text-sm" />
               <span className="mt-1 block text-xs text-muted-foreground">{uploading ? 'Enviando arquivo...' : mediaName ?? 'Até 16 MB; imagens até 5 MB.'}</span></label> : null}
             {!editingId ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendNow} onChange={(event) => { setSendNow(event.target.checked); if (event.target.checked) setRecurrence('none') }} /> Enviar assim que possível</label> : null}
             {!sendNow ? <div className="flex items-end gap-3"><label className="min-w-0 flex-1 text-sm font-medium">Data e hora<input type="datetime-local" value={scheduledAt} min={defaultSchedule()} onChange={(event) => setScheduledAt(event.target.value)} className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" /></label><span className="pb-2 text-xs text-muted-foreground">Horário local</span></div> : null}

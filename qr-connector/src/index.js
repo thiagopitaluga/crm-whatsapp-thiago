@@ -6,6 +6,7 @@ import express from 'express';
 import P from 'pino';
 import QRCode from 'qrcode';
 import makeWASocket, {
+  areJidsSameUser,
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
@@ -132,17 +133,13 @@ app.get('/v1/sessions/:accountId/groups', async (req, res) => {
         participant_count: Array.isArray(group.participants)
           ? group.participants.length
           : 0,
-        is_admin: Boolean(
-          group.participants?.some(
-            (p) => p.id === session.socket?.user?.id && p.admin
-          )
-        ),
+        is_admin: isCurrentUserGroupAdmin(group, session.socket.user),
       }))
       .filter(
         (group) => typeof group.id === 'string' && group.id.endsWith('@g.us')
       )
       .sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
-    res.set('cache-control', 'no-store').json({ groups: result });
+    res.set('cache-control', 'no-store').json({ groups: result, admin_detection_version: 2 });
   } catch (error) {
     console.error('[qr-connector] failed to fetch groups:', safeError(error));
     res.status(502).json({ error: 'groups_fetch_failed' });
@@ -232,6 +229,26 @@ function validGroupMediaUrl(value, accountId) {
     return url.protocol === 'https:' && url.origin === storageOrigin &&
       url.pathname.startsWith(`/storage/v1/object/public/chat-media/account-${accountId}/group-broadcast/`);
   } catch { return false; }
+}
+
+function isCurrentUserGroupAdmin(group, user) {
+  // WhatsApp can report a participant as a phone-number JID or a LID, while
+  // the connected device may have a :device suffix. Compare every available
+  // identity instead of requiring the raw IDs to be identical.
+  const ownIds = [user?.id, user?.lid, user?.phoneNumber].filter(
+    (id) => typeof id === 'string' && id.includes('@')
+  );
+  if (!ownIds.length || !Array.isArray(group.participants)) return false;
+  const isOwnId = (id) => typeof id === 'string' && id.includes('@') &&
+    ownIds.some((ownId) => areJidsSameUser(id, ownId));
+  return group.participants.some((participant) => {
+    const isSelf = [participant.id, participant.lid, participant.phoneNumber].some(isOwnId);
+    return isSelf && (
+      participant.admin === 'admin' || participant.admin === 'superadmin' ||
+      participant.isAdmin === true || participant.isSuperAdmin === true ||
+      isOwnId(group.owner) || isOwnId(group.ownerPn)
+    );
+  });
 }
 
 function renderGroupText(template, subject) {

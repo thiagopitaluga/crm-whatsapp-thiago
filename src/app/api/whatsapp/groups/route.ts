@@ -20,7 +20,8 @@ export async function GET() {
         { headers: { 'cache-control': 'no-store' } })
       return unavailable(response.status)
     }
-    const payload = (await response.json()) as { groups?: ConnectorGroup[] }
+    const payload = (await response.json()) as { groups?: ConnectorGroup[]; admin_detection_version?: number }
+    const adminFilterAvailable = payload.admin_detection_version === 2
     const groups = (payload.groups ?? [])
       .filter((row): row is Required<Pick<ConnectorGroup, 'id' | 'subject'>> & ConnectorGroup =>
         typeof row.id === 'string' && row.id.endsWith('@g.us') && typeof row.subject === 'string')
@@ -41,13 +42,13 @@ export async function GET() {
       if (error) console.error('[groups] failed to cache directory:', error.message)
     }
     if (groups.length === 0) {
-      return NextResponse.json({ groups: [] }, { headers: { 'cache-control': 'no-store' } })
+      return NextResponse.json({ groups: [], admin_filter_available: adminFilterAvailable }, { headers: { 'cache-control': 'no-store' } })
     }
     const { data: details } = await supabase.from('whatsapp_groups')
       .select('group_jid, folder, labels, last_message_at').eq('account_id', accountId)
       .in('group_jid', groups.map((group) => group.group_jid))
     const byJid = new Map((details ?? []).map((row) => [row.group_jid, row]))
-    return NextResponse.json({ groups: groups.map((group) => ({ ...group,
+    return NextResponse.json({ admin_filter_available: adminFilterAvailable, groups: groups.map((group) => ({ ...group,
       folder: byJid.get(group.group_jid)?.folder ?? '',
       labels: byJid.get(group.group_jid)?.labels ?? [],
       last_message_at: byJid.get(group.group_jid)?.last_message_at ?? null,
