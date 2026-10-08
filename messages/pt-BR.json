@@ -1805,7 +1805,7 @@
         "importAgain": "Importar novamente",
         "importConfirm": "Importar os contatos das conversas individuais existentes? Grupos e o conteúdo das mensagens não serão importados.",
         "importStartedToast": "A importação foi iniciada. Você pode continuar usando o CRM.",
-        "importRunning": "Buscando {{discovered}} conversas e criando {{imported}} contatos.",
+        "importRunning": "Buscando {discovered} conversas e criando {imported} contatos.",
         "importCompleted": "Importação concluída: {imported} contatos processados; {failed} não puderam ser processados.",
         "importError": "Não foi possível importar as conversas existentes.",
         "importPrivacy": "A importação considera apenas conversas individuais identificáveis. Grupos, listas de transmissão e o texto das mensagens são ignorados.",
