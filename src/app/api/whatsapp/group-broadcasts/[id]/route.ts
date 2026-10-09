@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { isAccountGroupMediaUrl, parseGroupBroadcastInput } from '@/lib/whatsapp/group-broadcast-input'
+import { hasGroupMentionAll } from '@/lib/whatsapp/group-mention-all'
+import { canMentionAllInGroups } from '@/lib/whatsapp/group-mention-all-server'
 
 export const runtime = 'nodejs'
 
@@ -11,6 +13,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const parsed = parseGroupBroadcastInput(await request.json() as Record<string, unknown>)
     if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
     const { name, message, scheduledAt, groups, kind, recurrence, mediaUrl, mediaName, pollOptions } = parsed.value
+    if (hasGroupMentionAll(message) && !await canMentionAllInGroups(accountId, groups.map((group) => group.group_jid))) {
+      return NextResponse.json({ error: 'Para marcar todos, selecione somente grupos que você administra e atualize a conexão.' }, { status: 403 })
+    }
     if (mediaUrl && !isAccountGroupMediaUrl(mediaUrl, accountId, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')) {
       return NextResponse.json({ error: 'Use um arquivo enviado para esta conta do CRM.' }, { status: 400 })
     }

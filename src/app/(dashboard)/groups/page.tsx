@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarClock, Check, ChevronDown, Loader2, Pencil, RefreshCw, Search, Send, Trash2, UsersRound } from 'lucide-react'
+import { CalendarClock, Check, ChevronDown, Download, Loader2, Pencil, RefreshCw, Search, Send, Trash2, UsersRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCan } from '@/hooks/use-can'
 import { MEDIA_MAX_BYTES_BY_KIND, uploadAccountMedia } from '@/lib/storage/upload-media'
 import { MAX_BROADCAST_GROUPS, type GroupContentKind, type GroupRecurrence } from '@/lib/whatsapp/group-broadcast-input'
+import { composeGroupMessage, hasGroupMentionAll, stripGroupMentionAll, supportsGroupMentionAll } from '@/lib/whatsapp/group-mention-all'
 import { GroupMonitorPanel } from './group-monitor-panel'
 
 type Group = { group_jid: string; subject: string; participant_count: number; is_admin: boolean; folder?: string; labels?: string[]; last_message_at?: string | null }
@@ -52,6 +53,7 @@ export default function GroupsPage() {
   const [folderFilter, setFolderFilter] = useState('')
   const [adminOnly, setAdminOnly] = useState(false)
   const [adminFilterAvailable, setAdminFilterAvailable] = useState(false)
+  const [memberToolsAvailable, setMemberToolsAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +61,8 @@ export default function GroupsPage() {
   const [search, setSearch] = useState('')
   const [name, setName] = useState('')
   const [message, setMessage] = useState('')
+  const [mentionAll, setMentionAll] = useState(false)
+  const [exportingGroup, setExportingGroup] = useState<string | null>(null)
   const [scheduledAt, setScheduledAt] = useState(defaultSchedule)
   const [kind, setKind] = useState<GroupContentKind>('text')
   const [mediaUrl, setMediaUrl] = useState<string | null>(null)
@@ -80,14 +84,16 @@ export default function GroupsPage() {
         fetch('/api/whatsapp/group-broadcasts', { cache: 'no-store' }),
         fetch('/api/whatsapp/group-center', { cache: 'no-store' }),
       ])
-      const groupData = await groupResponse.json() as { groups?: Group[]; admin_filter_available?: boolean; error?: string; warning?: string }
+      const groupData = await groupResponse.json() as { groups?: Group[]; admin_filter_available?: boolean; member_tools_available?: boolean; error?: string; warning?: string }
       const broadcastData = await broadcastResponse.json() as { broadcasts?: Broadcast[]; scheduler_enabled?: boolean; error?: string }
       const centerData = await centerResponse.json() as { audiences?: Audience[]; templates?: Template[]; settings?: Settings; error?: string }
       if (!broadcastResponse.ok) throw new Error(broadcastData.error ?? 'Não foi possível carregar os agendamentos.')
       if (!centerResponse.ok) throw new Error(centerData.error ?? 'Não foi possível carregar as preferências.')
       setGroups(groupResponse.ok ? groupData.groups ?? [] : [])
       setAdminFilterAvailable(groupResponse.ok && groupData.admin_filter_available === true)
+      setMemberToolsAvailable(groupResponse.ok && groupData.member_tools_available === true)
       if (groupData.admin_filter_available !== true) setAdminOnly(false)
+      if (groupData.member_tools_available !== true) setMentionAll(false)
       setBroadcasts(broadcastData.broadcasts ?? [])
       setSchedulerEnabled(broadcastData.scheduler_enabled === true)
       setAudiences(centerData.audiences ?? []); setTemplates(centerData.templates ?? [])
@@ -159,7 +165,29 @@ export default function GroupsPage() {
   }
   function saveTemplate() {
     const templateName = window.prompt('Nome do modelo de mensagem:')?.trim()
-    if (templateName) void saveCenter({ action: 'template', name: templateName, message_text: message }, 'Modelo salvo.')
+    if (templateName) void saveCenter({ action: 'template', name: templateName, message_text: composeGroupMessage(message, mentionAll) }, 'Modelo salvo.')
+  }
+
+  async function exportParticipants(group: Group) {
+    if (!canSchedule || !memberToolsAvailable || !group.is_admin) return
+    setExportingGroup(group.group_jid)
+    try {
+      const response = await fetch('/api/whatsapp/groups/participants', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ group_jid: group.group_jid }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { error?: string } | null
+        throw new Error(data?.error ?? 'Não foi possível exportar o grupo.')
+      }
+      const url = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a')
+      const slug = group.subject.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'grupo'
+      link.href = url; link.download = `participantes-${slug}.csv`; document.body.append(link); link.click(); link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      const unavailable = Number(response.headers.get('x-unavailable-phones') ?? 0)
+      toast.success(unavailable > 0 ? `Lista exportada. ${unavailable} participante(s) sem número disponível no WhatsApp.` : 'Lista de participantes exportada.')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Não foi possível exportar o grupo.') }
+    finally { setExportingGroup(null) }
   }
 
   async function uploadFile(file: File) {
@@ -177,16 +205,22 @@ export default function GroupsPage() {
 
   async function schedule() {
     if (!canSchedule) return
+    if (mentionAll && (!memberToolsAvailable || selectedGroups.some((group) => !group.is_admin))) {
+      toast.error('Para marcar todos, selecione apenas grupos que você administra.'); return
+    }
+    const composedMessage = composeGroupMessage(message, mentionAll)
+    if (composedMessage.length > 4096) { toast.error('A mensagem ultrapassa o limite de 4096 caracteres.'); return }
     if (!name.trim() || (!message.trim() && (kind === 'text' || kind === 'poll')) || selectedGroups.length === 0 || selectedGroups.length > MAX_BROADCAST_GROUPS) {
       toast.error(`Informe o nome, a mensagem e selecione entre 1 e ${MAX_BROADCAST_GROUPS} grupos.`)
       return
     }
-    if (selectedGroups.length > 30 && !window.confirm(`${editingId ? 'Salvar' : 'Agendar'} este disparo para ${selectedGroups.length} grupos? O envio será gradual e respeitará o limite diário configurado.`)) return
+    if (mentionAll && !window.confirm(`Marcar todos os participantes nos ${selectedGroups.length} grupo${selectedGroups.length === 1 ? '' : 's'} selecionado${selectedGroups.length === 1 ? '' : 's'}? Isso pode gerar uma notificação para cada membro quando a mensagem for enviada.`)) return
+    if (!mentionAll && selectedGroups.length > 30 && !window.confirm(`${editingId ? 'Salvar' : 'Agendar'} este disparo para ${selectedGroups.length} grupos? O envio será gradual e respeitará o limite diário configurado.`)) return
     setScheduling(true)
     try {
       const response = await fetch(editingId ? `/api/whatsapp/group-broadcasts/${editingId}` : '/api/whatsapp/group-broadcasts', {
         method: editingId ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, message_text: message, scheduled_at: new Date(scheduledAt).toISOString(),
+        body: JSON.stringify({ name, message_text: composedMessage, scheduled_at: new Date(scheduledAt).toISOString(),
           groups: selectedGroups, content_kind: kind, media_url: mediaUrl, media_name: mediaName,
           poll_options: pollOptions.split('\n').map((option) => option.trim()).filter(Boolean),
           recurrence, send_now: !editingId && sendNow }),
@@ -205,6 +239,7 @@ export default function GroupsPage() {
     setEditingId(null)
     setName('')
     setMessage('')
+    setMentionAll(false)
     setSelected(new Set())
     setScheduledAt(defaultSchedule())
     setKind('text'); setMediaUrl(null); setMediaName(null); setPollOptions(''); setRecurrence('none'); setSendNow(false)
@@ -213,7 +248,8 @@ export default function GroupsPage() {
   function startEdit(broadcast: Broadcast) {
     setEditingId(broadcast.id)
     setName(broadcast.name)
-    setMessage(broadcast.message_text)
+    setMessage(stripGroupMentionAll(broadcast.message_text))
+    setMentionAll(hasGroupMentionAll(broadcast.message_text))
     setScheduledAt(toLocalDateTime(broadcast.scheduled_at))
     setKind(broadcast.content_kind ?? 'text'); setMediaUrl(broadcast.media_url); setMediaName(broadcast.media_name)
     setPollOptions((broadcast.poll_options ?? []).join('\n')); setRecurrence(broadcast.recurrence ?? 'none'); setSendNow(false)
@@ -304,7 +340,7 @@ export default function GroupsPage() {
                 <span className={`flex size-5 shrink-0 items-center justify-center rounded border ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>{active ? <Check className="size-3.5" /> : null}</span>
                 <span className="min-w-0 flex-1"><span className="block truncate font-medium text-foreground">{group.subject}</span><span className="text-xs text-muted-foreground">{group.participant_count} participante{group.participant_count === 1 ? '' : 's'}{group.is_admin ? ' · Você é admin' : ''}{group.folder ? ` · ${group.folder}` : ''}</span>{group.labels?.length ? <span className="block truncate text-xs text-primary">{group.labels.join(' · ')}</span> : null}</span>
                 <ChevronDown className="size-4 -rotate-90 text-muted-foreground" />
-              </button>{canSchedule ? <button type="button" aria-label={`Organizar ${group.subject}`} title="Pasta e etiquetas" onClick={() => editGroup(group)} className="mr-3 rounded p-2 text-muted-foreground hover:text-primary"><Pencil className="size-4" /></button> : null}</div>
+              </button>{canSchedule && memberToolsAvailable && group.is_admin ? <button type="button" aria-label={`Exportar participantes de ${group.subject}`} title="Baixar participantes em CSV" disabled={exportingGroup === group.group_jid} onClick={() => void exportParticipants(group)} className="rounded p-2 text-muted-foreground hover:text-primary disabled:opacity-50">{exportingGroup === group.group_jid ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}</button> : null}{canSchedule ? <button type="button" aria-label={`Organizar ${group.subject}`} title="Pasta e etiquetas" onClick={() => editGroup(group)} className="mr-3 rounded p-2 text-muted-foreground hover:text-primary"><Pencil className="size-4" /></button> : null}</div>
             })}
           </div>
         </section>
@@ -317,19 +353,20 @@ export default function GroupsPage() {
           <p className="mt-1 text-sm text-muted-foreground">A mensagem será enviada uma vez para cada grupo selecionado na data marcada.</p>
           <div className="mt-5 space-y-4">
             <label className="block text-sm font-medium">Nome do disparo<Input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} placeholder="Ex.: Aviso de reunião" className="mt-1.5" /></label>
-            <label className="block text-sm font-medium">Tipo de conteúdo<select value={kind} onChange={(event) => { setKind(event.target.value as GroupContentKind); setMediaUrl(null); setMediaName(null) }} className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+            <label className="block text-sm font-medium">Tipo de conteúdo<select value={kind} onChange={(event) => { const nextKind = event.target.value as GroupContentKind; setKind(nextKind); if (!supportsGroupMentionAll(nextKind)) setMentionAll(false); setMediaUrl(null); setMediaName(null) }} className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
               <option value="text">Texto</option><option value="image">Imagem</option><option value="video">Vídeo</option><option value="audio">Áudio</option><option value="document">Documento</option><option value="poll">Enquete</option>
             </select></label>
             <label className="block text-sm font-medium">{kind === 'poll' ? 'Pergunta da enquete' : 'Mensagem'}<textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength={4096} placeholder="Escreva a mensagem que será enviada aos grupos..." className="mt-1.5 min-h-28 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
             <p className="text-xs text-muted-foreground">Use <code>{'{{grupo}}'}</code> para o nome de cada grupo e <code>{'{{data}}'}</code> para a data do envio.</p>
-            {canSchedule ? <div className="flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={!message.trim()} onClick={saveTemplate}>Salvar modelo</Button><select aria-label="Usar modelo salvo" defaultValue="" onChange={(event) => { const template = templates.find((item) => item.id === event.target.value); if (template) setMessage(template.message_text) }} className="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-xs"><option value="">Usar modelo salvo</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></div> : null}
+            {canSchedule && memberToolsAvailable && supportsGroupMentionAll(kind) ? <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm"><input type="checkbox" checked={mentionAll} onChange={(event) => setMentionAll(event.target.checked)} className="mt-1" /><span><strong>Marcar todos no grupo</strong><span className="block text-xs text-muted-foreground">Adiciona @todos à mensagem em cada grupo selecionado. Disponível somente nos grupos que você administra.</span></span></label> : null}
+            {canSchedule ? <div className="flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={!message.trim()} onClick={saveTemplate}>Salvar modelo</Button><select aria-label="Usar modelo salvo" defaultValue="" onChange={(event) => { const template = templates.find((item) => item.id === event.target.value); if (template) { setMessage(stripGroupMentionAll(template.message_text)); setMentionAll(hasGroupMentionAll(template.message_text) && memberToolsAvailable && supportsGroupMentionAll(kind)) } }} className="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-xs"><option value="">Usar modelo salvo</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></div> : null}
             {kind === 'poll' ? <label className="block text-sm font-medium">Opções (uma por linha)<textarea value={pollOptions} onChange={(event) => setPollOptions(event.target.value)} placeholder={'Sim\nNão'} className="mt-1.5 min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" /></label> : null}
             {kind !== 'text' && kind !== 'poll' ? <label className="block text-sm font-medium">Arquivo<input type="file" accept={kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : kind === 'audio' ? 'audio/*' : undefined} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file) }} className="mt-1.5 block w-full min-w-0 text-sm" />
               <span className="mt-1 block text-xs text-muted-foreground">{uploading ? 'Enviando arquivo...' : mediaName ?? 'Até 16 MB; imagens até 5 MB.'}</span></label> : null}
             {!editingId ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendNow} onChange={(event) => { setSendNow(event.target.checked); if (event.target.checked) setRecurrence('none') }} /> Enviar assim que possível</label> : null}
             {!sendNow ? <div className="flex items-end gap-3"><label className="min-w-0 flex-1 text-sm font-medium">Data e hora<input type="datetime-local" value={scheduledAt} min={defaultSchedule()} onChange={(event) => setScheduledAt(event.target.value)} className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" /></label><span className="pb-2 text-xs text-muted-foreground">Horário local</span></div> : null}
             {!sendNow ? <label className="block text-sm font-medium">Repetição<select value={recurrence} onChange={(event) => setRecurrence(event.target.value as GroupRecurrence)} className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="none">Não repetir</option><option value="daily">Diariamente</option><option value="weekly">Semanalmente</option><option value="monthly">Mensalmente</option></select></label> : null}
-            <div className="rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground"><strong className="text-foreground">Prévia · {selectedGroups.length} grupos</strong><p className="mt-1 whitespace-pre-wrap break-words">{message || 'Sua mensagem aparecerá aqui.'}</p>{mediaName ? <p className="mt-1">Anexo: {mediaName}</p> : null}</div>
+            <div className="rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground"><strong className="text-foreground">Prévia · {selectedGroups.length} grupos</strong><p className="mt-1 whitespace-pre-wrap break-words">{message || 'Sua mensagem aparecerá aqui.'}{mentionAll ? '\n@todos' : ''}</p>{mediaName ? <p className="mt-1">Anexo: {mediaName}</p> : null}</div>
             <Button className="w-full" onClick={() => void schedule()} disabled={!schedulerEnabled || !canSchedule || scheduling || uploading || selectedGroups.length === 0 || selectedGroups.length > MAX_BROADCAST_GROUPS || (kind !== 'text' && kind !== 'poll' && !mediaUrl)}>
               {scheduling ? <Loader2 className="animate-spin" /> : editingId ? <Pencil /> : <Send />}{editingId ? 'Salvar agendamento' : sendNow ? `Enviar para ${selectedGroups.length} grupo${selectedGroups.length === 1 ? '' : 's'}` : `Agendar para ${selectedGroups.length || ''} grupo${selectedGroups.length === 1 ? '' : 's'}`}
             </Button>
@@ -369,7 +406,7 @@ export default function GroupsPage() {
             </div>
             {broadcast.last_error ? <p className="mt-2 text-xs text-destructive">{broadcast.last_error}</p> : null}
             {expanded ? <div className="mt-4 space-y-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mensagem</p><p className="mt-1 whitespace-pre-wrap break-words">{broadcast.message_text}</p>{broadcast.media_name ? <p className="mt-1">Anexo: {broadcast.media_name}</p> : null}</div>
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mensagem</p><p className="mt-1 whitespace-pre-wrap break-words">{broadcast.message_text.replaceAll('{{todos}}', '@todos')}</p>{broadcast.media_name ? <p className="mt-1">Anexo: {broadcast.media_name}</p> : null}</div>
               <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grupos e resultados</p><ul className="mt-2 divide-y divide-border">{broadcast.group_broadcast_targets.map((target) => <li key={target.group_jid} className="flex flex-wrap justify-between gap-2 py-2"><span>{target.group_subject}</span><span className="text-muted-foreground">{target.status === 'sent' ? `Enviado${target.sent_at ? ` em ${new Date(target.sent_at).toLocaleString('pt-BR')}` : ''}` : target.status === 'failed' ? `Falhou${target.error_message ? `: ${target.error_message}` : ''}` : target.status === 'uncertain' ? 'Incerto: confira no WhatsApp' : 'Pendente'}</span></li>)}</ul></div>
             </div> : null}
           </div>

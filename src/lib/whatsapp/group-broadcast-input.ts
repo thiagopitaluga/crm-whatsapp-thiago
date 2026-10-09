@@ -1,3 +1,5 @@
+import { hasGroupMentionAll, stripGroupMentionAll, supportsGroupMentionAll } from './group-mention-all'
+
 export type BroadcastGroup = { group_jid: string; group_subject: string }
 export type GroupContentKind = 'text' | 'image' | 'video' | 'audio' | 'document' | 'poll'
 export type GroupRecurrence = 'none' | 'daily' | 'weekly' | 'monthly'
@@ -56,6 +58,9 @@ export function parseGroupBroadcastInput(body: Record<string, unknown>) {
   }
   if ((!message && (kind === 'text' || kind === 'poll')) || message.length > 4096) {
     return { error: 'Informe uma mensagem válida.' } as const
+  }
+  if (hasGroupMentionAll(message) && (!supportsGroupMentionAll(kind) || !stripGroupMentionAll(message) || message.split('{{todos}}').length !== 2)) {
+    return { error: 'A marcação de todos exige uma mensagem de texto, imagem ou vídeo.' } as const
   }
   if (kind === 'poll' && (pollOptions.length < 2 || new Set(pollOptions).size !== pollOptions.length)) {
     return { error: 'A enquete precisa de pelo menos duas opções diferentes.' } as const

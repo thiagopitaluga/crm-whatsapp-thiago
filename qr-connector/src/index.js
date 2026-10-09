@@ -139,10 +139,45 @@ app.get('/v1/sessions/:accountId/groups', async (req, res) => {
         (group) => typeof group.id === 'string' && group.id.endsWith('@g.us')
       )
       .sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
-    res.set('cache-control', 'no-store').json({ groups: result, admin_detection_version: 2 });
+    res.set('cache-control', 'no-store').json({ groups: result, admin_detection_version: 2, member_tools_version: 1 });
   } catch (error) {
     console.error('[qr-connector] failed to fetch groups:', safeError(error));
     res.status(502).json({ error: 'groups_fetch_failed' });
+  }
+});
+
+// Participant data is fetched live only when an account administrator asks
+// for one of their own groups. It is not written to the CRM database.
+app.post('/v1/sessions/:accountId/groups/participants', async (req, res) => {
+  const accountId = parseAccountId(req.params.accountId);
+  if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
+  const groupId = req.body?.group_id;
+  if (typeof groupId !== 'string' || !/^[^\s@]{1,80}@g\.us$/.test(groupId)) {
+    return res.status(400).json({ error: 'invalid_group_id' });
+  }
+  const session = sessions.get(accountId);
+  if (!session?.socket || session.status !== 'connected') {
+    return res.status(409).json({ error: 'whatsapp_not_connected' });
+  }
+  try {
+    const groups = await session.socket.groupFetchAllParticipating();
+    if (!groups[groupId]) return res.status(404).json({ error: 'group_not_available' });
+    const group = await session.socket.groupMetadata(groupId);
+    if (!isCurrentUserGroupAdmin(group, session.socket.user)) {
+      return res.status(403).json({ error: 'group_admin_required' });
+    }
+    const participants = (group.participants ?? []).map((participant) => ({
+      name: [participant.name, participant.notify, participant.verifiedName]
+        .find((value) => typeof value === 'string' && value.trim())?.trim() ?? '',
+      phone: participantPhone(participant),
+      jid: typeof participant.id === 'string' ? participant.id : '',
+      is_admin: participant.admin === 'admin' || participant.admin === 'superadmin' ||
+        participant.isAdmin === true || participant.isSuperAdmin === true,
+    }));
+    return res.set('cache-control', 'no-store').json({ subject: group.subject, participants });
+  } catch (error) {
+    console.error('[qr-connector] failed to fetch group participants:', safeError(error));
+    return res.status(502).json({ error: 'group_participants_fetch_failed' });
   }
 });
 
@@ -163,6 +198,7 @@ app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
   const mediaUrl = typeof req.body?.media_url === 'string' ? req.body.media_url : '';
   const mediaName = typeof req.body?.media_name === 'string' ? req.body.media_name.slice(0, 255) : 'Arquivo';
   const pollOptions = Array.isArray(req.body?.poll_options) ? req.body.poll_options : [];
+  const mentionAll = text.includes('{{todos}}');
   const groupIds = Array.isArray(req.body?.group_ids)
     ? [...new Set(req.body.group_ids.filter((id) => typeof id === 'string'))]
     : [];
@@ -175,7 +211,8 @@ app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
     (kind === 'poll' && (pollOptions.length < 2 || pollOptions.length > 12 || pollOptions.some((value) => typeof value !== 'string' || !value.trim()))) ||
     (['image', 'video', 'audio', 'document'].includes(kind) && !validGroupMediaUrl(mediaUrl, accountId)) ||
     groupIds.length === 0 ||
-    groupIds.length > 30
+    groupIds.length > 30 ||
+    (mentionAll && (!['text', 'image', 'video'].includes(kind) || !text.replaceAll('{{todos}}', '').trim() || text.split('{{todos}}').length !== 2))
   ) {
     return res.status(400).json({ error: 'invalid_group_send_payload' });
   }
@@ -195,11 +232,15 @@ app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
         continue;
       }
       try {
-        const personalText = renderGroupText(text, groups[groupId]?.subject);
-        const content = kind === 'text' ? { text: personalText }
+        if (mentionAll && !isCurrentUserGroupAdmin(groups[groupId], session.socket.user)) {
+          results.push({ group_id: groupId, status: 'failed', error: 'group_admin_required' });
+          continue;
+        }
+        const personalText = renderGroupText(mentionAll ? text.replace('{{todos}}', '@todos') : text, groups[groupId]?.subject);
+        const content = kind === 'text' ? { text: personalText, ...(mentionAll ? { mentionAll: true } : {}) }
           : kind === 'poll' ? { poll: { name: personalText, values: pollOptions, selectableCount: 1 } }
-          : kind === 'image' ? { image: { url: mediaUrl }, caption: personalText }
-          : kind === 'video' ? { video: { url: mediaUrl }, caption: personalText }
+          : kind === 'image' ? { image: { url: mediaUrl }, caption: personalText, ...(mentionAll ? { mentionAll: true } : {}) }
+          : kind === 'video' ? { video: { url: mediaUrl }, caption: personalText, ...(mentionAll ? { mentionAll: true } : {}) }
           : kind === 'audio' ? { audio: { url: mediaUrl }, mimetype: groupAudioMimeType(mediaName) }
           : { document: { url: mediaUrl }, fileName: mediaName, mimetype: 'application/octet-stream', caption: personalText };
         const sent = await session.socket.sendMessage(groupId, content);
@@ -229,6 +270,16 @@ function validGroupMediaUrl(value, accountId) {
     return url.protocol === 'https:' && url.origin === storageOrigin &&
       url.pathname.startsWith(`/storage/v1/object/public/chat-media/account-${accountId}/group-broadcast/`);
   } catch { return false; }
+}
+
+function participantPhone(participant) {
+  // LID IDs are opaque; only expose a phone number if WhatsApp supplies a
+  // phone-number JID. Never mislabel a LID as a telephone number.
+  for (const jid of [participant.phoneNumber, participant.id]) {
+    const match = typeof jid === 'string' && jid.match(/^(\d{7,15})(?::\d+)?@s\.whatsapp\.net$/);
+    if (match) return match[1];
+  }
+  return '';
 }
 
 function isCurrentUserGroupAdmin(group, user) {
