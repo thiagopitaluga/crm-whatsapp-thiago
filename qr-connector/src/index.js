@@ -13,6 +13,7 @@ import makeWASocket, {
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
+import { getMessageContent, isRecentMessage } from './message-policy.js';
 
 // libsignal can write complete encrypted session objects directly to stdout.
 // Those objects are not useful operational logs and must never end up in a
@@ -32,7 +33,10 @@ const port = Number(process.env.PORT ?? 3001);
 const authRoot = process.env.AUTH_ROOT ?? '/app/data/sessions';
 const legacyAuthDir = process.env.AUTH_DIR ?? '/app/data/auth';
 const crmBaseUrl = required('CRM_BASE_URL').replace(/\/$/, '');
-const storageOrigin = new URL(process.env.SUPABASE_STORAGE_ORIGIN || 'https://jsglzezkiwsypoonifxm.supabase.co').origin;
+const storageOrigin = new URL(
+  process.env.SUPABASE_STORAGE_ORIGIN ||
+    'https://jsglzezkiwsypoonifxm.supabase.co'
+).origin;
 const groupMonitorEnabled = process.env.QR_GROUP_MONITOR_ENABLED === 'true';
 const connectorApiSecret = required('CONNECTOR_API_SECRET');
 const crmConnectorSecret = process.env.CRM_CONNECTOR_SECRET?.trim() || null;
@@ -92,22 +96,7 @@ app.post('/v1/sessions/:accountId/connect', async (req, res) => {
 app.post('/v1/sessions/:accountId/import', async (req, res) => {
   const accountId = parseAccountId(req.params.accountId);
   if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
-
-  const session = sessions.get(accountId);
-  if (!session || session.status !== 'connected') {
-    return res.status(409).json({ error: 'whatsapp_not_connected' });
-  }
-
-  try {
-    await startHistoryImport(session);
-    res.status(202).json(publicSessionState(accountId));
-  } catch (error) {
-    console.error(
-      '[qr-connector] failed to start history import:',
-      safeError(error)
-    );
-    res.status(500).json({ error: 'history_import_start_failed' });
-  }
+  return res.status(410).json({ error: 'history_import_disabled' });
 });
 
 // Groups deliberately have their own surface. They never enter the CRM inbox
@@ -139,7 +128,13 @@ app.get('/v1/sessions/:accountId/groups', async (req, res) => {
         (group) => typeof group.id === 'string' && group.id.endsWith('@g.us')
       )
       .sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
-    res.set('cache-control', 'no-store').json({ groups: result, admin_detection_version: 2, member_tools_version: 1 });
+    res
+      .set('cache-control', 'no-store')
+      .json({
+        groups: result,
+        admin_detection_version: 2,
+        member_tools_version: 1,
+      });
   } catch (error) {
     console.error('[qr-connector] failed to fetch groups:', safeError(error));
     res.status(502).json({ error: 'groups_fetch_failed' });
@@ -161,22 +156,33 @@ app.post('/v1/sessions/:accountId/groups/participants', async (req, res) => {
   }
   try {
     const groups = await session.socket.groupFetchAllParticipating();
-    if (!groups[groupId]) return res.status(404).json({ error: 'group_not_available' });
+    if (!groups[groupId])
+      return res.status(404).json({ error: 'group_not_available' });
     const group = await session.socket.groupMetadata(groupId);
     if (!isCurrentUserGroupAdmin(group, session.socket.user)) {
       return res.status(403).json({ error: 'group_admin_required' });
     }
     const participants = (group.participants ?? []).map((participant) => ({
-      name: [participant.name, participant.notify, participant.verifiedName]
-        .find((value) => typeof value === 'string' && value.trim())?.trim() ?? '',
+      name:
+        [participant.name, participant.notify, participant.verifiedName]
+          .find((value) => typeof value === 'string' && value.trim())
+          ?.trim() ?? '',
       phone: participantPhone(participant),
       jid: typeof participant.id === 'string' ? participant.id : '',
-      is_admin: participant.admin === 'admin' || participant.admin === 'superadmin' ||
-        participant.isAdmin === true || participant.isSuperAdmin === true,
+      is_admin:
+        participant.admin === 'admin' ||
+        participant.admin === 'superadmin' ||
+        participant.isAdmin === true ||
+        participant.isSuperAdmin === true,
     }));
-    return res.set('cache-control', 'no-store').json({ subject: group.subject, participants });
+    return res
+      .set('cache-control', 'no-store')
+      .json({ subject: group.subject, participants });
   } catch (error) {
-    console.error('[qr-connector] failed to fetch group participants:', safeError(error));
+    console.error(
+      '[qr-connector] failed to fetch group participants:',
+      safeError(error)
+    );
     return res.status(502).json({ error: 'group_participants_fetch_failed' });
   }
 });
@@ -195,9 +201,15 @@ app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
 
   const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
   const kind = typeof req.body?.kind === 'string' ? req.body.kind : 'text';
-  const mediaUrl = typeof req.body?.media_url === 'string' ? req.body.media_url : '';
-  const mediaName = typeof req.body?.media_name === 'string' ? req.body.media_name.slice(0, 255) : 'Arquivo';
-  const pollOptions = Array.isArray(req.body?.poll_options) ? req.body.poll_options : [];
+  const mediaUrl =
+    typeof req.body?.media_url === 'string' ? req.body.media_url : '';
+  const mediaName =
+    typeof req.body?.media_name === 'string'
+      ? req.body.media_name.slice(0, 255)
+      : 'Arquivo';
+  const pollOptions = Array.isArray(req.body?.poll_options)
+    ? req.body.poll_options
+    : [];
   const mentionAll = text.includes('{{todos}}');
   const groupIds = Array.isArray(req.body?.group_ids)
     ? [...new Set(req.body.group_ids.filter((id) => typeof id === 'string'))]
@@ -208,11 +220,20 @@ app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
     !['text', 'image', 'video', 'audio', 'document', 'poll'].includes(kind) ||
     (!text && (kind === 'text' || kind === 'poll')) ||
     text.length > 4096 ||
-    (kind === 'poll' && (pollOptions.length < 2 || pollOptions.length > 12 || pollOptions.some((value) => typeof value !== 'string' || !value.trim()))) ||
-    (['image', 'video', 'audio', 'document'].includes(kind) && !validGroupMediaUrl(mediaUrl, accountId)) ||
+    (kind === 'poll' &&
+      (pollOptions.length < 2 ||
+        pollOptions.length > 12 ||
+        pollOptions.some(
+          (value) => typeof value !== 'string' || !value.trim()
+        ))) ||
+    (['image', 'video', 'audio', 'document'].includes(kind) &&
+      !validGroupMediaUrl(mediaUrl, accountId)) ||
     groupIds.length === 0 ||
     groupIds.length > 30 ||
-    (mentionAll && (!['text', 'image', 'video'].includes(kind) || !text.replaceAll('{{todos}}', '').trim() || text.split('{{todos}}').length !== 2))
+    (mentionAll &&
+      (!['text', 'image', 'video'].includes(kind) ||
+        !text.replaceAll('{{todos}}', '').trim() ||
+        text.split('{{todos}}').length !== 2))
   ) {
     return res.status(400).json({ error: 'invalid_group_send_payload' });
   }
@@ -232,17 +253,58 @@ app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
         continue;
       }
       try {
-        if (mentionAll && !isCurrentUserGroupAdmin(groups[groupId], session.socket.user)) {
-          results.push({ group_id: groupId, status: 'failed', error: 'group_admin_required' });
+        if (
+          mentionAll &&
+          !isCurrentUserGroupAdmin(groups[groupId], session.socket.user)
+        ) {
+          results.push({
+            group_id: groupId,
+            status: 'failed',
+            error: 'group_admin_required',
+          });
           continue;
         }
-        const personalText = renderGroupText(mentionAll ? text.replace('{{todos}}', '@todos') : text, groups[groupId]?.subject);
-        const content = kind === 'text' ? { text: personalText, ...(mentionAll ? { mentionAll: true } : {}) }
-          : kind === 'poll' ? { poll: { name: personalText, values: pollOptions, selectableCount: 1 } }
-          : kind === 'image' ? { image: { url: mediaUrl }, caption: personalText, ...(mentionAll ? { mentionAll: true } : {}) }
-          : kind === 'video' ? { video: { url: mediaUrl }, caption: personalText, ...(mentionAll ? { mentionAll: true } : {}) }
-          : kind === 'audio' ? { audio: { url: mediaUrl }, mimetype: groupAudioMimeType(mediaName) }
-          : { document: { url: mediaUrl }, fileName: mediaName, mimetype: 'application/octet-stream', caption: personalText };
+        const personalText = renderGroupText(
+          mentionAll ? text.replace('{{todos}}', '@todos') : text,
+          groups[groupId]?.subject
+        );
+        const content =
+          kind === 'text'
+            ? {
+                text: personalText,
+                ...(mentionAll ? { mentionAll: true } : {}),
+              }
+            : kind === 'poll'
+              ? {
+                  poll: {
+                    name: personalText,
+                    values: pollOptions,
+                    selectableCount: 1,
+                  },
+                }
+              : kind === 'image'
+                ? {
+                    image: { url: mediaUrl },
+                    caption: personalText,
+                    ...(mentionAll ? { mentionAll: true } : {}),
+                  }
+                : kind === 'video'
+                  ? {
+                      video: { url: mediaUrl },
+                      caption: personalText,
+                      ...(mentionAll ? { mentionAll: true } : {}),
+                    }
+                  : kind === 'audio'
+                    ? {
+                        audio: { url: mediaUrl },
+                        mimetype: groupAudioMimeType(mediaName),
+                      }
+                    : {
+                        document: { url: mediaUrl },
+                        fileName: mediaName,
+                        mimetype: 'application/octet-stream',
+                        caption: personalText,
+                      };
         const sent = await session.socket.sendMessage(groupId, content);
         results.push({
           group_id: groupId,
@@ -267,16 +329,25 @@ app.post('/v1/sessions/:accountId/groups/send', async (req, res) => {
 function validGroupMediaUrl(value, accountId) {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && url.origin === storageOrigin &&
-      url.pathname.startsWith(`/storage/v1/object/public/chat-media/account-${accountId}/group-broadcast/`);
-  } catch { return false; }
+    return (
+      url.protocol === 'https:' &&
+      url.origin === storageOrigin &&
+      url.pathname.startsWith(
+        `/storage/v1/object/public/chat-media/account-${accountId}/group-broadcast/`
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 function participantPhone(participant) {
   // LID IDs are opaque; only expose a phone number if WhatsApp supplies a
   // phone-number JID. Never mislabel a LID as a telephone number.
   for (const jid of [participant.phoneNumber, participant.id]) {
-    const match = typeof jid === 'string' && jid.match(/^(\d{7,15})(?::\d+)?@s\.whatsapp\.net$/);
+    const match =
+      typeof jid === 'string' &&
+      jid.match(/^(\d{7,15})(?::\d+)?@s\.whatsapp\.net$/);
     if (match) return match[1];
   }
   return '';
@@ -290,33 +361,51 @@ function isCurrentUserGroupAdmin(group, user) {
     (id) => typeof id === 'string' && id.includes('@')
   );
   if (!ownIds.length || !Array.isArray(group.participants)) return false;
-  const isOwnId = (id) => typeof id === 'string' && id.includes('@') &&
+  const isOwnId = (id) =>
+    typeof id === 'string' &&
+    id.includes('@') &&
     ownIds.some((ownId) => areJidsSameUser(id, ownId));
   return group.participants.some((participant) => {
-    const isSelf = [participant.id, participant.lid, participant.phoneNumber].some(isOwnId);
-    return isSelf && (
-      participant.admin === 'admin' || participant.admin === 'superadmin' ||
-      participant.isAdmin === true || participant.isSuperAdmin === true ||
-      isOwnId(group.owner) || isOwnId(group.ownerPn)
+    const isSelf = [
+      participant.id,
+      participant.lid,
+      participant.phoneNumber,
+    ].some(isOwnId);
+    return (
+      isSelf &&
+      (participant.admin === 'admin' ||
+        participant.admin === 'superadmin' ||
+        participant.isAdmin === true ||
+        participant.isSuperAdmin === true ||
+        isOwnId(group.owner) ||
+        isOwnId(group.ownerPn))
     );
   });
 }
 
 function renderGroupText(template, subject) {
-  const safeSubject = typeof subject === 'string' && subject.trim() ? subject.trim() : 'grupo';
-  const date = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
-  return template.replaceAll('{{grupo}}', safeSubject).replaceAll('{{data}}', date);
+  const safeSubject =
+    typeof subject === 'string' && subject.trim() ? subject.trim() : 'grupo';
+  const date = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date());
+  return template
+    .replaceAll('{{grupo}}', safeSubject)
+    .replaceAll('{{data}}', date);
 }
 
 function groupAudioMimeType(fileName) {
   const extension = fileName.toLowerCase().split('.').pop();
   if (extension === 'mp3') return 'audio/mpeg';
-  if (extension === 'ogg' || extension === 'opus') return 'audio/ogg; codecs=opus';
+  if (extension === 'ogg' || extension === 'opus')
+    return 'audio/ogg; codecs=opus';
   if (extension === 'wav') return 'audio/wav';
   if (extension === 'aac') return 'audio/aac';
   return 'audio/mp4';
 }
-
 
 app.delete('/v1/sessions/:accountId', async (req, res) => {
   const accountId = parseAccountId(req.params.accountId);
@@ -397,18 +486,12 @@ async function startSession(accountId) {
       version,
       logger: P({ level: 'silent' }),
       markOnlineOnConnect: false,
-      syncFullHistory: session.historyImport?.status === 'preparing',
+      syncFullHistory: false,
       generateHighQualityLinkPreview: false,
     });
     session.socket = socket;
 
     socket.ev.on('creds.update', saveCreds);
-
-    socket.ev.on('messaging-history.set', (history) => {
-      if (generation !== session.generation) return;
-      if (session.historyImport?.status !== 'preparing') return;
-      collectHistoryImport(session, history);
-    });
 
     socket.ev.on(
       'connection.update',
@@ -492,10 +575,6 @@ function createSession(accountId) {
     reconnectTimer: null,
     socket: null,
     phoneJidsByLid: new Map(),
-    historyImport: null,
-    historyCandidates: new Map(),
-    historyImportTimer: null,
-    historyImportTimeout: null,
     wasLoggedOut: false,
     generation: 0,
   };
@@ -516,8 +595,6 @@ async function removeSession(accountId) {
   session.generation += 1;
   clearTimeout(session.reconnectTimer);
   session.reconnectTimer = null;
-  clearTimeout(session.historyImportTimer);
-  clearTimeout(session.historyImportTimeout);
   try {
     await session.socket?.logout();
   } catch {
@@ -549,120 +626,17 @@ function publicSessionState(accountId) {
     status: session?.status ?? 'disconnected',
     qr_available: Boolean(session?.qrSvg),
     last_error: session?.lastError ?? null,
-    history_import: session?.historyImport
-      ? {
-          status: session.historyImport.status,
-          discovered: session.historyImport.discovered,
-          imported: session.historyImport.imported,
-          failed: session.historyImport.failed,
-          error: session.historyImport.error,
-        }
-      : null,
+    history_import: null,
   };
-}
-
-async function startHistoryImport(session) {
-  if (
-    session.historyImport?.status === 'preparing' ||
-    session.historyImport?.status === 'running'
-  ) {
-    return;
-  }
-
-  session.historyImport = {
-    status: 'preparing',
-    discovered: 0,
-    imported: 0,
-    failed: 0,
-    error: null,
-  };
-  session.historyCandidates.clear();
-  clearTimeout(session.historyImportTimer);
-  clearTimeout(session.historyImportTimeout);
-  session.historyImportTimeout = setTimeout(() => {
-    if (session.historyImport?.status === 'preparing') {
-      session.historyImport.status = 'failed';
-      session.historyImport.error =
-        'O WhatsApp não enviou o histórico. Tente novamente.';
-      console.error('[qr-connector] history import timed out');
-    }
-  }, 60_000);
-
-  // Baileys only sends a history snapshot when a socket opens with this
-  // option. Restarting preserves the authenticated session and does not
-  // require reading a new QR code.
-  session.generation += 1;
-  clearTimeout(session.reconnectTimer);
-  session.reconnectTimer = null;
-  session.status = 'reconnecting';
-  session.socket?.end(new Error('Restarting to import historical chats'));
-  await startSession(session.accountId);
-}
-
-function collectHistoryImport(session, history) {
-  const contactsByJid = new Map();
-  for (const contact of Array.isArray(history.contacts)
-    ? history.contacts
-    : []) {
-    const jid = typeof contact?.id === 'string' ? contact.id : null;
-    if (!jid?.endsWith('@s.whatsapp.net')) continue;
-    const name = [contact.name, contact.notify, contact.verifiedName].find(
-      (value) => typeof value === 'string' && value.trim()
-    );
-    contactsByJid.set(jid, name?.trim() || null);
-  }
-
-  for (const chat of Array.isArray(history.chats) ? history.chats : []) {
-    const jid = typeof chat?.id === 'string' ? chat.id : null;
-    if (!jid?.endsWith('@s.whatsapp.net')) continue;
-    session.historyCandidates.set(jid, contactsByJid.get(jid) || null);
-  }
-
-  session.historyImport.discovered = session.historyCandidates.size;
-  clearTimeout(session.historyImportTimer);
-  session.historyImportTimer = setTimeout(
-    () => void flushHistoryImport(session),
-    2500
-  );
-}
-
-async function flushHistoryImport(session) {
-  if (session.historyImport?.status !== 'preparing') return;
-  clearTimeout(session.historyImportTimeout);
-  session.historyImport.status = 'running';
-  const candidates = [...session.historyCandidates.entries()];
-
-  // Keep the VPS and CRM responsive even for accounts with a long history.
-  const workers = Array.from({ length: Math.min(4, candidates.length) }, () =>
-    importHistoryWorker(session, candidates)
-  );
-  await Promise.all(workers);
-
-  session.historyImport.status = 'completed';
-  console.log(
-    `[qr-connector] history import completed for account ${session.accountId}: imported=${session.historyImport.imported}, failed=${session.historyImport.failed}`
-  );
-}
-
-async function importHistoryWorker(session, candidates) {
-  for (;;) {
-    const candidate = candidates.pop();
-    if (!candidate) return;
-    const [jid, name] = candidate;
-    const phone = `+${jid.slice(0, jid.indexOf('@')).replace(/\D/g, '')}`;
-    if (phone === '+') {
-      session.historyImport.failed += 1;
-      continue;
-    }
-    if (await sendLeadToCrm(session.accountId, phone, name)) {
-      session.historyImport.imported += 1;
-    } else {
-      session.historyImport.failed += 1;
-    }
-  }
 }
 
 async function ingestMessage(accountId, message, session) {
+  if (!message?.key?.id || !isRecentMessage(message.messageTimestamp)) {
+    console.log(
+      `[qr-connector] ignored stale or unidentifiable message for account ${accountId}`
+    );
+    return;
+  }
   const direction = message.key.fromMe ? 'outbound' : 'inbound';
   const remoteJid = message.key.remoteJid;
   // Status posts can include a phone-number alternative JID in newer
@@ -714,6 +688,12 @@ async function ingestMessage(accountId, message, session) {
     message,
     session
   );
+  if (!messageContent) {
+    console.log(
+      `[qr-connector] ignored non-message event for account ${accountId}`
+    );
+    return;
+  }
 
   await sendLeadToCrm(
     accountId,
@@ -737,18 +717,28 @@ async function ingestGroupMessage(accountId, message) {
   const content = getMessageContent(message);
   if (!content) return;
   try {
-    const response = await fetch(`${crmBaseUrl}/api/internal/qr-group-message`, {
-      method: 'POST',
-      headers: { 'x-connector-secret': crmConnectorSecret, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        account_id: accountId, group_jid: message.key.remoteJid,
-        message_id: message.key.id, participant_jid: message.key.participant || null,
-        participant_name: message.pushName?.trim() || null,
-        from_me: message.key.fromMe === true, message_type: content.type,
-        content_text: content.text, created_at: toIsoTimestamp(message.messageTimestamp),
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+    const response = await fetch(
+      `${crmBaseUrl}/api/internal/qr-group-message`,
+      {
+        method: 'POST',
+        headers: {
+          'x-connector-secret': crmConnectorSecret,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          account_id: accountId,
+          group_jid: message.key.remoteJid,
+          message_id: message.key.id,
+          participant_jid: message.key.participant || null,
+          participant_name: message.pushName?.trim() || null,
+          from_me: message.key.fromMe === true,
+          message_type: content.type,
+          content_text: content.text,
+          created_at: toIsoTimestamp(message.messageTimestamp),
+        }),
+        signal: AbortSignal.timeout(10_000),
+      }
+    );
     if (!response.ok && response.status !== 404) {
       console.error('[qr-connector] group ingest rejected:', response.status);
     }
@@ -757,45 +747,9 @@ async function ingestGroupMessage(accountId, message) {
   }
 }
 
-
-function getMessageContent(message) {
-  const content = message.message || {};
-  const text = content.conversation || content.extendedTextMessage?.text;
-  if (typeof text === 'string' && text.trim()) {
-    return { preview: text.trim(), text: text.trim(), type: 'text' };
-  }
-  if (content.imageMessage) {
-    const text = content.imageMessage.caption?.trim() || '[Imagem]';
-    return { preview: text, text, type: 'image', media: content.imageMessage };
-  }
-  if (content.videoMessage) {
-    const text = content.videoMessage.caption?.trim() || '[Vídeo]';
-    return { preview: text, text, type: 'video', media: content.videoMessage };
-  }
-  if (content.documentMessage)
-    return {
-      preview: content.documentMessage.fileName?.trim() || '[Documento]',
-      text: content.documentMessage.fileName?.trim() || '[Documento]',
-      type: 'document',
-      media: content.documentMessage,
-    };
-  if (content.audioMessage)
-    return { preview: '[Áudio]', text: '[Áudio]', type: 'audio', media: content.audioMessage };
-  if (content.stickerMessage)
-    return { preview: '[Figurinha]', text: '[Figurinha]', type: 'image' };
-  if (content.locationMessage)
-    return {
-      preview: '[Localização]',
-      text: '[Localização]',
-      type: 'location',
-    };
-  if (content.contactMessage)
-    return { preview: '[Contato]', text: '[Contato]', type: 'text' };
-  return { preview: '[Mensagem]', text: '[Mensagem]', type: 'text' };
-}
-
 async function prepareMessageContentForIngest(accountId, message, session) {
   const content = getMessageContent(message);
+  if (!content) return null;
   if (!content.media || !session.socket) return content;
 
   // Keep the WhatsApp message/caption, but don't download or store video
@@ -856,7 +810,10 @@ async function reserveCrmMediaUpload(accountId, messageId, media) {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
-      console.error('[qr-connector] media reservation rejected:', response.status);
+      console.error(
+        '[qr-connector] media reservation rejected:',
+        response.status
+      );
       return null;
     }
     const payload = await response.json();

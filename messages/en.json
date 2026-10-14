@@ -1808,7 +1808,7 @@
         "description": "Scan the code with WhatsApp to bring new contacts into the CRM automatically.",
         "connected": "Connected",
         "connectedTitle": "WhatsApp connected",
-        "connectedDescription": "New contacts who message this number will be added to the CRM and the first stage of the pipeline.",
+        "connectedDescription": "Only contacts who send a recent message to this number are added to the CRM. Old chats are not imported.",
         "importTitle": "Import existing chats",
         "importDescription": "Create CRM contacts from the individual chats that already exist in this WhatsApp account.",
         "importButton": "Import now",

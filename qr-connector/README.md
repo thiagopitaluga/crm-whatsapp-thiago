@@ -1,9 +1,10 @@
 # QR capture connector
 
-This service links WhatsApp accounts by QR code and forwards **only the
-contact phone and display name** to the CRM. It does not send messages and
-does not persist incoming message bodies. Sessions are isolated by CRM
-account under `./data/sessions/<account-id>`.
+This service links WhatsApp accounts by QR code and forwards recent, real
+incoming messages to the CRM. It never imports existing chat lists, ignores
+history-only and protocol events, and rejects messages older than 24 hours.
+Sessions are isolated by CRM account under
+`./data/sessions/<account-id>`.
 
 The connector uses an unofficial WhatsApp Web protocol library. Keep it
 isolated from the official Meta Cloud API configuration, use it only with the

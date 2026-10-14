@@ -1798,7 +1798,7 @@
         "description": "Leia o código com o WhatsApp para trazer novos contatos automaticamente ao CRM.",
         "connected": "Conectado",
         "connectedTitle": "WhatsApp conectado",
-        "connectedDescription": "Novos contatos que conversarem com este número serão adicionados ao CRM e ao primeiro estágio do funil.",
+        "connectedDescription": "Somente contatos que enviarem uma mensagem recente para este número serão adicionados ao CRM. Conversas antigas não são importadas.",
         "importTitle": "Importar conversas existentes",
         "importDescription": "Crie contatos no CRM a partir das conversas individuais já existentes neste WhatsApp.",
         "importButton": "Importar agora",

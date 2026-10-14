@@ -1808,7 +1808,7 @@
         "description": "WhatsApp으로 코드를 스캔하여 새 연락처를 CRM에 자동으로 추가하세요.",
         "connected": "연결됨",
         "connectedTitle": "WhatsApp이 연결되었습니다",
-        "connectedDescription": "이 번호로 메시지를 보내는 새 연락처가 CRM과 파이프라인의 첫 단계에 추가됩니다.",
+        "connectedDescription": "이 번호로 최근 메시지를 보낸 연락처만 CRM에 추가됩니다. 이전 대화는 가져오지 않습니다.",
         "importTitle": "기존 대화 가져오기",
         "importDescription": "이 WhatsApp 계정에 이미 있는 개인 대화에서 CRM 연락처를 만듭니다.",
         "importButton": "지금 가져오기",
