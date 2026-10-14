@@ -10,10 +10,10 @@ import {
 } from "@/lib/inbox/conversations";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
+import { useAuth } from "@/hooks/use-auth";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +34,7 @@ export default function InboxPage() {
 
 function InboxPageInner() {
   const t = useTranslations("Inbox.page");
+  const { accountId, isAgent } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   /**
@@ -48,6 +49,8 @@ function InboxPageInner() {
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [inboxAllowed, setInboxAllowed] = useState<boolean | null>(null);
+  const inboxAllowedRef = useRef<boolean | null>(null);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -59,6 +62,67 @@ function InboxPageInner() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+
+  // RLS is the authoritative gate. This check also clears an already-open
+  // thread when an administrator turns access off during the agent's session.
+  useEffect(() => {
+    if (!isAgent || !accountId) return;
+    const supabase = createClient();
+    let cancelled = false;
+
+    const applyAccess = (allowed: boolean) => {
+      if (cancelled || inboxAllowedRef.current === allowed) return;
+      inboxAllowedRef.current = allowed;
+      setInboxAllowed(allowed);
+      if (!allowed) {
+        setConversations([]);
+        setActiveConversation(null);
+        setActiveContact(null);
+        setMessages([]);
+      } else {
+        setResyncToken((value) => value + 1);
+      }
+    };
+
+    const checkAccess = async () => {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("agents_can_view_inbox_messages")
+        .eq("id", accountId)
+        .single();
+      if (error) {
+        console.error("Failed to check agent inbox access:", error);
+        return;
+      }
+      applyAccess(data.agents_can_view_inbox_messages !== false);
+    };
+
+    void checkAccess();
+    const channel = supabase
+      .channel(`inbox-access-${accountId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "accounts", filter: `id=eq.${accountId}` },
+        (payload) => {
+          applyAccess(payload.new.agents_can_view_inbox_messages !== false);
+        },
+      )
+      .subscribe();
+    const onFocus = () => void checkAccess();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void checkAccess();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = window.setInterval(() => void checkAccess(), 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      void supabase.removeChannel(channel);
+    };
+  }, [accountId, isAgent]);
 
   /**
    * Whether the desktop contact sidebar (tags / deals / notes) is shown.
@@ -357,7 +421,7 @@ function InboxPageInner() {
     channelName: "inbox-realtime",
     onMessageEvent: handleMessageEvent,
     onConversationEvent: handleConversationEvent,
-    enabled: true,
+    enabled: !isAgent || inboxAllowed === true,
   });
 
   /**
@@ -572,6 +636,18 @@ function InboxPageInner() {
   // it back to the list. On lg+ both panes render side-by-side as
   // before, unchanged.
   const hasActiveConv = !!activeConversation;
+
+  if (isAgent && inboxAllowed !== true) {
+    return (
+      <div className="-m-4 flex h-[calc(100vh-3.5rem)] items-center justify-center p-6 text-center sm:-m-6">
+        <p className="text-muted-foreground max-w-sm text-sm">
+          {inboxAllowed === false
+            ? "O administrador desativou seu acesso às conversas e mensagens da caixa de entrada. Seus contatos atribuídos continuam disponíveis em Contatos e Kanban."
+            : "Verificando seu acesso à caixa de entrada..."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
