@@ -20,7 +20,6 @@ import {
   MediaDocumentBubble,
   MediaImageBubble,
   MediaUnavailable,
-  MediaVideoBubble,
 } from "./message-media";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
@@ -97,14 +96,13 @@ function MessageContent({
         </div>
       );
 
+    // Videos are intentionally not fetched or rendered in the inbox. They
+    // consume substantial Storage and bandwidth; retain only the message row
+    // and its caption so the conversation remains readable.
     case "video":
       return (
         <div>
-          {message.media_url ? (
-            <MediaVideoBubble message={message} onOpen={openMedia} t={t} />
-          ) : (
-            <MediaUnavailable label={t("video")} t={t} />
-          )}
+          <MediaUnavailable label={t("video")} t={t} />
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
               {message.content_text}

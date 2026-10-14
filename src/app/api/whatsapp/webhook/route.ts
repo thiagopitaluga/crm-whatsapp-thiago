@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
-import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api';
+import { getMediaUrl } from '@/lib/whatsapp/meta-api';
 import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 import { normalizeMetaCtwaReferral } from '@/lib/whatsapp/ctwa-referral';
@@ -1169,7 +1169,9 @@ async function parseMessageContent(
         return {
           ...empty,
           contentText: message.video.caption || null,
-          mediaUrl: await verifyAndBuildUrl(message.video.id),
+          // Deliberately do not verify, download, proxy, or mirror inbound
+          // video bytes. The inbox shows an unavailable-video placeholder.
+          mediaUrl: null,
           mediaType: message.video.mime_type,
         };
       }

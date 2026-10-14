@@ -798,6 +798,10 @@ async function prepareMessageContentForIngest(accountId, message, session) {
   const content = getMessageContent(message);
   if (!content.media || !session.socket) return content;
 
+  // Keep the WhatsApp message/caption, but don't download or store video
+  // bytes in Supabase. The inbox intentionally renders a placeholder.
+  if (content.type === 'video') return content;
+
   const mimeType = content.media.mimetype?.split(';')[0]?.trim().toLowerCase();
   if (!mimeType) return content;
 

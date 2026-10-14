@@ -215,15 +215,21 @@ export function DealCard({
             </DropdownMenu>
           ) : null}
         </div>
-        <p className="text-muted-foreground mt-0.5 flex items-center gap-1 truncate text-xs">
+        <p className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 text-xs">
           <Phone className="size-3 shrink-0" />
-          {phone}
+          <span className="min-w-0 truncate">{phone}</span>
           {layout.show_created_at && deal.contact?.created_at ? (
             <span
-              className="ml-auto truncate text-[10px]"
-              title={`Criado em ${new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}`}
+              className="ml-auto shrink-0 whitespace-nowrap text-[10px]"
+              title={`Criado em ${new Date(deal.contact.created_at).toLocaleString('pt-BR')}`}
             >
-              {new Date(deal.contact.created_at).toLocaleDateString('pt-BR')}
+              {new Date(deal.contact.created_at).toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
             </span>
           ) : null}
         </p>
@@ -446,7 +452,8 @@ export function DealCard({
                   return (
                     <DropdownMenuItem
                       key={tag.id}
-                      onSelect={(event) => {
+                      disabled={!deal.contact_id}
+                      onClick={(event) => {
                         event.stopPropagation();
                         void onToggleTag(deal, tag);
                       }}

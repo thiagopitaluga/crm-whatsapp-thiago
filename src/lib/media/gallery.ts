@@ -4,14 +4,15 @@ import type { Message } from "@/types";
  * The set of media in a thread that the lightbox can page through, built
  * from the messages the thread already holds (no extra fetch).
  *
- * Only images and videos qualify: an audio bubble has nothing to look at,
+ * Only images qualify: videos are intentionally not loaded in the inbox,
+ * audio has no image viewer,
  * and a document is handed to the OS rather than rendered. Rows with no
  * `media_url` are skipped — that's either media Meta refused to verify
  * (`verifyAndBuildUrl` returns null in the webhook) or media whose bytes
  * Meta has since expired, and both render as "unavailable" in the bubble.
  */
 
-export type MediaGalleryKind = "image" | "video";
+export type MediaGalleryKind = "image";
 
 export interface MediaGalleryItem {
   /** `messages.id` — the lightbox's identity for "which one is open". */
@@ -29,7 +30,6 @@ export interface MediaGalleryItem {
 
 function galleryKind(message: Message): MediaGalleryKind | null {
   if (message.content_type === "image") return "image";
-  if (message.content_type === "video") return "video";
   return null;
 }
 

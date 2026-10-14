@@ -28,7 +28,7 @@ import { downloadMediaMessage } from "@/lib/media/download";
 import { galleryIndexOf, type MediaGalleryItem } from "@/lib/media/gallery";
 
 /**
- * Full-size viewer for the images and videos in the open conversation
+ * Full-size viewer for images in the open conversation
  * (issue #373). One instance lives at the thread level rather than one per
  * bubble, which is what lets ← / → page through the whole thread's media
  * instead of just re-opening the one that was clicked.
@@ -167,22 +167,12 @@ export function MediaLightbox({
         </DialogHeader>
 
         <div className="relative flex items-center justify-center">
-          {item.kind === "image" ? (
-            <LightboxImage
-              item={item}
-              zoomed={zoomed}
-              onToggleZoom={toggleZoom}
-              t={t}
-            />
-          ) : (
-            <video
-              // Plain URL, never a blob — the player should stream.
-              src={item.url}
-              controls
-              preload="metadata"
-              className={cn(MEDIA_MAX_HEIGHT, "max-w-full rounded-lg")}
-            />
-          )}
+          <LightboxImage
+            item={item}
+            zoomed={zoomed}
+            onToggleZoom={toggleZoom}
+            t={t}
+          />
 
           {items.length > 1 && (
             <>

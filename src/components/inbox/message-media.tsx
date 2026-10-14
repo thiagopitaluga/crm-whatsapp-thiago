@@ -6,7 +6,6 @@ import {
   FileText,
   ImageOff,
   Loader2,
-  Maximize2,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -184,49 +183,6 @@ export function MediaImageBubble({
       {/* Hover-only: on touch there is no hover, but tapping the image opens
           the viewer, which carries a full-size Download button. */}
       <div className="absolute right-2 bottom-2 opacity-0 transition-opacity group-focus-within/media:opacity-100 group-hover/media:opacity-100">
-        <MediaActionButton
-          icon={Download}
-          label={t('download')}
-          onClick={download}
-          busy={downloading}
-        />
-      </div>
-    </div>
-  );
-}
-
-export function MediaVideoBubble({
-  message,
-  onOpen,
-  t,
-}: {
-  message: Message;
-  onOpen?: () => void;
-  t: Translator;
-}) {
-  const { downloading, download } = useMediaDownload(message, t);
-
-  return (
-    <div className="relative w-fit">
-      {/* Plain URL, not a blob: the element should stream rather than wait
-          for up to 16 MB to land. */}
-      <video
-        src={message.media_url}
-        controls
-        preload="metadata"
-        className={cn(MEDIA_BOX, 'rounded-lg')}
-      />
-      {/* Top-right, clear of the native controls — and always visible, since
-          expanding is the only way to watch a clip capped at 15rem wide and
-          a touch device gets no hover. */}
-      <div className="absolute top-2 right-2 flex gap-1">
-        {onOpen && (
-          <MediaActionButton
-            icon={Maximize2}
-            label={t('expandVideo')}
-            onClick={onOpen}
-          />
-        )}
         <MediaActionButton
           icon={Download}
           label={t('download')}

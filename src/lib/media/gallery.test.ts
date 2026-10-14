@@ -19,7 +19,7 @@ function msg(
 }
 
 describe("collectMediaGallery", () => {
-  it("keeps images and videos in thread order and nothing else", () => {
+  it("keeps only images in thread order", () => {
     const items = collectMediaGallery([
       msg("t1", "text", { content_text: "hi" }),
       msg("i1", "image", { media_url: "/api/whatsapp/media/1" }),
@@ -29,8 +29,8 @@ describe("collectMediaGallery", () => {
       msg("i2", "image", { media_url: "https://x.supabase.co/photo.png" }),
     ]);
 
-    expect(items.map((i) => i.messageId)).toEqual(["i1", "v1", "i2"]);
-    expect(items.map((i) => i.kind)).toEqual(["image", "video", "image"]);
+    expect(items.map((i) => i.messageId)).toEqual(["i1", "i2"]);
+    expect(items.map((i) => i.kind)).toEqual(["image", "image"]);
   });
 
   it("skips media whose bytes we have no URL for", () => {
