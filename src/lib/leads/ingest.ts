@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { findOrCreateContact, resolveAuditUserId } from '@/lib/api/v1/contacts';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
+import { acceptsWhatsAppMessage } from './message-policy';
 import { isValidE164, sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
 
 export interface IngestLeadInput {
@@ -142,6 +143,9 @@ export async function ingestExternalWhatsAppMessage(
   accountId: string,
   input: IngestExternalWhatsAppMessageInput
 ): Promise<IngestLeadResult | null> {
+  // Validate before findOrCreateContact: old/replayed/synthetic events must
+  // leave no contact, conversation, deal or unread-count side effects.
+  if (!acceptsWhatsAppMessage(input)) return null;
   const messageId = input.messageId.trim().slice(0, 500);
   const contentText = normalizeMessageContent(input.contentText);
   if (!messageId || !contentText) {

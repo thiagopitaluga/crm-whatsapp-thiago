@@ -3,19 +3,15 @@ import { fail, ok, toApiErrorResponse } from '@/lib/api/v1/respond';
 import { ContactError } from '@/lib/api/v1/contacts';
 import {
   ingestExternalWhatsAppMessage,
-  ingestLead,
   type ExternalMessageContentType,
-  updateExistingLeadConversation,
 } from '@/lib/leads/ingest';
 
 /**
  * POST /api/v1/ingest/whatsapp
  *
- * A narrowly-scoped, capture-only endpoint for a trusted QR connector.
- * It never sends a WhatsApp message. It stores only an optional, short
- * preview of the latest inbound message; a new phone becomes a contact, a lightweight
- * conversation record, and (when a pipeline exists) a deal in its first
- * stage. The connector must use an API key with only `ingest:write`.
+ * A trusted QR connector may store a real message from the last 24 hours.
+ * Preview-only, stale and synthetic events never create CRM records.
+ * The connector must use an API key with only `ingest:write`.
  */
 export async function POST(request: Request) {
   try {
@@ -32,10 +28,6 @@ export async function POST(request: Request) {
     if (!phone) return fail('bad_request', "'phone' is required", 400);
 
     const name = typeof body.name === 'string' ? body.name.trim() : null;
-    const lastMessagePreview =
-      typeof body.last_message_preview === 'string'
-        ? body.last_message_preview
-        : null;
     const direction = body.direction === 'outbound' ? 'outbound' : 'inbound';
     const messageId =
       typeof body.message_id === 'string' ? body.message_id.trim() : '';
@@ -68,33 +60,7 @@ export async function POST(request: Request) {
       });
     }
 
-    if (direction === 'outbound') {
-      const updated = await updateExistingLeadConversation(
-        ctx.supabase,
-        ctx.accountId,
-        {
-          phone,
-          lastMessagePreview,
-        }
-      );
-      return ok({ updated });
-    }
-
-    const result = await ingestLead(ctx.supabase, ctx.accountId, {
-      phone,
-      name,
-      lastMessagePreview,
-    });
-
-    return ok(
-      {
-        contact_id: result.contactId,
-        contact_created: result.contactCreated,
-        conversation_id: result.conversationId,
-        deal_id: result.dealId,
-      },
-      result.contactCreated ? 201 : 200
-    );
+    return ok({ stored: false, ignored: 'message_required' });
   } catch (error) {
     if (error instanceof ContactError) {
       return fail(

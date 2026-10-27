@@ -4,9 +4,7 @@ import { NextResponse } from 'next/server';
 import { ContactError } from '@/lib/api/v1/contacts';
 import {
   ingestExternalWhatsAppMessage,
-  ingestLead,
   type ExternalMessageContentType,
-  updateExistingLeadConversation,
 } from '@/lib/leads/ingest';
 import { isValidQrConnectorSecret } from '@/lib/whatsapp/qr-connector';
 
@@ -25,10 +23,6 @@ export async function POST(request: Request) {
     typeof body?.account_id === 'string' ? body.account_id.trim() : '';
   const phone = typeof body?.phone === 'string' ? body.phone.trim() : '';
   const name = typeof body?.name === 'string' ? body.name.trim() : null;
-  const lastMessagePreview =
-    typeof body?.last_message_preview === 'string'
-      ? body.last_message_preview
-      : null;
   const direction = body?.direction === 'outbound' ? 'outbound' : 'inbound';
   const messageId =
     typeof body?.message_id === 'string' ? body.message_id.trim() : '';
@@ -84,32 +78,8 @@ export async function POST(request: Request) {
       });
     }
 
-    if (direction === 'outbound') {
-      const updated = await updateExistingLeadConversation(
-        supabase,
-        accountId,
-        {
-          phone,
-          lastMessagePreview,
-        }
-      );
-      return NextResponse.json({ updated });
-    }
-
-    const result = await ingestLead(supabase, accountId, {
-      phone,
-      name,
-      lastMessagePreview,
-    });
-    return NextResponse.json(
-      {
-        contact_id: result.contactId,
-        contact_created: result.contactCreated,
-        conversation_id: result.conversationId,
-        deal_id: result.dealId,
-      },
-      { status: result.contactCreated ? 201 : 200 }
-    );
+    // A preview-only payload cannot prove that a real conversation started.
+    return NextResponse.json({ stored: false, ignored: 'message_required' });
   } catch (error) {
     if (error instanceof ContactError) {
       return NextResponse.json(
