@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import MetaConnectionPanel from './connection-panel';
 import {
   ArrowUpRight,
   ChartNoAxesCombined,
@@ -14,6 +15,8 @@ import {
 import type { MetaMetricGroup } from '@/lib/meta-ads/dashboard';
 
 type Connection = {
+  id: string;
+  meta_ad_account_name: string | null;
   meta_ad_account_id: string;
   meta_page_ids: string[];
   is_active: boolean;
@@ -233,26 +236,14 @@ export default function MetaAdsPage() {
   const daily = overview?.ads.daily ?? [];
   const maxSpend = Math.max(1, ...daily.map((day) => day.spend));
   const setup = [
-    { label: 'Conta de anúncios vinculada ao CRM', done: Boolean(connection) },
+    { label: 'Conta de anúncios vinculada ao CRM', done: Boolean(connection?.is_active) },
     {
       label: 'Permissão ads_read confirmada',
       done: Boolean(connection?.ads_read_granted),
     },
     {
-      label: 'Permissão leads_retrieval confirmada',
-      done: Boolean(connection?.leads_retrieval_granted),
-    },
-    {
-      label: 'Página do Facebook vinculada',
-      done: Boolean(connection?.meta_page_ids?.length),
-    },
-    {
       label: 'Primeira sincronização de anúncios',
       done: Boolean(connection?.ads_last_synced_at),
-    },
-    {
-      label: 'Primeira sincronização de formulários',
-      done: Boolean(connection?.leads_last_synced_at),
     },
   ];
 
@@ -318,6 +309,14 @@ export default function MetaAdsPage() {
         </div>
       )}
 
+      <MetaConnectionPanel
+        adAccountId={overview?.selectedAdAccountId ?? ''}
+        integrationId={connection?.id}
+        days={days}
+        active={Boolean(connection?.is_active)}
+        onChanged={(id) => { setAdAccount(id); setRefresh(value => value + 1); }}
+      />
+
       <div className="flex flex-wrap gap-3">
         <label className="text-muted-foreground flex items-center gap-2 text-sm">
           Período{' '}
@@ -348,7 +347,7 @@ export default function MetaAdsPage() {
                 key={item.meta_ad_account_id}
                 value={item.meta_ad_account_id}
               >
-                act_{item.meta_ad_account_id}
+                {item.meta_ad_account_name || 'act_' + item.meta_ad_account_id}{item.is_active ? '' : ' (desconectada)'}
               </option>
             ))}
           </select>
@@ -466,15 +465,15 @@ export default function MetaAdsPage() {
         </section>
         <section
           className="border-border bg-card rounded-xl border p-5"
-          aria-label="Preparação da integração"
+          aria-label="Status da integração"
         >
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-amber-500" />
             <h2 className="font-semibold">Conexão Meta</h2>
           </div>
           <p className="text-muted-foreground mt-2 text-sm">
-            Estrutura pronta para receber as permissões e os dados da API
-            oficial. Nenhum token é necessário neste painel agora.
+            Conecte sua conta acima e sincronize o período para consultar os
+            dados oficiais. A importação de formulários exige uma autorização adicional.
           </p>
           <ul className="mt-4 space-y-2.5">
             {setup.map((item) => (
@@ -615,4 +614,3 @@ export default function MetaAdsPage() {
     </main>
   );
 }
-

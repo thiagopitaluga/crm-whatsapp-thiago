@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const { data: connections, error: connectionError } = await supabase
       .from('meta_ad_account_integrations')
       .select(
-        'meta_ad_account_id, meta_page_ids, is_active, ads_read_granted, leads_retrieval_granted, ads_last_synced_at, leads_last_synced_at, sync_error'
+        'id, meta_ad_account_name, meta_ad_account_id, meta_page_ids, is_active, ads_read_granted, leads_retrieval_granted, ads_last_synced_at, leads_last_synced_at, sync_error'
       )
       .eq('account_id', accountId)
       .eq('provider', 'meta')
@@ -137,4 +137,3 @@ export async function GET(request: Request) {
     return toErrorResponse(error);
   }
 }
-

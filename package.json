@@ -30,6 +30,7 @@
   "packageManager": "npm@10.9.9",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "vitest run src/lib/meta-ads",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
