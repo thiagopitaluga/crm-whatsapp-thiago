@@ -610,54 +610,19 @@ export function AiConfig({
               <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="ai-agent-tone">Tom de voz</Label>
-                <Select value={agentSettings.tone} onValueChange={(value) => setAgentSettings((s) => ({ ...s, tone: value ?? s.tone }))} disabled={disabled}>
-                  <SelectTrigger id="ai-agent-tone"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Formal">Formal</SelectItem>
-                    <SelectItem value="Consultivo">Consultivo</SelectItem>
-                    <SelectItem value="Casual">Casual</SelectItem>
-                    <SelectItem value="Direto">Direto</SelectItem>
-                  </SelectContent>
-                </Select>
+                <select id="ai-agent-tone" className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" value={agentSettings.tone} onChange={(e) => setAgentSettings((s) => ({ ...s, tone: e.target.value }))} disabled={disabled}><option>Formal</option><option>Consultivo</option><option>Casual</option><option>Direto</option></select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ai-agent-closing">Estilo de fechamento</Label>
-                <Select value={agentSettings.closingStyle} onValueChange={(value) => setAgentSettings((s) => ({ ...s, closingStyle: value ?? s.closingStyle }))} disabled={disabled}>
-                  <SelectTrigger id="ai-agent-closing"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="direct">Direto</SelectItem>
-                    <SelectItem value="consultative">Consultivo</SelectItem>
-                    <SelectItem value="urgency">Urgência</SelectItem>
-                    <SelectItem value="gentle">Suave</SelectItem>
-                  </SelectContent>
-                </Select>
+                <select id="ai-agent-closing" className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" value={agentSettings.closingStyle} onChange={(e) => setAgentSettings((s) => ({ ...s, closingStyle: e.target.value }))} disabled={disabled}><option value="direct">Direto</option><option value="consultative">Consultivo</option><option value="urgency">Urgência</option><option value="gentle">Suave</option></select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ai-agent-negotiation">Modo de negociação</Label>
-                <Select value={agentSettings.negotiationMode} onValueChange={(value) => setAgentSettings((s) => ({ ...s, negotiationMode: value ?? s.negotiationMode }))} disabled={disabled}>
-                  <SelectTrigger id="ai-agent-negotiation"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sem desconto (padrão)</SelectItem>
-                    <SelectItem value="fixed_discount">Desconto fixo (PIX/à vista)</SelectItem>
-                    <SelectItem value="strategic">Estratégico (degraus com piso secreto)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <select id="ai-agent-negotiation" className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" value={agentSettings.negotiationMode} onChange={(e) => setAgentSettings((s) => ({ ...s, negotiationMode: e.target.value }))} disabled={disabled}><option value="none">Sem desconto (padrão)</option><option value="fixed_discount">Desconto fixo (PIX/à vista)</option><option value="strategic">Estratégico (degraus com piso secreto)</option></select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ai-agent-model">Modelo da IA</Label>
-                <Select value={agentSettings.responseModel || '__automatic__'} onValueChange={(value) => setAgentSettings((s) => ({ ...s, responseModel: !value || value === '__automatic__' ? '' : value }))} disabled={disabled}>
-                  <SelectTrigger id="ai-agent-model"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__automatic__">Automático (modelo da conta)</SelectItem>
-                    {provider === 'openai' ? <>
-                      <SelectItem value="gpt-5.4-mini">Rápido · GPT-5.4 mini</SelectItem>
-                      <SelectItem value="gpt-5.4">Avançado · GPT-5.4</SelectItem>
-                    </> : <>
-                      <SelectItem value="claude-haiku-4-5-20251001">Rápido · Claude Haiku</SelectItem>
-                      <SelectItem value="claude-sonnet-4-6">Avançado · Claude Sonnet</SelectItem>
-                    </>}
-                  </SelectContent>
-                </Select>
+                <select id="ai-agent-model" className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" value={agentSettings.responseModel} onChange={(e) => setAgentSettings((s) => ({ ...s, responseModel: e.target.value }))} disabled={disabled}><option value="">Automático (modelo da conta)</option>{provider === 'openai' ? <><option value="gpt-5.4-mini">Rápido · GPT-5.4 mini</option><option value="gpt-5.4">Avançado · GPT-5.4</option></> : <><option value="claude-haiku-4-5-20251001">Rápido · Claude Haiku</option><option value="claude-sonnet-4-6">Avançado · Claude Sonnet</option></>}</select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ai-agent-max-tokens">Max tokens por resposta</Label>
@@ -673,16 +638,7 @@ export function AiConfig({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="ai-agent-speed">Tempo de resposta</Label>
-                  <Select value={agentSettings.responseSpeed} onValueChange={(value) => setAgentSettings((s) => ({ ...s, responseSpeed: (value ?? 'automatic') as AiAgentSettings['responseSpeed'] }))} disabled={disabled}>
-                    <SelectTrigger id="ai-agent-speed"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="automatic">Automático (adapta ao tamanho — mais humano)</SelectItem>
-                      <SelectItem value="fast">Rápido (~1s)</SelectItem>
-                      <SelectItem value="normal">Normal (~2.5s)</SelectItem>
-                      <SelectItem value="slow">Lento (~5s)</SelectItem>
-                      <SelectItem value="custom">Customizado</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <select id="ai-agent-speed" className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" value={agentSettings.responseSpeed} onChange={(e) => setAgentSettings((s) => ({ ...s, responseSpeed: e.target.value as AiAgentSettings['responseSpeed'] }))} disabled={disabled}><option value="automatic">Automático (adapta ao tamanho — mais humano)</option><option value="fast">Rápido (~1s)</option><option value="normal">Normal (~2,5s)</option><option value="slow">Lento (~5s)</option><option value="custom">Customizado</option></select>
                 </div>
                 {agentSettings.responseSpeed === 'custom' && <div className="space-y-2">
                   <Label htmlFor="ai-agent-delay">Atraso customizado (ms)</Label>

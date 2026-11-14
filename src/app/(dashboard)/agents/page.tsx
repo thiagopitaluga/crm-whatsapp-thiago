@@ -119,7 +119,7 @@ export default function AgentsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList variant="line" className="h-auto w-full flex-wrap justify-start gap-x-5 gap-y-1 rounded-none border-b bg-transparent p-0">
+        <TabsList variant="line" className="h-auto w-full flex-wrap justify-start gap-x-5 gap-y-1 rounded-none border-b bg-transparent p-0 group-data-horizontal/tabs:h-auto">
           {configTabs.map(({ id, label, icon: Icon }) => (
             <TabsTrigger key={id} value={id} className="h-auto flex-none rounded-none px-1.5 py-3 text-sm data-[state=active]:text-primary after:bg-primary">
               <Icon className="mr-1.5 h-4 w-4" />{label}
