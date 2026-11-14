@@ -25,6 +25,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ArrowDownUp,
+  PlugZap,
 } from "lucide-react";
 import {
   Avatar,
@@ -51,6 +52,7 @@ const navItems: NavItem[] = [
   { href: "/automations", labelKey: "automations", icon: Zap },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
+  { href: "/connections", labelKey: "connections", icon: PlugZap },
 ];
 
 const bottomNavItems = [

@@ -47,8 +47,9 @@ type StatusPayload = {
   error?: string;
 };
 
-export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
+export function QrWhatsAppConnector({ disabled, channelId }: { disabled: boolean; channelId?: string }) {
   const t = useTranslations('Settings.whatsapp.qr');
+  const endpoint = channelId ? `/api/whatsapp/qr?channel_id=${encodeURIComponent(channelId)}` : '/api/whatsapp/qr';
   const [status, setStatus] = useState<QrStatus>('loading');
   const [qrAvailable, setQrAvailable] = useState(false);
   const [qrVersion, setQrVersion] = useState('');
@@ -63,7 +64,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
 
   const loadStatus = useCallback(async () => {
     try {
-      const response = await fetch('/api/whatsapp/qr', { cache: 'no-store' });
+      const response = await fetch(endpoint, { cache: 'no-store' });
       const data = (await response.json()) as StatusPayload;
       if (!response.ok) throw new Error(data.error || t('statusError'));
 
@@ -93,7 +94,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
       setError(message);
       return 'error' as const;
     }
-  }, [t]);
+  }, [t, endpoint]);
 
   const connect = useCallback(
     async (method: 'qr' | 'pairing_code' = 'qr', phone = '') => {
@@ -101,7 +102,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
       setActionPending(true);
       setError(null);
       try {
-        const response = await fetch('/api/whatsapp/qr', {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(
@@ -128,7 +129,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
         setActionPending(false);
       }
     },
-    [disabled, loadStatus, t]
+    [disabled, loadStatus, t, endpoint]
   );
 
   useEffect(() => {
@@ -163,7 +164,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
     if (!confirm(t('disconnectConfirm'))) return;
     setActionPending(true);
     try {
-      const response = await fetch('/api/whatsapp/qr', { method: 'DELETE' });
+      const response = await fetch(endpoint, { method: 'DELETE' });
       const data = (await response.json()) as StatusPayload;
       if (!response.ok) throw new Error(data.error || t('disconnectError'));
       setStatus('disconnected');
@@ -241,7 +242,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
               <div className="border-border rounded-2xl border bg-white p-3 shadow-sm">
                 <Image
                   key={qrVersion}
-                  src={`/api/whatsapp/qr?view=qr&v=${encodeURIComponent(qrVersion)}`}
+                  src={`${endpoint}${channelId ? '&' : '?'}view=qr&v=${encodeURIComponent(qrVersion)}`}
                   alt={t('qrAlt')}
                   width={300}
                   height={300}
