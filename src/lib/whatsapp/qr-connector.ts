@@ -228,6 +228,90 @@ async function fetchEvolutionQrConnector(
   }
 
   if (suffix === 'connect') {
+    const requestBody = parseJsonBody(init.body);
+    const pairingNumber =
+      typeof requestBody?.pairing_number === 'string'
+        ? requestBody.pairing_number.replace(/\D/g, '')
+        : '';
+    if (requestBody?.pairing_number !== undefined) {
+      if (!/^\d{8,15}$/.test(pairingNumber))
+        return jsonResponse(
+          { error: 'Informe o telefone com código do país e DDD.' },
+          400
+        );
+
+      const current = await evolutionRequest(
+        baseUrl,
+        apiKey,
+        `instance/connectionState/${instance}`,
+        { signal: timeout }
+      );
+      if (current.ok) {
+        const currentPayload = (await current
+          .json()
+          .catch(() => null)) as Record<string, unknown> | null;
+        const currentInstance = asRecord(currentPayload?.instance);
+        if (
+          typeof currentInstance?.state === 'string' &&
+          currentInstance.state.toLowerCase() === 'open'
+        )
+          return jsonResponse(
+            { error: 'Este WhatsApp já está conectado.' },
+            409
+          );
+        const removed = await evolutionRequest(
+          baseUrl,
+          apiKey,
+          `instance/delete/${instance}`,
+          { method: 'DELETE', signal: timeout }
+        );
+        if (!removed.ok && removed.status !== 404) return removed;
+      } else if (current.status !== 404) {
+        return current;
+      }
+
+      const created = await createEvolutionInstance(
+        baseUrl,
+        apiKey,
+        instance,
+        accountId,
+        timeout,
+        pairingNumber
+      );
+      if (!created.ok) return created;
+      let payload = (await created.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      let pairingCode = extractPairingCode(payload);
+      for (let attempt = 0; !pairingCode && attempt < 5; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        const connection = await evolutionRequest(
+          baseUrl,
+          apiKey,
+          `instance/connect/${instance}`,
+          { signal: timeout }
+        );
+        if (!connection.ok) continue;
+        payload = (await connection.json().catch(() => null)) as Record<
+          string,
+          unknown
+        > | null;
+        pairingCode = extractPairingCode(payload);
+      }
+      if (!pairingCode)
+        return jsonResponse(
+          {
+            error:
+              'A Evolution não retornou o código. Tente novamente ou use o QR Code.',
+          },
+          502
+        );
+      return jsonResponse({
+        status: 'awaiting_qr_scan',
+        pairing_code: pairingCode,
+      });
+    }
     const created = await createEvolutionInstance(
       baseUrl,
       apiKey,
@@ -382,12 +466,22 @@ async function fetchEvolutionQrConnector(
   return jsonResponse({ error: 'unsupported_operation' }, 404);
 }
 
+function extractPairingCode(payload: Record<string, unknown> | null): string {
+  const qr = asRecord(payload?.qrcode);
+  return (
+    (typeof qr?.pairingCode === 'string' && qr.pairingCode) ||
+    (typeof payload?.pairingCode === 'string' && payload.pairingCode) ||
+    ''
+  );
+}
+
 async function createEvolutionInstance(
   baseUrl: URL,
   apiKey: string,
   instance: string,
   accountId: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  pairingNumber?: string
 ): Promise<Response> {
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
@@ -406,6 +500,7 @@ async function createEvolutionInstance(
       instanceName: instance,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
+      ...(pairingNumber ? { number: pairingNumber } : {}),
       webhook: {
         enabled: true,
         url: webhook.toString(),

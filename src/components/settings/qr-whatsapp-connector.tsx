@@ -10,12 +10,14 @@ import {
   RefreshCw,
   ShieldCheck,
   Unplug,
+  Copy,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -39,6 +41,8 @@ type StatusPayload = {
   status?: QrStatus;
   qr_available?: boolean;
   qr_version?: string | null;
+  pairing_code_supported?: boolean;
+  pairing_code?: string;
   last_error?: string | null;
   error?: string;
 };
@@ -48,9 +52,14 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
   const [status, setStatus] = useState<QrStatus>('loading');
   const [qrAvailable, setQrAvailable] = useState(false);
   const [qrVersion, setQrVersion] = useState('');
+  const [pairingCodeSupported, setPairingCodeSupported] = useState(false);
+  const [pairingPhone, setPairingPhone] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
+  const [showPairingForm, setShowPairingForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const initialized = useRef(false);
+  const pairingCodeSupportedRef = useRef(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -59,6 +68,8 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
       if (!response.ok) throw new Error(data.error || t('statusError'));
 
       const nextStatus = data.status ?? 'disconnected';
+      pairingCodeSupportedRef.current = data.pairing_code_supported === true;
+      setPairingCodeSupported(data.pairing_code_supported === true);
       setStatus(nextStatus);
       setQrAvailable(data.qr_available === true);
       setError(data.last_error ?? null);
@@ -84,28 +95,41 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
     }
   }, [t]);
 
-  const connect = useCallback(async () => {
-    if (disabled) return;
-    setActionPending(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/whatsapp/qr', { method: 'POST' });
-      const data = (await response.json()) as StatusPayload;
-      if (!response.ok) throw new Error(data.error || t('connectError'));
-      setStatus(data.status ?? 'connecting');
-      await loadStatus();
-    } catch (requestError) {
-      const message =
-        requestError instanceof Error
-          ? requestError.message
-          : t('connectError');
-      setStatus('error');
-      setError(message);
-      toast.error(message);
-    } finally {
-      setActionPending(false);
-    }
-  }, [disabled, loadStatus, t]);
+  const connect = useCallback(
+    async (method: 'qr' | 'pairing_code' = 'qr', phone = '') => {
+      if (disabled) return;
+      setActionPending(true);
+      setError(null);
+      try {
+        const response = await fetch('/api/whatsapp/qr', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(
+            method === 'pairing_code' ? { method, phone } : { method }
+          ),
+        });
+        const data = (await response.json()) as StatusPayload;
+        if (!response.ok) throw new Error(data.error || t('connectError'));
+        setPairingCode(
+          method === 'pairing_code' ? (data.pairing_code ?? '') : ''
+        );
+        setShowPairingForm(false);
+        setStatus(data.status ?? 'connecting');
+        await loadStatus();
+      } catch (requestError) {
+        const message =
+          requestError instanceof Error
+            ? requestError.message
+            : t('connectError');
+        setStatus('error');
+        setError(message);
+        toast.error(message);
+      } finally {
+        setActionPending(false);
+      }
+    },
+    [disabled, loadStatus, t]
+  );
 
   useEffect(() => {
     let active = true;
@@ -116,6 +140,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
         active &&
         !initialized.current &&
         !disabled &&
+        !pairingCodeSupportedRef.current &&
         ['disconnected', 'logged_out'].includes(current)
       ) {
         initialized.current = true;
@@ -208,7 +233,10 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
                 {t('disconnect')}
               </Button>
             </div>
-          ) : qrAvailable && status === 'awaiting_qr_scan' ? (
+          ) : qrAvailable &&
+            status === 'awaiting_qr_scan' &&
+            !showPairingForm &&
+            !pairingCode ? (
             <div className="flex max-w-md flex-col items-center">
               <div className="border-border rounded-2xl border bg-white p-3 shadow-sm">
                 <Image
@@ -238,6 +266,54 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
                 />
                 {t('refreshQr')}
               </Button>
+              {pairingCodeSupported && (
+                <Button
+                  className="mt-3"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowPairingForm(true);
+                    setPairingCode('');
+                  }}
+                  disabled={disabled || actionPending}
+                >
+                  {t('usePairingCode')}
+                </Button>
+              )}
+            </div>
+          ) : pairingCode ? (
+            <div className="flex max-w-md flex-col items-center">
+              <div className="bg-muted rounded-xl px-6 py-4 font-mono text-3xl font-bold tracking-[0.2em]">
+                {pairingCode}
+              </div>
+              <h3 className="text-foreground mt-6 text-lg font-semibold">
+                {t('pairingCodeTitle')}
+              </h3>
+              <p className="text-muted-foreground mt-2 text-base leading-relaxed">
+                {t('pairingCodeInstructions')}
+              </p>
+              <Button
+                className="mt-5"
+                variant="outline"
+                onClick={() => {
+                  void navigator.clipboard.writeText(pairingCode);
+                  toast.success(t('codeCopied'));
+                }}
+              >
+                <Copy className="size-4" />
+                {t('copyCode')}
+              </Button>
+              <Button
+                className="mt-2"
+                variant="ghost"
+                onClick={() => {
+                  setPairingCode('');
+                  setShowPairingForm(false);
+                  void connect('qr');
+                }}
+                disabled={disabled || actionPending}
+              >
+                {t('useQrInstead')}
+              </Button>
             </div>
           ) : (
             <div className="flex max-w-md flex-col items-center">
@@ -263,15 +339,68 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              {!isBusy && !actionPending && (
-                <Button
-                  className="mt-6"
-                  onClick={() => void connect()}
-                  disabled={disabled}
-                >
-                  <QrCode className="size-4" />
-                  {t('generateQr')}
-                </Button>
+              {!isBusy &&
+              !actionPending &&
+              pairingCodeSupported &&
+              showPairingForm ? (
+                <div className="mt-6 w-full space-y-3 text-left">
+                  <label
+                    htmlFor="whatsapp-pairing-phone"
+                    className="text-sm font-medium"
+                  >
+                    {t('phoneLabel')}
+                  </label>
+                  <Input
+                    id="whatsapp-pairing-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    placeholder={t('phonePlaceholder')}
+                    value={pairingPhone}
+                    onChange={(event) => setPairingPhone(event.target.value)}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    {t('phoneHint')}
+                  </p>
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      onClick={() => void connect('pairing_code', pairingPhone)}
+                      disabled={
+                        disabled || !/^\D*(?:\d\D*){8,15}$/.test(pairingPhone)
+                      }
+                    >
+                      {t('generatePairingCode')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setShowPairingForm(false)}
+                    >
+                      {t('cancelPairing')}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                !isBusy &&
+                !actionPending && (
+                  <div className="mt-6 flex flex-wrap justify-center gap-2">
+                    <Button
+                      onClick={() => void connect('qr')}
+                      disabled={disabled}
+                    >
+                      <QrCode className="size-4" />
+                      {t('generateQr')}
+                    </Button>
+                    {pairingCodeSupported && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowPairingForm(true)}
+                        disabled={disabled}
+                      >
+                        {t('usePairingCode')}
+                      </Button>
+                    )}
+                  </div>
+                )
               )}
             </div>
           )}

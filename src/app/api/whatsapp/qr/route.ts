@@ -48,6 +48,8 @@ export async function GET(request: Request) {
       {
         status: normalizeStatus(data.status),
         qr_available: data.qr_available === true,
+        pairing_code_supported:
+          process.env.WHATSAPP_QR_PROVIDER === 'evolution',
         qr_version:
           typeof data.qr_version === 'string' ? data.qr_version : null,
         last_error:
@@ -70,12 +72,48 @@ export async function POST(request: Request) {
         { status: 410 }
       );
     }
+    const body = (await request.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const method = body.method === 'pairing_code' ? 'pairing_code' : 'qr';
+    const phone =
+      typeof body.phone === 'string' ? body.phone.replace(/\D/g, '') : '';
+    if (method === 'pairing_code' && !/^\d{8,15}$/.test(phone)) {
+      return NextResponse.json(
+        {
+          error:
+            'Informe o telefone com código do país e DDD (8 a 15 dígitos).',
+        },
+        { status: 400 }
+      );
+    }
     const upstream = await fetchQrConnector(accountId, 'connect', {
       method: 'POST',
-      body: '{}',
+      body: JSON.stringify(
+        method === 'pairing_code' ? { pairing_number: phone } : {}
+      ),
     });
-    if (!upstream.ok) return connectorUnavailable();
-    return NextResponse.json(await upstream.json(), { status: 202 });
+    const data = await upstream.json().catch(() => null);
+    if (!upstream.ok) {
+      const detail =
+        data &&
+        typeof data === 'object' &&
+        'error' in data &&
+        typeof data.error === 'string'
+          ? data.error
+          : null;
+      return NextResponse.json(
+        { error: detail ?? 'Não foi possível iniciar a conexão.' },
+        {
+          status:
+            upstream.status >= 400 && upstream.status < 600
+              ? upstream.status
+              : 502,
+        }
+      );
+    }
+    return NextResponse.json(data ?? {}, { status: 202 });
   } catch (error) {
     return handleError(error);
   }
