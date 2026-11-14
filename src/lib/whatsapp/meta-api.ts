@@ -65,6 +65,20 @@ export async function verifyPhoneNumber(
   return response.json()
 }
 
+export async function markCloudMessageAsRead(args: {
+  phoneNumberId: string;
+  accessToken: string;
+  messageId: string;
+}): Promise<void> {
+  const response = await fetch(`${META_API_BASE}/${args.phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${args.accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: args.messageId }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) await throwMetaError(response, `Meta read receipt error: ${response.status}`);
+}
+
 /**
  * Exchanges the short-lived authorization code returned by Meta Embedded
  * Signup for the system-user token scoped to the selected WhatsApp account.

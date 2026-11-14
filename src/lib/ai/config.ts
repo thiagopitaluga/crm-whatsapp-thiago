@@ -49,13 +49,19 @@ export async function loadAiConfig(
   let agentProfile: Record<string, unknown> | null = null;
   let agentQuery = db
     .from('ai_agents')
-    .select('id, name, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, settings, channel_keys')
+    .select('id, name, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, settings, channel_keys, is_default')
     .eq('account_id', accountId);
   if (opts.agentId) agentQuery = agentQuery.eq('id', opts.agentId);
   else if (opts.channel) agentQuery = agentQuery.contains('channel_keys', [opts.channel]);
   else agentQuery = agentQuery.eq('is_default', true);
-  const { data: selectedAgent, error: agentError } = await agentQuery.maybeSingle();
+  const { data: agentProfiles, error: agentError } = await agentQuery;
   if (agentError) throw agentError;
+  const channelFamily = opts.channel?.split(':', 1)[0];
+  const selectedAgent = (agentProfiles ?? []).find((profile) =>
+    (profile.channel_keys ?? []).includes(opts.channel ?? '')
+  ) ?? (agentProfiles ?? []).find((profile) =>
+    Boolean(channelFamily && (profile.channel_keys ?? []).includes(channelFamily))
+  ) ?? (agentProfiles ?? []).find((profile) => profile.is_default === true);
   if (selectedAgent) agentProfile = selectedAgent as unknown as Record<string, unknown>;
 
   const isActive = agentProfile
@@ -96,7 +102,7 @@ export async function loadAiConfig(
     agentId: typeof agentProfile?.id === 'string' ? agentProfile.id : undefined,
     agentName: typeof agentProfile?.name === 'string' ? agentProfile.name : agentSettings.name,
     provider: row.provider,
-    model: row.model,
+    model: agentSettings.responseModel || row.model,
     apiKey: decrypt(row.api_key),
     systemPrompt: agentProfile && typeof agentProfile.system_prompt === 'string'
       ? agentProfile.system_prompt

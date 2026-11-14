@@ -95,6 +95,9 @@ export function buildSystemPrompt(args: {
         agentSettings.objective &&
           `Primary objective: ${agentSettings.objective}`,
         agentSettings.tone && `Tone: ${agentSettings.tone}`,
+        agentSettings.closingStyle && `Closing style: ${agentSettings.closingStyle}`,
+        agentSettings.negotiationMode && `Negotiation mode: ${agentSettings.negotiationMode}. Never promise discounts beyond these instructions or invent a secret minimum price.`,
+        `Response creativity: ${agentSettings.creativity.toFixed(2)} on a 0–1 scale; keep answers aligned with the instructions and facts.`,
         agentSettings.vocabulary && `Preferred vocabulary:\n${agentSettings.vocabulary}`,
         agentSettings.realExamples && `Approved examples of the brand voice:\n${agentSettings.realExamples}`,
         agentSettings.houseStyle && `House style:\n${agentSettings.houseStyle}`,

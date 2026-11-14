@@ -31,6 +31,8 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
     systemPrompt,
     messages,
     timeoutMs,
+    maxTokens: config.agentSettings.maxTokens,
+    creativity: config.agentSettings.creativity,
   }
 
   let result: { text: string; usage: AiUsage | null }

@@ -36,10 +36,17 @@ export async function POST(request: Request) {
     typeof url.searchParams.get('account_id') === 'string'
       ? url.searchParams.get('account_id')!
       : '';
-  if (
-    !/^[0-9a-f-]{36}$/i.test(accountId) ||
-    instance !== getEvolutionInstanceName(accountId)
-  ) {
+  const requestedChannelKey = url.searchParams.get('channel_key') || 'whatsapp_evolution';
+  let channelKey = 'whatsapp_evolution';
+  let validInstance = instance === getEvolutionInstanceName(accountId);
+  if (requestedChannelKey !== 'whatsapp_evolution') {
+    const { data: savedChannel } = await supabaseAdmin().from('whatsapp_channels')
+      .select('channel_key, evolution_instance_name').eq('account_id', accountId)
+      .eq('channel_key', requestedChannelKey).eq('evolution_instance_name', instance).maybeSingle();
+    validInstance = Boolean(savedChannel);
+    channelKey = savedChannel?.channel_key ?? '';
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(accountId) || !validInstance) {
     return NextResponse.json(
       { error: 'Invalid Evolution instance' },
       { status: 400 }
@@ -99,7 +106,8 @@ export async function POST(request: Request) {
         accountId,
         messageId,
         message,
-        content.mediaKind
+        content.mediaKind,
+        instance
       );
       if (media) {
         mediaUrl = media.url;
@@ -128,6 +136,9 @@ export async function POST(request: Request) {
           createdAt,
         }
       );
+      if (ingested?.conversationId) {
+        await supabaseAdmin().from('conversations').update({ whatsapp_channel_key: channelKey }).eq('id', ingested.conversationId);
+      }
       if (
         key?.fromMe !== true &&
         ingested?.messageInserted &&
@@ -144,7 +155,7 @@ export async function POST(request: Request) {
             conversationId: ingested.conversationId,
             contactId: ingested.contactId,
             configOwnerUserId: account.owner_user_id,
-            channel: 'whatsapp_evolution',
+            channel: channelKey,
           });
         }
       }
@@ -243,12 +254,14 @@ async function uploadEvolutionMedia(
   accountId: string,
   messageId: string,
   message: Record<string, unknown>,
-  mediaKind: string | null
+  mediaKind: string | null,
+  instanceName: string
 ): Promise<{ url: string; mimeType: string } | null> {
   const data = await fetchEvolutionMediaBase64(
     accountId,
     message,
-    AbortSignal.timeout(20_000)
+    AbortSignal.timeout(20_000),
+    instanceName
   ).catch(() => null);
   if (!data) return null;
   const bytes = Buffer.from(data.base64, 'base64');

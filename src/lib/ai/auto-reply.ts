@@ -11,6 +11,9 @@ import { scheduleAiFollowup } from './followup';
 import { engineSendText } from '@/lib/flows/meta-send';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 import { runAiAgentTriggers } from './agent-triggers';
+import { fetchQrConnector } from '@/lib/whatsapp/qr-connector';
+import { markCloudMessageAsRead } from '@/lib/whatsapp/meta-api';
+import { decrypt } from '@/lib/whatsapp/encryption';
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -20,7 +23,7 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string;
-  channel?: 'whatsapp_cloud' | 'whatsapp_evolution';
+  channel?: string;
 }
 
 /**
@@ -72,7 +75,8 @@ export async function dispatchInboundToAiReply(
       await db.from('conversations').update({ ai_agent_id: config.agentId, channel })
         .eq('id', conversationId).eq('account_id', accountId);
     }
-    if (!config.agentSettings.enabledChannels.includes(channel)) return;
+    if (!config.agentSettings.enabledChannels.includes(channel) &&
+      !config.agentSettings.enabledChannels.includes(channel.split(':', 1)[0])) return;
 
     // Deterministic, user-configured responders win over the LLM — the
     // caller already excludes messages a Flow consumed. Message-level
@@ -234,14 +238,35 @@ export async function dispatchInboundToAiReply(
     }
     if (claimed !== true) return; // lost the per-conversation cap race
 
-    const sent = await engineSendText({
-      accountId,
-      userId: configOwnerUserId,
-      conversationId,
-      contactId,
-      text,
-      aiGenerated: true,
-    });
+    if (config.agentSettings.confirmReadBeforeReply) {
+      await markLatestInboundAsRead({ db, accountId, conversationId, contactId, channel });
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    const speed = config.agentSettings.responseSpeed;
+    const responseDelay = speed === 'fast' ? 1000
+      : speed === 'normal' ? 2500
+        : speed === 'slow' ? 5000
+          : speed === 'custom' ? config.agentSettings.customResponseDelayMs
+            : Math.min(5000, 700 + text.length * 6);
+    if (responseDelay > 0) await new Promise((resolve) => setTimeout(resolve, responseDelay));
+
+    const blocks = config.agentSettings.splitMessages
+      ? splitReplyIntoBlocks(text, config.agentSettings.charactersPerBlock)
+      : [text];
+    let sent: Awaited<ReturnType<typeof engineSendText>> | null = null;
+    for (let index = 0; index < blocks.length; index++) {
+      if (index > 0 && config.agentSettings.pauseBetweenBlocksMs > 0)
+        await new Promise((resolve) => setTimeout(resolve, config.agentSettings.pauseBetweenBlocksMs));
+      sent = await engineSendText({
+        accountId,
+        userId: configOwnerUserId,
+        conversationId,
+        contactId,
+        text: blocks[index],
+        aiGenerated: true,
+      });
+    }
+    if (!sent) return;
     if (
       config.agentSettings.followUpEnabled &&
       config.agentSettings.followUpDelaysHours.length > 0
@@ -261,5 +286,63 @@ export async function dispatchInboundToAiReply(
     }
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err);
+  }
+}
+
+function splitReplyIntoBlocks(text: string, maxChars: number): string[] {
+  const remaining = text.trim();
+  if (!remaining) return [];
+  const blocks: string[] = [];
+  let rest = remaining;
+  while (rest.length > maxChars && blocks.length < 9) {
+    const window = rest.slice(0, maxChars + 1);
+    const candidates = [window.lastIndexOf('\n'), window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '), window.lastIndexOf(' ')]
+      .filter((position) => position >= Math.floor(maxChars * 0.55));
+    const cut = candidates.length ? Math.max(...candidates) + (window[Math.max(...candidates)] === ' ' ? 0 : 1) : maxChars;
+    const block = rest.slice(0, cut).trim();
+    if (!block) break;
+    blocks.push(block);
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) blocks.push(rest);
+  return blocks;
+}
+
+async function markLatestInboundAsRead(args: {
+  db: ReturnType<typeof supabaseAdmin>;
+  accountId: string;
+  conversationId: string;
+  contactId: string;
+  channel: string;
+}) {
+  const { data: message } = await args.db.from('messages')
+    .select('message_id').eq('conversation_id', args.conversationId)
+    .eq('sender_type', 'customer').not('message_id', 'is', null)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (typeof message?.message_id !== 'string') return;
+  try {
+    if (args.channel.startsWith('whatsapp_evolution')) {
+      const { data: contact } = await args.db.from('contacts').select('phone').eq('id', args.contactId).maybeSingle();
+      if (typeof contact?.phone !== 'string') return;
+      const { data: channel } = await args.db.from('whatsapp_channels').select('evolution_instance_name, channel_key').eq('account_id', args.accountId).eq('channel_key', args.channel).maybeSingle();
+      const response = await fetchQrConnector(args.accountId, 'messages/read', {
+        method: 'POST', body: JSON.stringify({ phone: contact.phone, messageId: message.message_id }),
+      }, channel?.evolution_instance_name ? { instanceName: channel.evolution_instance_name, channelKey: channel.channel_key } : {});
+      if (!response.ok) throw new Error(`Evolution read receipt failed (${response.status})`);
+      return;
+    }
+    let configQuery = args.db.from('whatsapp_config').select('phone_number_id, access_token').eq('account_id', args.accountId);
+    const numberId = args.channel.startsWith('whatsapp_cloud:') ? args.channel.slice('whatsapp_cloud:'.length) : '';
+    if (numberId) configQuery = configQuery.eq('phone_number_id', numberId);
+    else configQuery = configQuery.order('created_at', { ascending: true }).limit(1);
+    const { data: config } = await configQuery.maybeSingle();
+    if (!config?.phone_number_id || !config.access_token) return;
+    await markCloudMessageAsRead({
+      phoneNumberId: config.phone_number_id,
+      accessToken: decrypt(config.access_token),
+      messageId: message.message_id,
+    });
+  } catch (error) {
+    console.warn('[ai auto-reply] could not mark inbound message as read:', error instanceof Error ? error.message : 'unknown error');
   }
 }

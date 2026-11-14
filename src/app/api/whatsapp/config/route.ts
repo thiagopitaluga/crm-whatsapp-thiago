@@ -89,6 +89,8 @@ export async function GET() {
       .from('whatsapp_config')
       .select('phone_number_id, access_token, status')
       .eq('account_id', accountId)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle()
 
     if (configError) {
@@ -276,6 +278,7 @@ export async function POST(request: Request) {
       .from('whatsapp_config')
       .select('id, registered_at, phone_number_id')
       .eq('account_id', accountId)
+      .eq('phone_number_id', phone_number_id)
       .maybeSingle()
 
     const sameNumber =
@@ -370,7 +373,7 @@ export async function POST(request: Request) {
       const { error: updateError } = await supabase
         .from('whatsapp_config')
         .update(baseRow)
-        .eq('account_id', accountId)
+        .eq('id', existing.id)
 
       if (updateError) {
         console.error('Error updating whatsapp_config:', updateError)
@@ -414,6 +417,21 @@ export async function POST(request: Request) {
       })
     }
 
+    const { count: channelCount, error: channelCountError } = await supabase
+      .from('whatsapp_channels').select('id', { count: 'exact', head: true })
+      .eq('account_id', accountId).eq('provider', 'cloud');
+    if (channelCountError) throw channelCountError;
+    const channelKey = (channelCount ?? 0) === 0 ? 'whatsapp_cloud' : `whatsapp_cloud:${phone_number_id}`;
+    const { error: channelError } = await supabase.from('whatsapp_channels').upsert({
+      account_id: accountId,
+      provider: 'cloud',
+      channel_key: channelKey,
+      label: phoneInfo.display_phone_number || 'WhatsApp Cloud API',
+      phone_number_id,
+      created_by: user.id,
+    }, { onConflict: 'account_id,channel_key' });
+    if (channelError) throw channelError;
+
     return NextResponse.json({
       success: true,
       saved: true,
@@ -438,7 +456,7 @@ export async function POST(request: Request) {
  * Used by the "Reset Configuration" button to recover from a corrupted
  * encrypted token (mismatched ENCRYPTION_KEY across environments).
  */
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
     const supabase = await createClient()
 
@@ -459,10 +477,14 @@ export async function DELETE() {
       )
     }
 
-    const { error: deleteError } = await supabase
-      .from('whatsapp_config')
-      .delete()
-      .eq('account_id', accountId)
+    const requestedPhone = new URL(request.url).searchParams.get('phone_number_id');
+    let configQuery = supabase.from('whatsapp_config').select('id, phone_number_id').eq('account_id', accountId);
+    if (requestedPhone) configQuery = configQuery.eq('phone_number_id', requestedPhone);
+    else configQuery = configQuery.order('created_at', { ascending: true }).limit(1);
+    const { data: configToDelete, error: lookupError } = await configQuery.maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!configToDelete) return NextResponse.json({ success: true });
+    const { error: deleteError } = await supabase.from('whatsapp_config').delete().eq('id', configToDelete.id);
 
     if (deleteError) {
       console.error('Error deleting whatsapp_config:', deleteError)
@@ -470,6 +492,13 @@ export async function DELETE() {
         { error: 'Failed to delete configuration' },
         { status: 500 }
       )
+    }
+
+    const { data: channel } = await supabase.from('whatsapp_channels').select('id, channel_key').eq('account_id', accountId).eq('phone_number_id', configToDelete.phone_number_id).maybeSingle();
+    if (channel) {
+      const { data: agents } = await supabase.from('ai_agents').select('id, channel_keys').eq('account_id', accountId).contains('channel_keys', [channel.channel_key]);
+      for (const agent of agents ?? []) await supabase.from('ai_agents').update({ channel_keys: (agent.channel_keys ?? []).filter((key: string) => key !== channel.channel_key) }).eq('id', agent.id).eq('account_id', accountId);
+      await supabase.from('whatsapp_channels').delete().eq('id', channel.id).eq('account_id', accountId);
     }
 
     return NextResponse.json({ success: true })

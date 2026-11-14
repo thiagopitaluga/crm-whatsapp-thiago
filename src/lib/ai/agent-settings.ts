@@ -3,6 +3,17 @@ export type AiAgentSettings = {
   persona: string;
   objective: string;
   tone: string;
+  closingStyle: string;
+  negotiationMode: string;
+  responseModel: string;
+  maxTokens: number;
+  creativity: number;
+  responseSpeed: 'automatic' | 'fast' | 'normal' | 'slow' | 'custom';
+  customResponseDelayMs: number;
+  splitMessages: boolean;
+  charactersPerBlock: number;
+  pauseBetweenBlocksMs: number;
+  confirmReadBeforeReply: boolean;
   vocabulary: string;
   realExamples: string;
   houseStyle: string;
@@ -34,7 +45,18 @@ export const DEFAULT_AI_AGENT_SETTINGS: AiAgentSettings = {
   name: 'Assistente virtual',
   persona: '',
   objective: '',
-  tone: 'Amigável e consultivo',
+  tone: 'Consultivo',
+  closingStyle: 'consultative',
+  negotiationMode: 'none',
+  responseModel: '',
+  maxTokens: 500,
+  creativity: 0.3,
+  responseSpeed: 'automatic',
+  customResponseDelayMs: 2500,
+  splitMessages: true,
+  charactersPerBlock: 280,
+  pauseBetweenBlocksMs: 800,
+  confirmReadBeforeReply: false,
   vocabulary: '',
   realExamples: '',
   houseStyle: '',
@@ -84,7 +106,7 @@ export function normalizeAiAgentSettings(value: unknown): AiAgentSettings {
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
-  const allowedChannels = new Set(['whatsapp_cloud', 'whatsapp_evolution']);
+  const validChannel = (channel: string) => /^(whatsapp_cloud|whatsapp_evolution)(:[a-zA-Z0-9-]{1,80})?$/.test(channel);
   const delays = Array.isArray(source.followUpDelaysHours)
     ? source.followUpDelaysHours
         .map(Number)
@@ -98,7 +120,18 @@ export function normalizeAiAgentSettings(value: unknown): AiAgentSettings {
       DEFAULT_AI_AGENT_SETTINGS.name,
     persona: text(source.persona, 4000, ''),
     objective: text(source.objective, 2000, ''),
-    tone: text(source.tone, 100, DEFAULT_AI_AGENT_SETTINGS.tone),
+    tone: ['Formal', 'Consultivo', 'Casual', 'Direto'].includes(String(source.tone)) ? String(source.tone) : DEFAULT_AI_AGENT_SETTINGS.tone,
+    closingStyle: ['direct', 'consultative', 'urgency', 'gentle'].includes(String(source.closingStyle)) ? String(source.closingStyle) : DEFAULT_AI_AGENT_SETTINGS.closingStyle,
+    negotiationMode: ['none', 'fixed_discount', 'strategic'].includes(String(source.negotiationMode)) ? String(source.negotiationMode) : DEFAULT_AI_AGENT_SETTINGS.negotiationMode,
+    responseModel: text(source.responseModel, 160, ''),
+    maxTokens: Math.min(8192, Math.max(1, Math.floor(Number(source.maxTokens) || DEFAULT_AI_AGENT_SETTINGS.maxTokens))),
+    creativity: Math.min(1, Math.max(0, Number.isFinite(Number(source.creativity)) ? Number(source.creativity) : DEFAULT_AI_AGENT_SETTINGS.creativity)),
+    responseSpeed: ['automatic', 'fast', 'normal', 'slow', 'custom'].includes(String(source.responseSpeed)) ? source.responseSpeed as AiAgentSettings['responseSpeed'] : 'automatic',
+    customResponseDelayMs: Math.min(30000, Math.max(0, Math.floor(Number.isFinite(Number(source.customResponseDelayMs)) ? Number(source.customResponseDelayMs) : DEFAULT_AI_AGENT_SETTINGS.customResponseDelayMs))),
+    splitMessages: source.splitMessages !== false,
+    charactersPerBlock: Math.min(1000, Math.max(80, Math.floor(Number(source.charactersPerBlock) || 280))),
+    pauseBetweenBlocksMs: Math.min(10000, Math.max(0, Math.floor(Number.isFinite(Number(source.pauseBetweenBlocksMs)) ? Number(source.pauseBetweenBlocksMs) : 800))),
+    confirmReadBeforeReply: source.confirmReadBeforeReply === true,
     vocabulary: text(source.vocabulary, 4000, ''),
     realExamples: text(source.realExamples, 8000, ''),
     houseStyle: text(source.houseStyle, 4000, ''),
@@ -114,9 +147,7 @@ export function normalizeAiAgentSettings(value: unknown): AiAgentSettings {
       4000,
       DEFAULT_AI_AGENT_SETTINGS.handoffRules
     ),
-    enabledChannels: lines(source.enabledChannels, 2, 40).filter((channel) =>
-      allowedChannels.has(channel)
-    ),
+    enabledChannels: lines(source.enabledChannels, 30, 120).filter(validChannel),
     inboundEnabled: source.inboundEnabled !== false,
     firstMessageOnly: source.firstMessageOnly === true,
     triggerKeywords: lines(source.triggerKeywords, 50, 100),
@@ -144,4 +175,11 @@ export function validateAiAgentSettings(
   if (settings.followUpEnabled && settings.followUpWindowEnabled && settings.followUpWindowStart >= settings.followUpWindowEnd)
     return 'O fim da janela de follow-up deve ser depois do início.';
   return null;
+}
+
+export function aiChannelsOverlap(left: string, right: string): boolean {
+  if (left === right) return true;
+  const leftFamily = left.split(':', 1)[0];
+  const rightFamily = right.split(':', 1)[0];
+  return leftFamily === rightFamily && (!left.includes(':') || !right.includes(':'));
 }

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account';
-import { DEFAULT_AI_AGENT_SETTINGS } from '@/lib/ai/agent-settings';
+import { aiChannelsOverlap, DEFAULT_AI_AGENT_SETTINGS } from '@/lib/ai/agent-settings';
 
-const ALLOWED_CHANNELS = new Set(['whatsapp_cloud', 'whatsapp_evolution']);
+const isAllowedChannel = (value: unknown): value is string => typeof value === 'string' && /^(whatsapp_cloud|whatsapp_evolution)(:[a-zA-Z0-9-]{1,80})?$/.test(value);
 
 export async function GET() {
   try {
@@ -75,7 +75,7 @@ export async function PATCH(request: Request) {
     }
     if (typeof body.is_active === 'boolean') update.is_active = body.is_active;
     if (typeof body.channel_keys !== 'undefined') {
-      if (!Array.isArray(body.channel_keys) || body.channel_keys.some((v: unknown) => typeof v !== 'string' || !ALLOWED_CHANNELS.has(v)))
+      if (!Array.isArray(body.channel_keys) || body.channel_keys.some((v: unknown) => !isAllowedChannel(v)))
         return NextResponse.json({ error: 'Canal inválido.' }, { status: 400 });
       const channels = [...new Set(body.channel_keys as string[])];
       const { data: others, error: lookupError } = await supabase
@@ -84,7 +84,7 @@ export async function PATCH(request: Request) {
         .eq('account_id', accountId)
         .neq('id', agentId);
       if (lookupError) throw lookupError;
-      const conflict = (others ?? []).find((agent) => channels.some((channel) => (agent.channel_keys ?? []).includes(channel)));
+      const conflict = (others ?? []).find((agent) => channels.some((channel) => (agent.channel_keys ?? []).some((peerChannel: string) => aiChannelsOverlap(channel, peerChannel))));
       if (conflict) return NextResponse.json({ error: `${conflict.name} já está conectado a esse WhatsApp. Desconecte-o antes de atribuir o canal.` }, { status: 409 });
       update.channel_keys = channels;
     }

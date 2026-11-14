@@ -116,7 +116,7 @@ async function runAction(event: AiAgentTriggerEvent, trigger: TriggerRow): Promi
     const link = value('url');
     if (!link || !(await isDeliverableUrl(link))) throw new Error('A URL da mídia não é válida ou acessível publicamente.');
     const kind = ['image', 'video', 'document'].includes(value('kind')) ? value('kind') as 'image' | 'video' | 'document' : 'image';
-    if (event.channel === 'whatsapp_evolution') {
+    if (event.channel.startsWith('whatsapp_evolution')) {
       const { data: contact } = await db.from('contacts').select('phone').eq('id', event.contactId).eq('account_id', event.accountId).maybeSingle();
       if (!contact?.phone) throw new Error('Contato sem telefone.');
       const response = await fetchQrConnector(event.accountId, 'messages/media', { method: 'POST', body: JSON.stringify({ phone: sanitizePhoneForMeta(contact.phone), kind, url: link, caption: value('caption') }) });
@@ -156,11 +156,16 @@ async function runAction(event: AiAgentTriggerEvent, trigger: TriggerRow): Promi
     const phone = sanitizePhoneForMeta(value('phone'));
     const text = value('text');
     if (!phone || !text) throw new Error('Informe o número e a mensagem da notificação.');
-    if (process.env.WHATSAPP_QR_PROVIDER === 'evolution') {
-      const response = await fetchQrConnector(event.accountId, 'messages/send', { method: 'POST', body: JSON.stringify({ phone, text }) });
+    if (event.channel.startsWith('whatsapp_evolution') || process.env.WHATSAPP_QR_PROVIDER === 'evolution') {
+      const { data: instance } = await db.from('whatsapp_channels').select('evolution_instance_name, channel_key').eq('account_id', event.accountId).eq('channel_key', event.channel).maybeSingle();
+      const response = await fetchQrConnector(event.accountId, 'messages/send', { method: 'POST', body: JSON.stringify({ phone, text }) }, instance?.evolution_instance_name ? { instanceName: instance.evolution_instance_name, channelKey: instance.channel_key } : {});
       if (!response.ok) throw new Error('Não foi possível enviar a notificação pela Evolution.');
     } else {
-      const { data: config } = await db.from('whatsapp_config').select('phone_number_id, access_token').eq('account_id', event.accountId).maybeSingle();
+      let configQuery = db.from('whatsapp_config').select('phone_number_id, access_token').eq('account_id', event.accountId);
+      const phoneId = event.channel.startsWith('whatsapp_cloud:') ? event.channel.slice('whatsapp_cloud:'.length) : '';
+      if (phoneId) configQuery = configQuery.eq('phone_number_id', phoneId);
+      else configQuery = configQuery.order('created_at', { ascending: true }).limit(1);
+      const { data: config } = await configQuery.maybeSingle();
       if (!config) throw new Error('WhatsApp Cloud não configurado.');
       await sendTextMessage({ phoneNumberId: config.phone_number_id, accessToken: decrypt(config.access_token), to: phone, text });
     }

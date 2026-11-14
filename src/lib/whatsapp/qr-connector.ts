@@ -10,6 +10,7 @@ type QrConnectorSuffix =
   | 'groups/participants'
   | 'messages/send'
   | 'messages/media'
+  | 'messages/read'
   | '';
 
 export class QrConnectorConfigurationError extends Error {
@@ -62,7 +63,8 @@ function matchesSecret(
 export async function fetchEvolutionMediaBase64(
   accountId: string,
   message: Record<string, unknown>,
-  signal: AbortSignal = AbortSignal.timeout(25_000)
+  signal: AbortSignal = AbortSignal.timeout(25_000),
+  instanceName?: string
 ): Promise<{
   base64: string;
   mimeType: string;
@@ -73,7 +75,7 @@ export async function fetchEvolutionMediaBase64(
   const response = await evolutionRequest(
     baseUrl,
     apiKey,
-    `chat/getBase64FromMediaMessage/${evolutionInstanceName(accountId)}`,
+    `chat/getBase64FromMediaMessage/${instanceName ?? evolutionInstanceName(accountId)}`,
     {
       method: 'POST',
       body: JSON.stringify({ message }),
@@ -104,10 +106,11 @@ export async function fetchEvolutionMediaBase64(
 export async function fetchQrConnector(
   accountId: string,
   suffix: QrConnectorSuffix,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  options: { instanceName?: string; channelKey?: string } = {}
 ): Promise<Response> {
   if (process.env.WHATSAPP_QR_PROVIDER === 'evolution') {
-    return fetchEvolutionQrConnector(accountId, suffix, init);
+    return fetchEvolutionQrConnector(accountId, suffix, init, options);
   }
 
   return fetchLegacyQrConnector(accountId, suffix, init);
@@ -155,14 +158,15 @@ async function fetchLegacyQrConnector(
 async function fetchEvolutionQrConnector(
   accountId: string,
   suffix: QrConnectorSuffix,
-  init: RequestInit
+  init: RequestInit,
+  options: { instanceName?: string; channelKey?: string } = {}
 ): Promise<Response> {
   if (!/^[0-9a-f-]{36}$/i.test(accountId)) {
     throw new Error('Invalid account id');
   }
 
   const { baseUrl, apiKey } = evolutionConfiguration();
-  const instance = evolutionInstanceName(accountId);
+  const instance = options.instanceName ?? evolutionInstanceName(accountId);
   const timeout = init.signal ?? AbortSignal.timeout(48_000);
 
   if (suffix === 'status') {
@@ -277,7 +281,8 @@ async function fetchEvolutionQrConnector(
         instance,
         accountId,
         timeout,
-        pairingNumber
+        pairingNumber,
+        options.channelKey
       );
       if (!created.ok) return created;
       let payload = (await created.json().catch(() => null)) as Record<
@@ -318,7 +323,9 @@ async function fetchEvolutionQrConnector(
       apiKey,
       instance,
       accountId,
-      timeout
+      timeout,
+      undefined,
+      options.channelKey
     );
     if (created.ok) return created;
     if (created.status === 401 || created.status === 403) return created;
@@ -475,6 +482,19 @@ async function fetchEvolutionQrConnector(
     return typeof messageId === 'string' ? jsonResponse({ messageId }) : jsonResponse({ error: 'message_id_missing' }, 502);
   }
 
+  if (suffix === 'messages/read') {
+    const body = parseJsonBody(init.body);
+    const phone = typeof body?.phone === 'string' ? body.phone.replace(/\D/g, '') : '';
+    const messageId = typeof body?.messageId === 'string' ? body.messageId : '';
+    if (!/^\d{8,15}$/.test(phone) || !messageId || messageId.length > 200)
+      return jsonResponse({ error: 'invalid_read_receipt' }, 400);
+    return evolutionRequest(baseUrl, apiKey, `chat/markMessageAsRead/${instance}`, {
+      method: 'POST',
+      body: JSON.stringify({ readMessages: [{ remoteJid: `${phone}@s.whatsapp.net`, fromMe: false, id: messageId }] }),
+      signal: timeout,
+    });
+  }
+
   if (suffix === 'groups/send') {
     return sendEvolutionGroupMessages(
       baseUrl,
@@ -504,7 +524,8 @@ async function createEvolutionInstance(
   instance: string,
   accountId: string,
   signal: AbortSignal,
-  pairingNumber?: string
+  pairingNumber?: string,
+  channelKey?: string
 ): Promise<Response> {
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
@@ -516,6 +537,7 @@ async function createEvolutionInstance(
     );
   const webhook = new URL('/api/internal/evolution-webhook', siteUrl);
   webhook.searchParams.set('account_id', accountId);
+  if (channelKey) webhook.searchParams.set('channel_key', channelKey);
 
   return evolutionRequest(baseUrl, apiKey, 'instance/create', {
     method: 'POST',

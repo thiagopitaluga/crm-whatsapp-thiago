@@ -14,6 +14,7 @@ import { validateAiCredentials } from '@/lib/ai/validate';
 import { embedTexts } from '@/lib/ai/embeddings';
 import { AiError, type AiProvider } from '@/lib/ai/types';
 import {
+  aiChannelsOverlap,
   normalizeAiAgentSettings,
   validateAiAgentSettings,
 } from '@/lib/ai/agent-settings';
@@ -143,7 +144,7 @@ export async function POST(request: Request) {
       const { data: peers, error: peersError } = await supabase.from('ai_agents')
         .select('id, name, channel_keys').eq('account_id', accountId).neq('id', agentId);
       if (peersError) throw peersError;
-      const conflict = (peers ?? []).find((agent) => channelKeys.some((channel) => (agent.channel_keys ?? []).includes(channel)));
+      const conflict = (peers ?? []).find((agent) => channelKeys.some((channel) => (agent.channel_keys ?? []).some((peerChannel: string) => aiChannelsOverlap(channel, peerChannel))));
       if (conflict) return NextResponse.json({ error: `${conflict.name} já está conectado a esse WhatsApp. Desconecte-o antes de atribuir o canal.` }, { status: 409 });
     }
 

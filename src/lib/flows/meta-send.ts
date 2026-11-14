@@ -68,6 +68,10 @@ export async function engineSendText(
   args: SendTextEngineArgs
 ): Promise<{ whatsapp_message_id: string; message_id: string }> {
   const db = supabaseAdmin();
+  const { data: conversationChannel } = await db.from('conversations')
+    .select('whatsapp_channel_key').eq('id', args.conversationId).maybeSingle();
+  const channelKey = typeof conversationChannel?.whatsapp_channel_key === 'string'
+    ? conversationChannel.whatsapp_channel_key : null;
 
   const { data: contact, error: contactErr } = await db
     .from('contacts')
@@ -84,11 +88,17 @@ export async function engineSendText(
     throw new Error(`contact phone invalid: ${contact.phone}`);
   }
 
-  if (process.env.WHATSAPP_QR_PROVIDER === 'evolution') {
+  if (channelKey?.startsWith('whatsapp_evolution') || (!channelKey && process.env.WHATSAPP_QR_PROVIDER === 'evolution')) {
+    let target: { instanceName?: string; channelKey?: string } = {};
+    if (channelKey) {
+      const { data: instance } = await db.from('whatsapp_channels').select('evolution_instance_name, channel_key')
+        .eq('account_id', args.accountId).eq('channel_key', channelKey).maybeSingle();
+      if (instance?.evolution_instance_name) target = { instanceName: instance.evolution_instance_name, channelKey: instance.channel_key };
+    }
     const response = await fetchQrConnector(args.accountId, 'messages/send', {
       method: 'POST',
       body: JSON.stringify({ phone: sanitized, text: args.text }),
-    });
+    }, target);
     const payload = (await response.json().catch(() => null)) as {
       messageId?: unknown;
       error?: unknown;
@@ -121,11 +131,14 @@ export async function engineSendText(
     return { whatsapp_message_id: payload.messageId, message_id: row.id };
   }
 
-  const { data: config, error: configErr } = await db
+  let configQuery = db
     .from('whatsapp_config')
     .select('*')
-    .eq('account_id', args.accountId)
-    .single();
+    .eq('account_id', args.accountId);
+  const configuredPhoneId = channelKey?.startsWith('whatsapp_cloud:') ? channelKey.slice('whatsapp_cloud:'.length) : '';
+  if (configuredPhoneId) configQuery = configQuery.eq('phone_number_id', configuredPhoneId);
+  else configQuery = configQuery.order('created_at', { ascending: true }).limit(1);
+  const { data: config, error: configErr } = await configQuery.maybeSingle();
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account');
   }
@@ -134,7 +147,7 @@ export async function engineSendText(
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId: config!.phone_number_id,
       accessToken,
       to: phone,
       text: args.text,
@@ -222,6 +235,8 @@ export async function engineSendMedia(
   args: SendMediaEngineArgs
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin();
+  const { data: convChannel } = await db.from('conversations').select('whatsapp_channel_key').eq('id', args.conversationId).maybeSingle();
+  const channelKey = typeof convChannel?.whatsapp_channel_key === 'string' ? convChannel.whatsapp_channel_key : '';
 
   const { data: contact, error: contactErr } = await db
     .from('contacts')
@@ -238,20 +253,30 @@ export async function engineSendMedia(
     throw new Error(`contact phone invalid: ${contact.phone}`);
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .single();
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account');
+  const useEvolution = channelKey.startsWith('whatsapp_evolution') || (!channelKey && process.env.WHATSAPP_QR_PROVIDER === 'evolution');
+  let config: Record<string, any> | null = null;
+  let accessToken = '';
+  if (!useEvolution) {
+    let query = db.from('whatsapp_config').select('*').eq('account_id', args.accountId);
+    const phoneId = channelKey.startsWith('whatsapp_cloud:') ? channelKey.slice('whatsapp_cloud:'.length) : '';
+    if (phoneId) query = query.eq('phone_number_id', phoneId);
+    else query = query.order('created_at', { ascending: true }).limit(1);
+    const result = await query.maybeSingle();
+    config = result.data as Record<string, any> | null;
+    if (result.error || !config) throw new Error('WhatsApp not configured for this account');
+    accessToken = decrypt(config.access_token);
   }
 
-  const accessToken = decrypt(config.access_token);
-
   const attempt = async (phone: string): Promise<string> => {
+    if (useEvolution) {
+      const { data: instance } = await db.from('whatsapp_channels').select('evolution_instance_name, channel_key').eq('account_id', args.accountId).eq('channel_key', channelKey).maybeSingle();
+      const response = await fetchQrConnector(args.accountId, 'messages/media', { method: 'POST', body: JSON.stringify({ phone, kind: args.kind, url: args.link, caption: args.caption ?? '' }) }, instance?.evolution_instance_name ? { instanceName: instance.evolution_instance_name, channelKey: instance.channel_key } : {});
+      const payload = await response.json().catch(() => null) as { messageId?: unknown; error?: unknown } | null;
+      if (!response.ok || typeof payload?.messageId !== 'string') throw new Error(typeof payload?.error === 'string' ? payload.error : 'Evolution could not send media');
+      return payload.messageId;
+    }
     const r = await sendMediaMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId: config!.phone_number_id,
       accessToken,
       to: phone,
       kind: args.kind,
@@ -262,7 +287,7 @@ export async function engineSendMedia(
     return r.messageId;
   };
 
-  const variants = phoneVariants(sanitized);
+  const variants = useEvolution ? [sanitized] : phoneVariants(sanitized);
   let workingPhone = sanitized;
   let waMessageId = '';
   let lastError: unknown = null;
@@ -374,6 +399,9 @@ async function sendInteractiveViaMeta(
   input: SendInput
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin();
+  const { data: convChannel } = await db.from('conversations').select('whatsapp_channel_key').eq('id', input.conversationId).maybeSingle();
+  const channelKey = typeof convChannel?.whatsapp_channel_key === 'string' ? convChannel.whatsapp_channel_key : '';
+  if (channelKey.startsWith('whatsapp_evolution')) throw new Error('Mensagens interativas não estão disponíveis para esta conexão Evolution.');
 
   // Scope the contact + whatsapp_config lookups by account_id —
   // same defense-in-depth rationale as automations/meta-send.ts.
@@ -393,11 +421,14 @@ async function sendInteractiveViaMeta(
     throw new Error(`contact phone invalid: ${contact.phone}`);
   }
 
-  const { data: config, error: configErr } = await db
+  let configQuery = db
     .from('whatsapp_config')
     .select('*')
-    .eq('account_id', input.accountId)
-    .single();
+    .eq('account_id', input.accountId);
+  const phoneId = channelKey.startsWith('whatsapp_cloud:') ? channelKey.slice('whatsapp_cloud:'.length) : '';
+  if (phoneId) configQuery = configQuery.eq('phone_number_id', phoneId);
+  else configQuery = configQuery.order('created_at', { ascending: true }).limit(1);
+  const { data: config, error: configErr } = await configQuery.maybeSingle();
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account');
   }

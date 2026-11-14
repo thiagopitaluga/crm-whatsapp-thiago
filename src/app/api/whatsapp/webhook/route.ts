@@ -336,7 +336,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // Default ON: the column is NOT NULL DEFAULT TRUE, but a row
           // read before migration 039 lands would have it undefined,
           // and losing attachments is the failure mode worth avoiding.
-          config.mirror_inbound_media !== false
+          config.mirror_inbound_media !== false,
+          phoneNumberId
         );
       }
     }
@@ -608,7 +609,8 @@ async function processMessage(
   accessToken: string,
   // Per-account opt-out for the inbound-media mirror (migration 039).
   // See parseMessageContent for what it turns off.
-  mirrorMedia: boolean
+  mirrorMedia: boolean,
+  phoneNumberId: string
 ) {
   const senderPhone = normalizePhone(message.from);
   const contactName = contact.profile.name;
@@ -631,6 +633,10 @@ async function processMessage(
   );
   if (!convResult) return;
   const conversation = convResult.conversation;
+  const { data: channelRow } = await supabaseAdmin().from('whatsapp_channels')
+    .select('channel_key').eq('account_id', accountId).eq('phone_number_id', phoneNumberId).maybeSingle();
+  const channelKey = channelRow?.channel_key ?? 'whatsapp_cloud';
+  await supabaseAdmin().from('conversations').update({ whatsapp_channel_key: channelKey }).eq('id', conversation.id);
 
   // Emit conversation.created as soon as the thread is opened — BEFORE
   // the reaction short-circuit below — so a conversation first opened by
@@ -998,6 +1004,7 @@ async function processMessage(
       conversationId: conversation.id,
       contactId: contactRecord.id,
       configOwnerUserId,
+      channel: channelKey,
     });
   }
 

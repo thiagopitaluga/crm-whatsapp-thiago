@@ -59,6 +59,7 @@ export async function resolveConversationByPhone(
     .from('whatsapp_config')
     .select('id')
     .eq('account_id', accountId)
+    .order('created_at', { ascending: true }).limit(1)
     .maybeSingle();
   if (!config) {
     throw new SendMessageError(

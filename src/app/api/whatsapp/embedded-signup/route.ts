@@ -68,6 +68,15 @@ export async function POST(request: Request) {
       )
     }
 
+    const { data: channelClaim, error: channelClaimError } = await admin
+      .from('whatsapp_channels')
+      .select('account_id')
+      .eq('phone_number_id', phoneNumberId)
+      .neq('account_id', ctx.accountId)
+      .maybeSingle();
+    if (channelClaimError) throw channelClaimError;
+    if (channelClaim) return NextResponse.json({ error: 'Este número já está conectado a outra conta deste CRM.' }, { status: 409 });
+
     await subscribeWabaToApp({ wabaId, accessToken })
 
     const now = new Date().toISOString()
@@ -91,11 +100,12 @@ export async function POST(request: Request) {
       .from('whatsapp_config')
       .select('id')
       .eq('account_id', ctx.accountId)
+      .eq('phone_number_id', phoneNumberId)
       .maybeSingle()
     if (existingError) throw existingError
 
     const write = existing
-      ? ctx.supabase.from('whatsapp_config').update(row).eq('account_id', ctx.accountId)
+      ? ctx.supabase.from('whatsapp_config').update(row).eq('id', existing.id)
       : ctx.supabase.from('whatsapp_config').insert({
           account_id: ctx.accountId,
           user_id: ctx.userId,
@@ -103,6 +113,21 @@ export async function POST(request: Request) {
         })
     const { error: writeError } = await write
     if (writeError) throw writeError
+
+    const { count: cloudCount, error: countError } = await ctx.supabase
+      .from('whatsapp_channels').select('id', { count: 'exact', head: true })
+      .eq('account_id', ctx.accountId).eq('provider', 'cloud');
+    if (countError) throw countError;
+    const channelKey = (cloudCount ?? 0) === 0 ? 'whatsapp_cloud' : `whatsapp_cloud:${phoneNumberId}`;
+    const { error: channelError } = await ctx.supabase.from('whatsapp_channels').upsert({
+      account_id: ctx.accountId,
+      provider: 'cloud',
+      channel_key: channelKey,
+      label: phoneInfo.display_phone_number || 'WhatsApp Cloud API',
+      phone_number_id: phoneNumberId,
+      created_by: ctx.userId,
+    }, { onConflict: 'account_id,channel_key' });
+    if (channelError) throw channelError;
 
     return NextResponse.json({
       success: true,

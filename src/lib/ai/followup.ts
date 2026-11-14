@@ -7,7 +7,7 @@ export async function scheduleAiFollowup(args: {
   conversationId: string;
   contactId: string;
   userId: string;
-  channel: 'whatsapp_cloud' | 'whatsapp_evolution';
+  channel: string;
   anchorMessageId: string;
   sequenceIndex: number;
   delays: AiAgentSettings['followUpDelaysHours'];

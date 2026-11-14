@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
@@ -17,11 +18,13 @@ type ConnectorStatus = {
 
 export async function GET(request: Request) {
   try {
-    const { accountId } = await requireRole('admin');
-    const view = new URL(request.url).searchParams.get('view');
+    const { accountId, supabase } = await requireRole('admin');
+    const params = new URL(request.url).searchParams;
+    const view = params.get('view');
+    const target = await getTarget(supabase, accountId, params.get('channel_id'));
 
     if (view === 'qr') {
-      const upstream = await fetchQrConnector(accountId, 'qr.svg');
+      const upstream = await fetchQrConnector(accountId, 'qr.svg', {}, target);
       if (!upstream.ok) {
         return NextResponse.json(
           { error: 'QR code is not available yet' },
@@ -40,7 +43,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const upstream = await fetchQrConnector(accountId, 'status');
+    const upstream = await fetchQrConnector(accountId, 'status', {}, target);
     if (!upstream.ok) return connectorUnavailable();
     const data = (await upstream.json()) as ConnectorStatus;
 
@@ -64,8 +67,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { accountId } = await requireRole('admin');
-    const operation = new URL(request.url).searchParams.get('operation');
+    const { accountId, supabase } = await requireRole('admin');
+    const params = new URL(request.url).searchParams;
+    const operation = params.get('operation');
+    const target = await getTarget(supabase, accountId, params.get('channel_id'));
     if (operation === 'import_history') {
       return NextResponse.json(
         { error: 'A importação de conversas antigas está desativada.' },
@@ -93,7 +98,7 @@ export async function POST(request: Request) {
       body: JSON.stringify(
         method === 'pairing_code' ? { pairing_number: phone } : {}
       ),
-    });
+    }, target);
     const data = await upstream.json().catch(() => null);
     if (!upstream.ok) {
       const detail =
@@ -119,17 +124,29 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
-    const { accountId } = await requireRole('admin');
+    const { accountId, supabase } = await requireRole('admin');
+    const target = await getTarget(supabase, accountId, new URL(request.url).searchParams.get('channel_id'));
     const upstream = await fetchQrConnector(accountId, '', {
       method: 'DELETE',
-    });
+    }, target);
     if (!upstream.ok) return connectorUnavailable();
     return NextResponse.json(await upstream.json());
   } catch (error) {
     return handleError(error);
   }
+}
+
+async function getTarget(supabase: SupabaseClient, accountId: string, channelId: string | null) {
+  if (!channelId) return {};
+  const { data, error } = await supabase.from('whatsapp_channels')
+    .select('provider, channel_key, evolution_instance_name')
+    .eq('account_id', accountId).eq('id', channelId).maybeSingle();
+  if (error) throw error;
+  if (!data || data.provider !== 'evolution' || !data.evolution_instance_name)
+    throw new Error('Conexão Evolution não encontrada.');
+  return { instanceName: data.evolution_instance_name, channelKey: data.channel_key };
 }
 
 function normalizeStatus(value: unknown): string {

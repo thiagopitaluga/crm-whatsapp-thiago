@@ -247,13 +247,12 @@ function InboxPageInner() {
 
       if (!user) return;
 
-      // A QR session lives in the connector, not in whatsapp_config
-      // (which stores the official Meta API setup). Ask it first so a
-      // healthy QR connection never produces a misleading warning.
-      const qrResponse = await fetch('/api/whatsapp/qr', { cache: 'no-store' });
-      if (qrResponse.ok) {
-        const qrState = await qrResponse.json() as { status?: string };
-        if (qrState.status === 'connected') {
+      // Any of the account's connected WhatsApp numbers can serve the
+      // inbox; inspect the same channel list that AI agents use.
+      const channelsResponse = await fetch('/api/ai/agents/channels', { cache: 'no-store' });
+      if (channelsResponse.ok) {
+        const channelData = await channelsResponse.json() as { channels?: { connected?: boolean }[] };
+        if (channelData.channels?.some((channel) => channel.connected)) {
           setWhatsappConnected(true);
           return;
         }
@@ -280,6 +279,8 @@ function InboxPageInner() {
         .from("whatsapp_config")
         .select("status")
         .eq("account_id", accountId)
+        .order("created_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
       setWhatsappConnected(data?.status === "connected");

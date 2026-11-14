@@ -168,18 +168,57 @@ export function AiConfig({
     void fetchAccountMembers().then(setMembers);
   }, [accountId, agentId, fetchConfig]);
 
-  const [channelChoices, setChannelChoices] = useState<{ id: string; label: string; address: string | null; connected: boolean }[]>([]);
+  const [channelChoices, setChannelChoices] = useState<{ id: string; key: string; label: string; address: string | null; connected: boolean; provider: string }[]>([]);
+  const [qrChannelId, setQrChannelId] = useState('');
+  const [qrVersion, setQrVersion] = useState('');
+  const [channelBusy, setChannelBusy] = useState(false);
+  const refreshChannels = useCallback(async () => {
+    const response = await fetch('/api/ai/agents/channels', { cache: 'no-store' });
+    const payload = await response.json();
+    if (response.ok) setChannelChoices(Array.isArray(payload.channels) ? payload.channels : []);
+  }, []);
   useEffect(() => {
     if (section !== 'channels') return;
-    fetch('/api/ai/agents/channels').then((response) => response.json())
-      .then((payload) => setChannelChoices(Array.isArray(payload.channels) ? payload.channels : []))
-      .catch(() => setChannelChoices([]));
-  }, [section, accountId]);
+    void refreshChannels().catch(() => setChannelChoices([]));
+  }, [section, accountId, refreshChannels]);
+
+  const addEvolutionChannel = async () => {
+    const name = window.prompt('Nome para identificar este WhatsApp', `WhatsApp ${channelChoices.filter((channel) => channel.provider === 'evolution').length + 1}`)?.trim();
+    if (!name) return;
+    setChannelBusy(true);
+    try {
+      const response = await fetch('/api/ai/agents/channels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? 'Não foi possível criar a conexão.');
+      await refreshChannels();
+      setQrChannelId(payload.channel.id);
+      const connect = await fetch(`/api/whatsapp/qr?channel_id=${encodeURIComponent(payload.channel.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'qr' }) });
+      const result = await connect.json();
+      if (!connect.ok) throw new Error(result.error ?? 'Não foi possível gerar o QR Code.');
+      setQrVersion(typeof result.qr_version === 'string' ? result.qr_version : String(Date.now()));
+      await refreshChannels();
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao adicionar WhatsApp.'); }
+    finally { setChannelBusy(false); }
+  };
+
+  const deleteChannel = async (id: string) => {
+    if (!window.confirm('Remover esta conexão do WhatsApp?')) return;
+    setChannelBusy(true);
+    try {
+      const response = await fetch(`/api/ai/agents/channels?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? 'Não foi possível remover a conexão.');
+      setQrChannelId(''); setQrVersion(''); await refreshChannels();
+      toast.success('Conexão removida.');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao remover conexão.'); }
+    finally { setChannelBusy(false); }
+  };
 
   // Swap the model default when the provider changes, unless the user
   // typed a custom model.
   const handleProviderChange = (next: AiProvider) => {
     setProvider(next);
+    setAgentSettings((settings) => ({ ...settings, responseModel: '' }));
     const isDefaultModel =
       model === AI_PROVIDER_DEFAULT_MODEL.openai ||
       model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
@@ -567,21 +606,104 @@ export function AiConfig({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            {section === 'persona' && <div className="grid gap-4 sm:grid-cols-2">
+            {section === 'persona' && <>
+              <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="ai-agent-tone">Tom de voz</Label>
-                <Input
-                  id="ai-agent-tone"
-                  value={agentSettings.tone}
-                  onChange={(e) =>
-                    setAgentSettings((s) => ({ ...s, tone: e.target.value }))
-                  }
-                  placeholder="Amigável, consultivo e objetivo"
-                  disabled={disabled}
-                  maxLength={100}
-                />
+                <Select value={agentSettings.tone} onValueChange={(value) => setAgentSettings((s) => ({ ...s, tone: value ?? s.tone }))} disabled={disabled}>
+                  <SelectTrigger id="ai-agent-tone"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Formal">Formal</SelectItem>
+                    <SelectItem value="Consultivo">Consultivo</SelectItem>
+                    <SelectItem value="Casual">Casual</SelectItem>
+                    <SelectItem value="Direto">Direto</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>}
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-closing">Estilo de fechamento</Label>
+                <Select value={agentSettings.closingStyle} onValueChange={(value) => setAgentSettings((s) => ({ ...s, closingStyle: value ?? s.closingStyle }))} disabled={disabled}>
+                  <SelectTrigger id="ai-agent-closing"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="direct">Direto</SelectItem>
+                    <SelectItem value="consultative">Consultivo</SelectItem>
+                    <SelectItem value="urgency">Urgência</SelectItem>
+                    <SelectItem value="gentle">Suave</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-negotiation">Modo de negociação</Label>
+                <Select value={agentSettings.negotiationMode} onValueChange={(value) => setAgentSettings((s) => ({ ...s, negotiationMode: value ?? s.negotiationMode }))} disabled={disabled}>
+                  <SelectTrigger id="ai-agent-negotiation"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem desconto (padrão)</SelectItem>
+                    <SelectItem value="fixed_discount">Desconto fixo (PIX/à vista)</SelectItem>
+                    <SelectItem value="strategic">Estratégico (degraus com piso secreto)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-model">Modelo da IA</Label>
+                <Select value={agentSettings.responseModel || '__automatic__'} onValueChange={(value) => setAgentSettings((s) => ({ ...s, responseModel: !value || value === '__automatic__' ? '' : value }))} disabled={disabled}>
+                  <SelectTrigger id="ai-agent-model"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__automatic__">Automático (modelo da conta)</SelectItem>
+                    {provider === 'openai' ? <>
+                      <SelectItem value="gpt-5.4-mini">Rápido · GPT-5.4 mini</SelectItem>
+                      <SelectItem value="gpt-5.4">Avançado · GPT-5.4</SelectItem>
+                    </> : <>
+                      <SelectItem value="claude-haiku-4-5-20251001">Rápido · Claude Haiku</SelectItem>
+                      <SelectItem value="claude-sonnet-4-6">Avançado · Claude Sonnet</SelectItem>
+                    </>}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-max-tokens">Max tokens por resposta</Label>
+                <Input id="ai-agent-max-tokens" type="number" min={1} max={8192} value={agentSettings.maxTokens} onChange={(e) => setAgentSettings((s) => ({ ...s, maxTokens: Math.min(8192, Math.max(1, Number(e.target.value) || 1)) }))} disabled={disabled} />
+              </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-creativity">Criatividade das respostas ({agentSettings.creativity.toFixed(2)})</Label>
+                <input id="ai-agent-creativity" type="range" min={0} max={1} step={0.05} value={agentSettings.creativity} onChange={(e) => setAgentSettings((s) => ({ ...s, creativity: Number(e.target.value) }))} disabled={disabled} className="w-full accent-primary" />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>Mais obediente (0)</span><span>Mais criativo (1)</span></div>
+                <p className="text-xs text-muted-foreground">Valores baixos seguem melhor o treinamento e as regras. Recomendado: 0.3.</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ai-agent-speed">Tempo de resposta</Label>
+                  <Select value={agentSettings.responseSpeed} onValueChange={(value) => setAgentSettings((s) => ({ ...s, responseSpeed: (value ?? 'automatic') as AiAgentSettings['responseSpeed'] }))} disabled={disabled}>
+                    <SelectTrigger id="ai-agent-speed"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="automatic">Automático (adapta ao tamanho — mais humano)</SelectItem>
+                      <SelectItem value="fast">Rápido (~1s)</SelectItem>
+                      <SelectItem value="normal">Normal (~2.5s)</SelectItem>
+                      <SelectItem value="slow">Lento (~5s)</SelectItem>
+                      <SelectItem value="custom">Customizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {agentSettings.responseSpeed === 'custom' && <div className="space-y-2">
+                  <Label htmlFor="ai-agent-delay">Atraso customizado (ms)</Label>
+                  <Input id="ai-agent-delay" type="number" min={0} max={30000} step={100} value={agentSettings.customResponseDelayMs} onChange={(e) => setAgentSettings((s) => ({ ...s, customResponseDelayMs: Math.min(30000, Math.max(0, Number(e.target.value) || 0)) }))} disabled={disabled} />
+                </div>}
+              </div>
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div><Label htmlFor="ai-agent-split">Quebrar mensagem em blocos</Label><p className="mt-1 text-xs text-muted-foreground">Envia respostas em mensagens menores, como uma pessoa digitando aos poucos.</p></div>
+                  <Switch id="ai-agent-split" checked={agentSettings.splitMessages} onCheckedChange={(checked) => setAgentSettings((s) => ({ ...s, splitMessages: checked }))} disabled={disabled} />
+                </div>
+                {agentSettings.splitMessages && <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2"><Label htmlFor="ai-agent-block-size">Caracteres por bloco</Label><Input id="ai-agent-block-size" type="number" min={80} max={1000} value={agentSettings.charactersPerBlock} onChange={(e) => setAgentSettings((s) => ({ ...s, charactersPerBlock: Math.min(1000, Math.max(80, Number(e.target.value) || 80)) }))} disabled={disabled} /></div>
+                  <div className="space-y-2"><Label htmlFor="ai-agent-block-pause">Pausa entre blocos (ms)</Label><Input id="ai-agent-block-pause" type="number" min={0} max={10000} step={100} value={agentSettings.pauseBetweenBlocksMs} onChange={(e) => setAgentSettings((s) => ({ ...s, pauseBetweenBlocksMs: Math.min(10000, Math.max(0, Number(e.target.value) || 0)) }))} disabled={disabled} /></div>
+                </div>}
+              </div>
+              <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                <div><Label htmlFor="ai-agent-confirm-read">Confirmar leitura antes de responder</Label><p className="mt-1 text-xs text-muted-foreground">Marca a mensagem recebida como lida e aguarda um instante antes da resposta automática.</p></div>
+                <Switch id="ai-agent-confirm-read" checked={agentSettings.confirmReadBeforeReply} onCheckedChange={(checked) => setAgentSettings((s) => ({ ...s, confirmReadBeforeReply: checked }))} disabled={disabled} />
+              </div>
+            </>}
             {section === 'persona' && <div className="space-y-2">
               <Label htmlFor="ai-agent-persona">Persona e identidade</Label>
               <Textarea
@@ -706,36 +828,69 @@ export function AiConfig({
             {section === 'channels' && <div className="space-y-3 rounded-md border p-3">
               <div>
                 <p className="text-sm font-semibold">WhatsApps vinculados a este agente</p>
-                <p className="text-xs text-muted-foreground">Cada conexão pode atender por um agente. Atribua aqui a instância que deve responder aos clientes.</p>
+                <p className="text-xs text-muted-foreground">Conecte vários números Cloud API ou Evolution e atribua cada número a este agente.</p>
               </div>
               {channelChoices.map((channel) => (
-                <label
+                <div
                   key={channel.id}
                   className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors hover:bg-muted/40"
                 >
                   <input
                     type="checkbox"
                     className="mt-1 h-4 w-4 accent-primary"
-                    checked={agentSettings.enabledChannels.includes(channel.id)}
+                    checked={agentSettings.enabledChannels.includes(channel.key)}
                     disabled={disabled || !channel.connected}
                     onChange={(e) =>
                       setAgentSettings((s) => ({
                         ...s,
                         enabledChannels: e.target.checked
-                          ? [...s.enabledChannels, channel.id]
-                          : s.enabledChannels.filter((v) => v !== channel.id),
+                          ? [...s.enabledChannels, channel.key]
+                          : s.enabledChannels.filter((v) => v !== channel.key),
                       }))
                     }
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium">{channel.label}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{channel.address ?? (channel.id === 'whatsapp_evolution' ? 'Nenhuma instância conectada' : 'Configure em Configurações → WhatsApp')}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{channel.address ?? (channel.provider === 'evolution' ? 'Instância QR' : 'Configure em Configurações → WhatsApp')}</span>
                   </span>
-                  <span className={channel.connected ? 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground'}>
-                    {channel.connected ? 'Conectado' : 'Desconectado'}
-                  </span>
-                </label>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span className={channel.connected ? 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground'}>
+                      {channel.connected ? 'Conectado' : 'Desconectado'}
+                    </span>
+                    {!channel.connected && channel.provider === 'evolution' && <Button type="button" size="sm" variant="outline" disabled={channelBusy} onClick={async () => {
+                      setChannelBusy(true);
+                      try {
+                        const result = await fetch(`/api/whatsapp/qr?channel_id=${encodeURIComponent(channel.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'qr' }) });
+                        const payload = await result.json();
+                        if (!result.ok) throw new Error(payload.error ?? 'Não foi possível iniciar a conexão.');
+                        setQrChannelId(channel.id); setQrVersion(String(Date.now()));
+                      } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao gerar QR Code.'); }
+                      finally { setChannelBusy(false); }
+                    }}>Conectar</Button>}
+                    {channel.provider === 'evolution' && channel.key.includes(':') && <Button type="button" size="sm" variant="ghost" disabled={channelBusy} onClick={() => void deleteChannel(channel.id)}>Remover</Button>}
+                    {channel.provider === 'cloud' && channel.address && <Button type="button" size="sm" variant="ghost" disabled={channelBusy} onClick={async () => {
+                      if (!window.confirm(`Desconectar o WhatsApp ${channel.label}?`)) return;
+                      setChannelBusy(true);
+                      try {
+                        const response = await fetch(`/api/whatsapp/config?phone_number_id=${encodeURIComponent(channel.address!)}`, { method: 'DELETE' });
+                        const payload = await response.json();
+                        if (!response.ok) throw new Error(payload.error ?? 'Não foi possível desconectar o número.');
+                        setAgentSettings((s) => ({ ...s, enabledChannels: s.enabledChannels.filter((key) => key !== channel.key) }));
+                        await refreshChannels(); toast.success('WhatsApp desconectado.');
+                      } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao desconectar número.'); }
+                      finally { setChannelBusy(false); }
+                    }}>Desconectar</Button>}
+                  </div>
+                </div>
               ))}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" disabled={disabled || channelBusy} onClick={() => void addEvolutionChannel()}>{channelBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Adicionar número Evolution</Button>
+                <p className="self-center text-xs text-muted-foreground">Para adicionar Cloud API, conecte outro número em Configurações → WhatsApp.</p>
+              </div>
+              {qrChannelId && <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-white p-3 text-foreground">
+                <img src={`/api/whatsapp/qr?view=qr&channel_id=${encodeURIComponent(qrChannelId)}&v=${encodeURIComponent(qrVersion)}`} alt="QR Code para conectar WhatsApp" className="h-52 w-52 object-contain" />
+                <div className="space-y-2"><p className="text-sm font-medium">Leia o QR Code pelo WhatsApp</p><p className="text-xs text-muted-foreground">WhatsApp → Aparelhos conectados → Conectar aparelho.</p><Button type="button" size="sm" variant="outline" onClick={async () => { await refreshChannels(); }} >Atualizar conexões</Button></div>
+              </div>}
               {channelChoices.length === 0 && <p className="text-xs text-muted-foreground">Carregando conexões ou sem permissão para visualizá-las.</p>}
             </div>}
             {section === 'triggers' && <div className="space-y-3 rounded-md border p-3">

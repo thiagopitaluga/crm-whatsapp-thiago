@@ -141,6 +141,8 @@ export function WhatsAppConfig() {
           .from('whatsapp_config')
           .select('*')
           .eq('account_id', acctId)
+          .order('created_at', { ascending: true })
+          .limit(1)
           .maybeSingle();
 
         if (error) {
@@ -261,7 +263,7 @@ export function WhatsAppConfig() {
       const { error } = await supabase
         .from('whatsapp_config')
         .update({ mirror_inbound_media: next })
-        .eq('account_id', accountId);
+        .eq('id', config.id);
       if (error) throw new Error(error.message);
       setConfig({ ...config, mirror_inbound_media: next });
     } catch (error) {
@@ -289,7 +291,7 @@ export function WhatsAppConfig() {
       const { error } = await supabase
         .from('whatsapp_config')
         .update({ media_retention_days: parsed })
-        .eq('account_id', accountId);
+        .eq('id', config.id);
       if (error) throw new Error(error.message);
       setConfig({ ...config, media_retention_days: parsed });
       toast.success(t('retentionSaved'));

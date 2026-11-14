@@ -209,7 +209,7 @@ export async function planBroadcastResume(
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', accountId)
-    .single();
+    .order('created_at', { ascending: true }).limit(1).maybeSingle();
   if (configError || !config) {
     throw new BroadcastError(
       'whatsapp_not_configured',
