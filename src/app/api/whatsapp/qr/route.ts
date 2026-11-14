@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       return new NextResponse(await upstream.arrayBuffer(), {
         status: 200,
         headers: {
-          'content-type': 'image/svg+xml; charset=utf-8',
+          'content-type': upstream.headers.get('content-type') ?? 'image/png',
           'cache-control': 'no-store, max-age=0',
           'x-content-type-options': 'nosniff',
           'content-security-policy':

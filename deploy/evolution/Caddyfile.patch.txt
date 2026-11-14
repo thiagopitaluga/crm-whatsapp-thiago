@@ -1,0 +1,9 @@
+# Inside the existing connect.tpxdigital.com site block, replace the
+# @notConnectorApi matcher with this one so the Evolution API remains
+# authenticated by its apikey instead of the browser basic-auth challenge:
+@notConnectorApi not path /v1/* /evolution/*
+
+# Add this route before the existing catch-all reverse_proxy:
+handle_path /evolution/* {
+	reverse_proxy 127.0.0.1:8080
+}
