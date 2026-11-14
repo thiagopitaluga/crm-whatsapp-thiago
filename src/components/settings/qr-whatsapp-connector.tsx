@@ -38,6 +38,7 @@ type QrStatus =
 type StatusPayload = {
   status?: QrStatus;
   qr_available?: boolean;
+  qr_version?: string | null;
   last_error?: string | null;
   error?: string;
 };
@@ -46,7 +47,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
   const t = useTranslations('Settings.whatsapp.qr');
   const [status, setStatus] = useState<QrStatus>('loading');
   const [qrAvailable, setQrAvailable] = useState(false);
-  const [qrVersion, setQrVersion] = useState(0);
+  const [qrVersion, setQrVersion] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const initialized = useRef(false);
@@ -61,7 +62,17 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
       setStatus(nextStatus);
       setQrAvailable(data.qr_available === true);
       setError(data.last_error ?? null);
-      if (data.qr_available) setQrVersion(Date.now());
+      if (data.qr_available) {
+        // Evolution rotates QR strings on its own timer. Keep the displayed
+        // image steady between those rotations instead of reloading it on
+        // every status poll. The legacy connector has no QR fingerprint.
+        const nextQrVersion = data.qr_version ?? Date.now().toString();
+        setQrVersion((current) =>
+          current === nextQrVersion ? current : nextQrVersion
+        );
+      } else {
+        setQrVersion('');
+      }
       return nextStatus;
     } catch (requestError) {
       const message =
@@ -202,7 +213,7 @@ export function QrWhatsAppConnector({ disabled }: { disabled: boolean }) {
               <div className="border-border rounded-2xl border bg-white p-3 shadow-sm">
                 <Image
                   key={qrVersion}
-                  src={`/api/whatsapp/qr?view=qr&v=${qrVersion}`}
+                  src={`/api/whatsapp/qr?view=qr&v=${encodeURIComponent(qrVersion)}`}
                   alt={t('qrAlt')}
                   width={300}
                   height={300}

@@ -11,6 +11,7 @@ export const runtime = 'nodejs';
 type ConnectorStatus = {
   status?: unknown;
   qr_available?: unknown;
+  qr_version?: unknown;
   last_error?: unknown;
 };
 
@@ -47,6 +48,8 @@ export async function GET(request: Request) {
       {
         status: normalizeStatus(data.status),
         qr_available: data.qr_available === true,
+        qr_version:
+          typeof data.qr_version === 'string' ? data.qr_version : null,
         last_error:
           typeof data.last_error === 'string' ? data.last_error : null,
       },

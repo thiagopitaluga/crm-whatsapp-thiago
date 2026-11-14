@@ -31,7 +31,8 @@ services:
       LOG_LEVEL: ERROR,WARN
       LOG_BAILEYS: error
       TELEMETRY_ENABLED: 'false'
-      QRCODE_LIMIT: 30
+      # Highest safe integer: do not end a QR login after a short retry window.
+      QRCODE_LIMIT: '9007199254740991'
       DEL_INSTANCE: 'false'
     ports:
       - '127.0.0.1:8080:8080'

@@ -20,6 +20,8 @@ Esta integração deixa o CRM falar diretamente com a Evolution API. O processo 
 
 O Compose fixa `evoapicloud/evolution-api:v2.3.7`, grava instâncias e banco em volumes próprios, e mantém Postgres e Redis sem portas publicadas. O Manager não é necessário para o CRM.
 
+O limite de tentativas de QR está no maior inteiro seguro do JavaScript, para que a Evolution continue emitindo códigos enquanto a conta aguarda o pareamento. O WhatsApp ainda expira cada código individual em seu próprio intervalo; o CRM agora mantém a imagem estável entre rotações e a atualiza quando detecta um QR realmente novo.
+
 ## Configuração do OrganiZAP
 
 Configure no ambiente de produção do CRM e redeploy:

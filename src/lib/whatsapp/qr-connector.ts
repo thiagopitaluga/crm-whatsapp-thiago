@@ -185,6 +185,35 @@ async function fetchEvolutionQrConnector(
     const detail = asRecord(payload?.instance);
     const state =
       typeof detail?.state === 'string' ? detail.state.toLowerCase() : '';
+    let qrVersion: string | null = null;
+    if (state === 'connecting') {
+      const qrResponse = await evolutionRequest(
+        baseUrl,
+        apiKey,
+        `instance/connect/${instance}`,
+        { signal: timeout }
+      );
+      if (qrResponse.ok) {
+        const qrPayload = (await qrResponse.json().catch(() => null)) as Record<
+          string,
+          unknown
+        > | null;
+        const qrData = asRecord(qrPayload?.qrcode);
+        const qrCode =
+          (typeof qrPayload?.code === 'string' && qrPayload.code) ||
+          (typeof qrData?.code === 'string' && qrData.code) ||
+          (typeof qrPayload?.base64 === 'string' && qrPayload.base64) ||
+          (typeof qrData?.base64 === 'string' && qrData.base64) ||
+          '';
+        if (qrCode) {
+          qrVersion = crypto
+            .createHash('sha256')
+            .update(qrCode)
+            .digest('hex')
+            .slice(0, 16);
+        }
+      }
+    }
     return jsonResponse({
       status:
         state === 'open'
@@ -193,6 +222,7 @@ async function fetchEvolutionQrConnector(
             ? 'awaiting_qr_scan'
             : 'disconnected',
       qr_available: state !== 'open' && state !== 'close',
+      qr_version: qrVersion,
       last_error: null,
     });
   }
