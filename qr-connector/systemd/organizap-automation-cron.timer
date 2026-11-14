@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OrganiZAP automation and pipeline jobs every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=false
+Unit=organizap-automation-cron.service
+
+[Install]
+WantedBy=timers.target

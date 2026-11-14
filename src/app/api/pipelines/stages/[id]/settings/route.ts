@@ -1,0 +1,85 @@
+import { NextResponse } from 'next/server';
+import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import {
+  defaultStageSettings,
+  validateStageSettings,
+  type StageSettings,
+} from '@/lib/pipelines/stage-settings';
+
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { supabase } = await requireRole('agent');
+    const { id } = await context.params;
+    const { data, error } = await supabase
+      .from('pipeline_stages')
+      .select('settings')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data)
+      return NextResponse.json(
+        { error: 'Etapa não encontrada.' },
+        { status: 404 }
+      );
+    const { data: jobs } = await supabase
+      .from('stage_jobs')
+      .select('id,kind,status,error,created_at')
+      .eq('stage_id', id)
+      .order('created_at', { ascending: false })
+      .limit(15);
+    return NextResponse.json({
+      settings: data.settings ?? defaultStageSettings(),
+      jobs: jobs ?? [],
+    });
+  } catch (error) {
+    return toErrorResponse(error);
+  }
+}
+
+export async function PUT(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { supabase, accountId } = await requireRole('admin');
+    const { id } = await context.params;
+    const settings = await request.json().catch(() => null);
+    const issue = validateStageSettings(settings);
+    if (issue) return NextResponse.json({ error: issue }, { status: 400 });
+    const s = settings as StageSettings;
+    for (const rule of s.rules.filter(
+      (r) => r.enabled && r.action === 'add_tag'
+    )) {
+      const { data } = await supabase
+        .from('tags')
+        .select('id')
+        .eq('id', rule.value)
+        .eq('account_id', accountId)
+        .maybeSingle();
+      if (!data)
+        return NextResponse.json(
+          { error: 'Selecione uma tag desta conta.' },
+          { status: 400 }
+        );
+    }
+    // RLS is authoritative for the stage and its parent pipeline.
+    const { data, error } = await supabase
+      .from('pipeline_stages')
+      .update({ settings: s })
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data)
+      return NextResponse.json(
+        { error: 'Etapa não encontrada.' },
+        { status: 404 }
+      );
+    return NextResponse.json({ saved: true });
+  } catch (error) {
+    return toErrorResponse(error);
+  }
+}

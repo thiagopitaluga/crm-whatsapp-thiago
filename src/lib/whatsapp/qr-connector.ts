@@ -29,7 +29,16 @@ export function isValidQrConnectorSecret(supplied: string | null): boolean {
 
 export async function fetchQrConnector(
   accountId: string,
-  suffix: 'status' | 'qr.svg' | 'connect' | 'import' | 'groups' | 'groups/send' | 'groups/participants' | '',
+  suffix:
+    | 'status'
+    | 'qr.svg'
+    | 'connect'
+    | 'import'
+    | 'groups'
+    | 'groups/send'
+    | 'groups/participants'
+    | 'messages/send'
+    | '',
   init: RequestInit = {}
 ): Promise<Response> {
   if (!/^[0-9a-f-]{36}$/i.test(accountId)) {
@@ -60,6 +69,8 @@ export async function fetchQrConnector(
     headers,
     cache: 'no-store',
     // A group send is sequential and may take longer than a status check.
-    signal: init.signal ?? AbortSignal.timeout(suffix === 'groups/send' ? 48_000 : 10_000),
+    signal:
+      init.signal ??
+      AbortSignal.timeout(suffix === 'groups/send' ? 48_000 : 10_000),
   });
 }

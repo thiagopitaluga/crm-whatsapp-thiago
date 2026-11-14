@@ -29,6 +29,7 @@ import type {
   Tag,
 } from '@/types';
 import { DealCard } from './deal-card';
+import { StageSettingsButton } from './stage-settings';
 import { KanbanNavigator } from './kanban-navigator';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
@@ -528,6 +529,7 @@ function StageColumn({
         <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium">
           {deals.length}
         </span>
+        <StageSettingsButton stage={stage} tags={tags} />
       </div>
       <p className="text-muted-foreground text-xs">
         {formatCurrency(totalValue, currency)}
