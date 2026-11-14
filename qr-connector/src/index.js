@@ -53,6 +53,30 @@ const app = express();
 app.disable('x-powered-by');
 app.use('/v1', express.json({ limit: '32kb' }), authenticateConnectorRequest);
 
+app.post('/v1/sessions/:accountId/messages/send', async (req, res) => {
+  const accountId = parseAccountId(req.params.accountId);
+  if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
+  const session = sessions.get(accountId);
+  if (!session?.socket || session.status !== 'connected')
+    return res.status(409).json({ error: 'whatsapp_not_connected' });
+  const phone =
+    typeof req.body?.phone === 'string'
+      ? req.body.phone.replace(/\D/g, '')
+      : '';
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  if (!/^\d{8,15}$/.test(phone) || !text || text.length > 4096)
+    return res.status(400).json({ error: 'invalid_message' });
+  try {
+    const sent = await session.socket.sendMessage(`${phone}@s.whatsapp.net`, {
+      text,
+    });
+    if (!sent?.key?.id) throw new Error('missing_message_id');
+    return res.json({ messageId: sent.key.id });
+  } catch {
+    return res.status(502).json({ error: 'message_send_failed' });
+  }
+});
+
 app.get('/health', (_req, res) => {
   res.status(200).type('text').send('ok');
 });
@@ -128,13 +152,11 @@ app.get('/v1/sessions/:accountId/groups', async (req, res) => {
         (group) => typeof group.id === 'string' && group.id.endsWith('@g.us')
       )
       .sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
-    res
-      .set('cache-control', 'no-store')
-      .json({
-        groups: result,
-        admin_detection_version: 2,
-        member_tools_version: 1,
-      });
+    res.set('cache-control', 'no-store').json({
+      groups: result,
+      admin_detection_version: 2,
+      member_tools_version: 1,
+    });
   } catch (error) {
     console.error('[qr-connector] failed to fetch groups:', safeError(error));
     res.status(502).json({ error: 'groups_fetch_failed' });
