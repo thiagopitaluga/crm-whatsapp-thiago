@@ -119,17 +119,17 @@ export default function AgentsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="h-auto w-full justify-start gap-1.5 overflow-x-auto rounded-xl border bg-card p-1.5">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1.5 rounded-xl border bg-card p-1.5">
           {configTabs.map(({ id, label, icon: Icon }) => (
-            <TabsTrigger key={id} value={id} className="shrink-0 rounded-lg border border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary/25 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+            <TabsTrigger key={id} value={id} className="flex-none rounded-lg border border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary/25 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
               <Icon className="mr-1.5 h-4 w-4" />{label}
             </TabsTrigger>
           ))}
-          <TabsTrigger value="suggestions" className="shrink-0 rounded-lg border border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary/25 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+          <TabsTrigger value="suggestions" className="flex-none rounded-lg border border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary/25 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
             <Lightbulb className="mr-1.5 h-4 w-4" />Sugestões
           </TabsTrigger>
           {canViewUsage && (
-            <TabsTrigger value="usage" className="shrink-0 rounded-lg border border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary/25 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+            <TabsTrigger value="usage" className="flex-none rounded-lg border border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary/25 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
               <BarChart3 className="mr-1.5 h-4 w-4" />Uso
             </TabsTrigger>
           )}
