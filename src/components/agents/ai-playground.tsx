@@ -13,7 +13,7 @@ interface Turn {
   handoff?: boolean;
 }
 
-export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
+export function AiPlayground({ onGoToSetup, agentId }: { onGoToSetup?: () => void; agentId?: string }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -38,6 +38,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         // Send only role+content — the server ignores anything else.
         body: JSON.stringify({
           messages: next.map((t) => ({ role: t.role, content: t.content })),
+          agent_id: agentId,
         }),
       });
       const data = await res.json().catch(() => ({}));

@@ -10,6 +10,7 @@ import { latestUserMessage } from './query';
 import { scheduleAiFollowup } from './followup';
 import { engineSendText } from '@/lib/flows/meta-send';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
+import { runAiAgentTriggers } from './agent-triggers';
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -64,10 +65,13 @@ export async function dispatchInboundToAiReply(
           );
       });
 
-    const config = await loadAiConfig(db, accountId);
-    if (!config || !config.autoReplyEnabled) return;
     const channel = args.channel ?? 'whatsapp_cloud';
-    if (!config.agentSettings.inboundEnabled) return;
+    const config = await loadAiConfig(db, accountId, { channel });
+    if (!config) return;
+    if (config.agentId) {
+      await db.from('conversations').update({ ai_agent_id: config.agentId, channel })
+        .eq('id', conversationId).eq('account_id', accountId);
+    }
     if (!config.agentSettings.enabledChannels.includes(channel)) return;
 
     // Deterministic, user-configured responders win over the LLM — the
@@ -101,12 +105,24 @@ export async function dispatchInboundToAiReply(
 
     const messages = await buildConversationContext(db, conversationId);
     if (messages.length === 0) return;
+    const latestInbound = latestUserMessage(messages);
+    const triggerReplySent = await runAiAgentTriggers({
+      db,
+      accountId,
+      userId: configOwnerUserId,
+      contactId,
+      conversationId,
+      channel,
+      eventType: 'new_message',
+      message: latestInbound,
+      config,
+    });
+    if (triggerReplySent || !config.autoReplyEnabled || !config.agentSettings.inboundEnabled) return;
     if (
       config.agentSettings.firstMessageOnly &&
       messages.some((message) => message.role === 'assistant')
     )
       return;
-    const latestInbound = latestUserMessage(messages);
     const triggerKeywords = config.agentSettings.triggerKeywords;
     if (
       triggerKeywords.length > 0 &&
@@ -140,7 +156,7 @@ export async function dispatchInboundToAiReply(
       latestInbound
     );
     const trainingExamples = config.agentSettings.autoTrainingEnabled
-      ? await retrieveTrainingExamples(db, accountId, latestInbound)
+      ? await retrieveTrainingExamples(db, accountId, latestInbound, 3, config.agentId)
       : [];
 
     const systemPrompt = buildSystemPrompt({
@@ -240,6 +256,7 @@ export async function dispatchInboundToAiReply(
         anchorMessageId: sent.message_id,
         sequenceIndex: 0,
         delays: config.agentSettings.followUpDelaysHours,
+        window: config.agentSettings,
       });
     }
   } catch (err) {

@@ -90,7 +90,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Envie uma pergunta para o assistente.' }, { status: 400 })
     }
 
-    const config = await loadAiConfig(supabase, accountId, { requireActive: false })
+    const agentId = typeof body?.agent_id === 'string' ? body.agent_id : undefined
+    const config = await loadAiConfig(supabase, accountId, { requireActive: false, agentId })
     if (!config) {
       return NextResponse.json(
         { error: 'Configure um provedor de IA antes de usar o Assistente do Funil.', code: 'ai_not_configured' },

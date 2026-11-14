@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     if (!limit.success) return rateLimitResponse(limit);
 
     const body = await request.json().catch(() => null);
+    const agentId = typeof body?.agent_id === 'string' ? body.agent_id : undefined;
     const rawMessages = Array.isArray(body?.messages) ? body.messages : null;
     if (!rawMessages) {
       return NextResponse.json(
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
 
     const config = await loadAiConfig(supabase, accountId, {
       requireActive: false,
+      agentId,
     }).catch((err) => {
       console.error('[ai/playground] loadAiConfig error:', err);
       throw new AiError('Stored API key could not be decrypted.', {
@@ -93,7 +95,7 @@ export async function POST(request: Request) {
     );
     const latestInbound = latestUserMessage(messages);
     const trainingExamples = config.agentSettings.autoTrainingEnabled
-      ? await retrieveTrainingExamples(supabase, accountId, latestInbound)
+      ? await retrieveTrainingExamples(supabase, accountId, latestInbound, 3, config.agentId)
       : [];
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,

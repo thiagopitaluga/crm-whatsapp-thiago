@@ -20,7 +20,7 @@ type Example = {
   created_at: string;
 };
 
-export function AiTrainingReview() {
+export function AiTrainingReview({ agentId }: { agentId?: string }) {
   const [examples, setExamples] = useState<Example[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -28,7 +28,8 @@ export function AiTrainingReview() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/ai/training', { cache: 'no-store' });
+      const query = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : '';
+      const response = await fetch(`/api/ai/training${query}`, { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok)
         throw new Error(
@@ -44,7 +45,7 @@ export function AiTrainingReview() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [agentId]);
 
   useEffect(() => {
     void load();
@@ -56,7 +57,7 @@ export function AiTrainingReview() {
       const response = await fetch('/api/ai/training', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id: example.id, status }),
+        body: JSON.stringify({ id: example.id, status, agent_id: agentId }),
       });
       const data = await response.json();
       if (!response.ok)
@@ -84,7 +85,7 @@ export function AiTrainingReview() {
     setPendingId(example.id);
     try {
       const response = await fetch(
-        `/api/ai/training?id=${encodeURIComponent(example.id)}`,
+        `/api/ai/training?id=${encodeURIComponent(example.id)}${agentId ? `&agent_id=${encodeURIComponent(agentId)}` : ''}`,
         { method: 'DELETE' }
       );
       if (!response.ok)

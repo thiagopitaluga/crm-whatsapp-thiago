@@ -16,6 +16,8 @@ export type AiProvider = 'openai' | 'anthropic';
  * (stored AES-256-GCM-encrypted at rest).
  */
 export interface AiConfig {
+  agentId?: string;
+  agentName?: string;
   provider: AiProvider;
   model: string;
   apiKey: string;

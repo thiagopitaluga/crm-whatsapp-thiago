@@ -29,7 +29,7 @@ function bad(message: string) {
  * whether AI is set up. The encrypted key is NEVER returned — only a
  * `has_key` flag; the settings form shows a masked placeholder.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { supabase, accountId } = await getCurrentAccount();
 
@@ -51,7 +51,19 @@ export async function GET() {
       );
     }
 
-    if (!data) return NextResponse.json({ configured: false });
+    const agentId = new URL(request.url).searchParams.get('agent_id');
+    let profile: Record<string, unknown> | null = null;
+    if (agentId) {
+      const { data: agent, error: agentError } = await supabase
+        .from('ai_agents')
+        .select('id, name, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, settings, channel_keys')
+        .eq('account_id', accountId)
+        .eq('id', agentId)
+        .maybeSingle();
+      if (agentError) return NextResponse.json({ error: agentError.message }, { status: 500 });
+      if (agent) profile = agent as unknown as Record<string, unknown>;
+    }
+    if (!data) return NextResponse.json({ configured: false, agent: profile });
     // The keys are selected only to derive the has_* flags; neither is
     // returned to the client.
     const { api_key, embeddings_api_key, ...safe } = data;
@@ -60,6 +72,19 @@ export async function GET() {
       has_key: !!api_key,
       has_embeddings_key: !!embeddings_api_key,
       ...safe,
+      ...(profile ? {
+        agent_id: profile.id,
+        agent_name: profile.name,
+        system_prompt: profile.system_prompt,
+        is_active: profile.is_active,
+        auto_reply_enabled: profile.auto_reply_enabled,
+        auto_reply_max_per_conversation: profile.auto_reply_max_per_conversation,
+        handoff_agent_id: profile.handoff_agent_id,
+        agent_settings: {
+          ...(profile.settings && typeof profile.settings === 'object' ? profile.settings : {}),
+          enabledChannels: Array.isArray(profile.channel_keys) ? profile.channel_keys : [],
+        },
+      } : {}),
     });
   } catch (err) {
     return toErrorResponse(err);
@@ -106,6 +131,21 @@ export async function POST(request: Request) {
     const agentSettingsError = validateAiAgentSettings(agentSettings);
     if (agentSettingsProvided && agentSettingsError)
       return bad(agentSettingsError);
+    const agentId = typeof body.agent_id === 'string' ? body.agent_id : '';
+    let selectedAgent: { id: string } | null = null;
+    if (agentId) {
+      const { data, error } = await supabase.from('ai_agents')
+        .select('id').eq('id', agentId).eq('account_id', accountId).maybeSingle();
+      if (error) throw error;
+      if (!data) return NextResponse.json({ error: 'Agente não encontrado.' }, { status: 404 });
+      selectedAgent = data;
+      const channelKeys = agentSettings.enabledChannels;
+      const { data: peers, error: peersError } = await supabase.from('ai_agents')
+        .select('id, name, channel_keys').eq('account_id', accountId).neq('id', agentId);
+      if (peersError) throw peersError;
+      const conflict = (peers ?? []).find((agent) => channelKeys.some((channel) => (agent.channel_keys ?? []).includes(channel)));
+      if (conflict) return NextResponse.json({ error: `${conflict.name} já está conectado a esse WhatsApp. Desconecte-o antes de atribuir o canal.` }, { status: 409 });
+    }
 
     let maxPer = Number(body.auto_reply_max_per_conversation);
     if (!Number.isFinite(maxPer)) maxPer = 3;
@@ -263,6 +303,23 @@ export async function POST(request: Request) {
           { error: 'Failed to save AI configuration' },
           { status: 500 }
         );
+      }
+    }
+
+    if (selectedAgent) {
+      const { error: profileError } = await supabase.from('ai_agents').update({
+        name: agentSettings.name,
+        system_prompt: systemPrompt,
+        is_active: isActive,
+        auto_reply_enabled: autoReplyEnabled,
+        auto_reply_max_per_conversation: maxPer,
+        handoff_agent_id: handoffAgentId || null,
+        settings: agentSettings,
+        channel_keys: agentSettings.enabledChannels,
+      }).eq('id', selectedAgent.id).eq('account_id', accountId);
+      if (profileError) {
+        console.error('[ai/config POST] agent profile update error:', profileError);
+        return NextResponse.json({ error: 'A configuração geral foi salva, mas não foi possível atualizar este agente.' }, { status: 500 });
       }
     }
 

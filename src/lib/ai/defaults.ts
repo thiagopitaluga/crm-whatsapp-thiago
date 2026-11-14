@@ -95,6 +95,14 @@ export function buildSystemPrompt(args: {
         agentSettings.objective &&
           `Primary objective: ${agentSettings.objective}`,
         agentSettings.tone && `Tone: ${agentSettings.tone}`,
+        agentSettings.vocabulary && `Preferred vocabulary:\n${agentSettings.vocabulary}`,
+        agentSettings.realExamples && `Approved examples of the brand voice:\n${agentSettings.realExamples}`,
+        agentSettings.houseStyle && `House style:\n${agentSettings.houseStyle}`,
+        agentSettings.permittedTopics && `Permitted topics:\n${agentSettings.permittedTopics}`,
+        agentSettings.initialGreeting && `Suggested opening greeting:\n${agentSettings.initialGreeting}`,
+        agentSettings.objectionResponses && `Objection handling guidance:\n${agentSettings.objectionResponses}`,
+        agentSettings.qualificationQuestions && `Qualification questions:\n${agentSettings.qualificationQuestions}`,
+        agentSettings.emotionalTriggers && `Emotional cues to use thoughtfully:\n${agentSettings.emotionalTriggers}`,
         agentSettings.behaviorInstructions &&
           `Behavior instructions:\n${agentSettings.behaviorInstructions}`,
         agentSettings.prohibitedTopics &&

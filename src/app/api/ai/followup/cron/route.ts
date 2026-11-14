@@ -14,6 +14,7 @@ import {
 import { latestUserMessage } from '@/lib/ai/query';
 import { logAiUsage } from '@/lib/ai/usage';
 import { engineSendText } from '@/lib/flows/meta-send';
+import { processDueAiAgentTriggerJobs } from '@/lib/ai/agent-triggers';
 
 export const maxDuration = 120;
 
@@ -41,6 +42,12 @@ export async function GET(request: Request) {
   }
 
   const db = supabaseAdmin();
+  let scheduledTriggers = { processed: 0, failed: 0, skipped: 0 };
+  try {
+    scheduledTriggers = await processDueAiAgentTriggerJobs(db, 10);
+  } catch (error) {
+    console.error('[ai agent triggers] scheduled job scan failed:', error);
+  }
   const now = new Date().toISOString();
   const { data: due, error } = await db
     .from('ai_followup_jobs')
@@ -50,7 +57,7 @@ export async function GET(request: Request) {
     .order('run_at', { ascending: true })
     .limit(1);
   if (error)
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message, scheduledTriggers }, { status: 500 });
 
   let processed = 0;
   let sentCount = 0;
@@ -75,7 +82,7 @@ export async function GET(request: Request) {
     };
 
     try {
-      const config = await loadAiConfig(db, job.account_id);
+      const config = await loadAiConfig(db, job.account_id, { channel: job.channel });
       if (
         !config?.autoReplyEnabled ||
         !config.agentSettings.followUpEnabled ||
@@ -127,7 +134,7 @@ export async function GET(request: Request) {
       const [knowledge, trainingExamples] = await Promise.all([
         retrieveKnowledge(db, job.account_id, config, customerMessage),
         config.agentSettings.autoTrainingEnabled
-          ? retrieveTrainingExamples(db, job.account_id, customerMessage)
+          ? retrieveTrainingExamples(db, job.account_id, customerMessage, 3, config.agentId)
           : Promise.resolve([]),
       ]);
       const systemPrompt = buildSystemPrompt({
@@ -196,6 +203,7 @@ export async function GET(request: Request) {
           anchorMessageId: sent.message_id,
           sequenceIndex: job.sequence_index + 1,
           delays: config.agentSettings.followUpDelaysHours,
+          window: config.agentSettings,
         });
       }
     } catch (error) {
@@ -203,5 +211,5 @@ export async function GET(request: Request) {
       await finish('failed');
     }
   }
-  return NextResponse.json({ processed, sent: sentCount, skipped });
+  return NextResponse.json({ processed, sent: sentCount, skipped, scheduledTriggers });
 }

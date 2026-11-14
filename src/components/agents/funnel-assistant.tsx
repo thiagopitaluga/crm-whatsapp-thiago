@@ -57,7 +57,7 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
-export function FunnelAssistant({ onGoToSetup }: { onGoToSetup: () => void }) {
+export function FunnelAssistant({ onGoToSetup, agentId }: { onGoToSetup: () => void; agentId?: string }) {
   const [data, setData] = useState<FunnelData | null>(null)
   const [loadingData, setLoadingData] = useState(true)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -68,7 +68,8 @@ export function FunnelAssistant({ onGoToSetup }: { onGoToSetup: () => void }) {
   async function loadOverview() {
     setLoadingData(true)
     try {
-      const response = await fetch('/api/ai/funnel', { cache: 'no-store' })
+      const query = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : ''
+      const response = await fetch(`/api/ai/funnel${query}`, { cache: 'no-store' })
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error ?? 'Falha ao carregar o funil.')
       setData({ summary: payload.summary, highlights: payload.highlights ?? [] })
@@ -81,7 +82,7 @@ export function FunnelAssistant({ onGoToSetup }: { onGoToSetup: () => void }) {
 
   useEffect(() => {
     void loadOverview()
-  }, [])
+  }, [agentId])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -99,7 +100,7 @@ export function FunnelAssistant({ onGoToSetup }: { onGoToSetup: () => void }) {
       const response = await fetch('/api/ai/funnel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: next, agent_id: agentId }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {

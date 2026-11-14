@@ -9,6 +9,7 @@ type QrConnectorSuffix =
   | 'groups/send'
   | 'groups/participants'
   | 'messages/send'
+  | 'messages/media'
   | '';
 
 export class QrConnectorConfigurationError extends Error {
@@ -450,6 +451,28 @@ async function fetchEvolutionQrConnector(
     return typeof messageId === 'string'
       ? jsonResponse({ messageId })
       : jsonResponse({ error: 'message_id_missing' }, 502);
+  }
+
+  if (suffix === 'messages/media') {
+    const body = parseJsonBody(init.body);
+    const phone = typeof body?.phone === 'string' ? body.phone.replace(/\D/g, '') : '';
+    const kind = typeof body?.kind === 'string' ? body.kind : '';
+    const url = typeof body?.url === 'string' ? body.url : '';
+    const caption = typeof body?.caption === 'string' ? body.caption : '';
+    if (!/^\d{8,15}$/.test(phone) || !['image', 'video', 'audio', 'document'].includes(kind) || !url)
+      return jsonResponse({ error: 'invalid_media' }, 400);
+    const response = await evolutionRequest(baseUrl, apiKey, `message/sendMedia/${instance}`, {
+      method: 'POST',
+      body: JSON.stringify({ number: phone, mediatype: kind, media: url, caption }),
+      signal: timeout,
+    });
+    if (!response.ok) return response;
+    const payload = asRecord(await response.json().catch(() => null));
+    const key = asRecord(payload?.key);
+    const data = asRecord(payload?.data);
+    const messageKey = asRecord(data?.key);
+    const messageId = [key?.id, messageKey?.id, payload?.messageId].find((value) => typeof value === 'string');
+    return typeof messageId === 'string' ? jsonResponse({ messageId }) : jsonResponse({ error: 'message_id_missing' }, 502);
   }
 
   if (suffix === 'groups/send') {

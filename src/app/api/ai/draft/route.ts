@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     );
     const latestInbound = latestUserMessage(messages);
     const trainingExamples = config.agentSettings.autoTrainingEnabled
-      ? await retrieveTrainingExamples(supabase, accountId, latestInbound)
+      ? await retrieveTrainingExamples(supabase, accountId, latestInbound, 3, config.agentId)
       : [];
 
     const systemPrompt = buildSystemPrompt({

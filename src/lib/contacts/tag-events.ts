@@ -6,6 +6,9 @@ import {
 } from '@/lib/automations/engine';
 import { addContactTagIfAbsent } from './tag-write';
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from './tag-chain';
+import { loadAiConfig } from '@/lib/ai/config';
+import { runAiAgentTriggers } from '@/lib/ai/agent-triggers';
+import { supabaseAdmin } from '@/lib/ai/admin-client';
 
 export { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from './tag-chain';
 
@@ -62,6 +65,32 @@ export async function addContactTagAndDispatch(
       },
     },
   });
+
+  try {
+    const aiDb = supabaseAdmin();
+    const { data: conversation } = await aiDb.from('conversations')
+      .select('id, user_id, channel, ai_agent_id')
+      .eq('account_id', input.accountId).eq('contact_id', input.contactId)
+      .eq('status', 'open').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+    if (conversation?.ai_agent_id && conversation.channel) {
+      const config = await loadAiConfig(aiDb, input.accountId, { agentId: conversation.ai_agent_id });
+      if (config?.isActive && config.agentSettings.enabledChannels.includes(conversation.channel)) {
+        await runAiAgentTriggers({
+          db: aiDb,
+          accountId: input.accountId,
+          userId: conversation.user_id,
+          contactId: input.contactId,
+          conversationId: conversation.id,
+          channel: conversation.channel,
+          eventType: 'tag_added',
+          tagId: input.tagId,
+          config,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('[ai agent triggers] tag-added dispatch failed:', error);
+  }
 
   return { added: true, dispatched: true };
 }

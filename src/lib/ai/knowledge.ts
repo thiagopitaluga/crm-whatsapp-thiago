@@ -158,15 +158,18 @@ export async function retrieveTrainingExamples(
   db: SupabaseClient,
   accountId: string,
   queryText: string,
-  limit = 3
+  limit = 3,
+  agentId?: string
 ): Promise<Array<{ customerMessage: string; agentReply: string }>> {
-  const { data, error } = await db
+  let query = db
     .from('ai_training_examples')
     .select('customer_message, agent_reply')
     .eq('account_id', accountId)
     .eq('status', 'approved')
     .order('created_at', { ascending: false })
     .limit(100);
+  if (agentId) query = query.eq('agent_id', agentId);
+  const { data, error } = await query;
   if (error || !data?.length) return [];
 
   const tokens = new Set(

@@ -11,13 +11,17 @@ export async function captureHumanTrainingExample(args: {
 }) {
   const reply = args.reply?.trim();
   if (!reply) return;
-  const { data: config, error: configError } = await args.db
-    .from('ai_configs')
-    .select('agent_settings')
-    .eq('account_id', args.accountId)
-    .maybeSingle();
-  if (configError || !config) return;
-  const settings = normalizeAiAgentSettings(config.agent_settings);
+  const { data: conversation, error: conversationError } = await args.db
+    .from('conversations').select('ai_agent_id').eq('id', args.conversationId)
+    .eq('account_id', args.accountId).maybeSingle();
+  if (conversationError || !conversation) return;
+  let agentQuery = args.db.from('ai_agents').select('id, settings').eq('account_id', args.accountId);
+  agentQuery = conversation.ai_agent_id
+    ? agentQuery.eq('id', conversation.ai_agent_id)
+    : agentQuery.eq('is_default', true);
+  const { data: agent, error: agentError } = await agentQuery.maybeSingle();
+  if (agentError || !agent) return;
+  const settings = normalizeAiAgentSettings(agent.settings);
   if (!settings.autoTrainingEnabled) return;
 
   const { data: sentMessage, error: sentError } = await args.db
@@ -45,6 +49,7 @@ export async function captureHumanTrainingExample(args: {
 
   const { error } = await args.db.from('ai_training_examples').insert({
     account_id: args.accountId,
+    agent_id: agent.id,
     conversation_id: args.conversationId,
     source_message_id: args.sourceMessageId,
     customer_message: customerText.slice(0, 4000),

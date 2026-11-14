@@ -33,7 +33,7 @@ const CONFIG_COLUMNS =
 export async function loadAiConfig(
   db: SupabaseClient,
   accountId: string,
-  opts: { requireActive?: boolean } = {}
+  opts: { requireActive?: boolean; channel?: string; agentId?: string } = {}
 ): Promise<AiConfig | null> {
   const { requireActive = true } = opts;
   const { data, error } = await db
@@ -46,9 +46,24 @@ export async function loadAiConfig(
   if (!data) return null;
 
   const row = data as AiConfigRow;
+  let agentProfile: Record<string, unknown> | null = null;
+  let agentQuery = db
+    .from('ai_agents')
+    .select('id, name, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, settings, channel_keys')
+    .eq('account_id', accountId);
+  if (opts.agentId) agentQuery = agentQuery.eq('id', opts.agentId);
+  else if (opts.channel) agentQuery = agentQuery.contains('channel_keys', [opts.channel]);
+  else agentQuery = agentQuery.eq('is_default', true);
+  const { data: selectedAgent, error: agentError } = await agentQuery.maybeSingle();
+  if (agentError) throw agentError;
+  if (selectedAgent) agentProfile = selectedAgent as unknown as Record<string, unknown>;
+
+  const isActive = agentProfile
+    ? agentProfile.is_active === true
+    : row.is_active;
   // The Playground passes requireActive:false so an admin can test the
   // agent before flipping the master switch on.
-  if (requireActive && !row.is_active) return null;
+  if (requireActive && !isActive) return null;
   // Defensive: the column is NOT NULL, but a partial write / manual DB
   // edit could leave it empty. Treat a missing key as "not configured"
   // rather than letting decrypt() throw on null.
@@ -71,17 +86,33 @@ export async function loadAiConfig(
     }
   }
 
+  const settings = agentProfile?.settings ?? row.agent_settings;
+  const channelKeys = agentProfile?.channel_keys;
+  const agentSettings = normalizeAiAgentSettings(settings);
+  if (Array.isArray(channelKeys)) {
+    agentSettings.enabledChannels = channelKeys.filter((v): v is string => typeof v === 'string');
+  }
   return {
+    agentId: typeof agentProfile?.id === 'string' ? agentProfile.id : undefined,
+    agentName: typeof agentProfile?.name === 'string' ? agentProfile.name : agentSettings.name,
     provider: row.provider,
     model: row.model,
     apiKey: decrypt(row.api_key),
-    systemPrompt: row.system_prompt,
-    isActive: row.is_active,
-    autoReplyEnabled: row.auto_reply_enabled,
-    autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
-    handoffAgentId: row.handoff_agent_id,
+    systemPrompt: agentProfile && typeof agentProfile.system_prompt === 'string'
+      ? agentProfile.system_prompt
+      : row.system_prompt,
+    isActive,
+    autoReplyEnabled: agentProfile
+      ? agentProfile.auto_reply_enabled === true
+      : row.auto_reply_enabled,
+    autoReplyMaxPerConversation: agentProfile && typeof agentProfile.auto_reply_max_per_conversation === 'number'
+      ? agentProfile.auto_reply_max_per_conversation
+      : row.auto_reply_max_per_conversation,
+    handoffAgentId: agentProfile
+      ? (typeof agentProfile.handoff_agent_id === 'string' ? agentProfile.handoff_agent_id : null)
+      : row.handoff_agent_id,
     embeddingsApiKey,
-    agentSettings: normalizeAiAgentSettings(row.agent_settings),
+    agentSettings,
   };
 }
 
