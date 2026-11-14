@@ -1,0 +1,15 @@
+[Unit]
+Description=Process one due OrganiZAP AI follow-up
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+DynamicUser=yes
+EnvironmentFile=/etc/organizap/group-broadcast-cron.env
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 105 --header "Authorization: Bearer ${CRON_SECRET}" https://organizap.tpxdigital.com/api/ai/followup/cron
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

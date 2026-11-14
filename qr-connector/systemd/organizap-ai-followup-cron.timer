@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OrganiZAP AI follow-ups every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=false
+Unit=organizap-ai-followup-cron.service
+
+[Install]
+WantedBy=timers.target

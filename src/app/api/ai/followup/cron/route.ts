@@ -15,7 +15,7 @@ import { latestUserMessage } from '@/lib/ai/query';
 import { logAiUsage } from '@/lib/ai/usage';
 import { engineSendText } from '@/lib/flows/meta-send';
 
-export const maxDuration = 300;
+export const maxDuration = 120;
 
 function isAuthorized(request: Request) {
   const expected =
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     .eq('status', 'pending')
     .lte('run_at', now)
     .order('run_at', { ascending: true })
-    .limit(30);
+    .limit(1);
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
