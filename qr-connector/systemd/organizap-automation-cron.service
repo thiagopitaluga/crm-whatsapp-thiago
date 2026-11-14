@@ -1,5 +1,5 @@
 [Unit]
-Description=Process OrganiZAP automation, flow, and pipeline-stage jobs
+Description=Process OrganiZAP automations, flows, pipeline stages, and AI follow-ups
 Wants=network-online.target
 After=network-online.target
 
@@ -8,6 +8,7 @@ Type=oneshot
 DynamicUser=yes
 EnvironmentFile=/etc/organizap/group-broadcast-cron.env
 ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 50 --header "Authorization: Bearer ${CRON_SECRET}" https://organizap.tpxdigital.com/api/automations/cron
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 50 --header "Authorization: Bearer ${CRON_SECRET}" https://organizap.tpxdigital.com/api/ai/followup/cron
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

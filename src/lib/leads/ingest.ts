@@ -18,6 +18,7 @@ export interface IngestLeadResult {
   contactCreated: boolean;
   conversationId: string;
   dealId: string | null;
+  messageInserted?: boolean;
 }
 
 export type ExternalMessageContentType =
@@ -40,6 +41,7 @@ export interface IngestExternalWhatsAppMessageInput extends IngestLeadInput {
   /** MIME type supplied by the trusted QR connector for media. */
   mediaType?: string | null;
   createdAt?: string | null;
+  aiGenerated?: boolean;
 }
 
 /**
@@ -195,6 +197,7 @@ export async function ingestExternalWhatsAppMessage(
         media_type: input.mediaType ?? null,
         message_id: messageId,
         status: input.direction === 'inbound' ? 'delivered' : 'sent',
+        ai_generated: input.aiGenerated === true,
         created_at: createdAt,
       },
       { onConflict: 'conversation_id,message_id', ignoreDuplicates: true }
@@ -225,7 +228,15 @@ export async function ingestExternalWhatsAppMessage(
     }
   }
 
-  return result;
+  if (input.aiGenerated === true) {
+    await db
+      .from('messages')
+      .update({ ai_generated: true })
+      .eq('conversation_id', result.conversationId)
+      .eq('message_id', messageId);
+  }
+
+  return { ...result, messageInserted: Boolean(insertedRows?.length) };
 }
 
 async function findExistingConversation(

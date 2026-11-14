@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff } from 'lucide-react';
+import {
+  Loader2,
+  Sparkles,
+  CheckCircle2,
+  Trash2,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import { Button } from '@/components/ui/button';
@@ -26,8 +33,15 @@ import {
 } from '@/components/ui/select';
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
+import { AiTrainingReview } from '@/components/agents/ai-training-review';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
+import {
+  DEFAULT_AI_AGENT_SETTINGS,
+  normalizeAiAgentSettings,
+  validateAiAgentSettings,
+  type AiAgentSettings,
+} from '@/lib/ai/agent-settings';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useTranslations } from 'next-intl';
@@ -75,6 +89,9 @@ export function AiConfig() {
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
+  const [agentSettings, setAgentSettings] = useState<AiAgentSettings>(
+    DEFAULT_AI_AGENT_SETTINGS
+  );
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -96,6 +113,7 @@ export function AiConfig() {
         setProvider(data.provider);
         setModel(data.model);
         setSystemPrompt(data.system_prompt ?? '');
+        setAgentSettings(normalizeAiAgentSettings(data.agent_settings));
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
@@ -151,6 +169,7 @@ export function AiConfig() {
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
+    agent_settings: agentSettings,
   });
 
   const handleTest = async () => {
@@ -182,6 +201,11 @@ export function AiConfig() {
     }
     if (!configured && !keyEdited) {
       toast.error(t('missingApiKey'));
+      return;
+    }
+    const agentIssue = validateAiAgentSettings(agentSettings);
+    if (agentIssue) {
+      toast.error(agentIssue);
       return;
     }
     setSaving(true);
@@ -218,6 +242,7 @@ export function AiConfig() {
         setIsActive(false);
         setAutoReplyEnabled(false);
         setSystemPrompt('');
+        setAgentSettings(DEFAULT_AI_AGENT_SETTINGS);
         setHandoffAgentId('');
       } else {
         const data = await res.json();
@@ -232,8 +257,9 @@ export function AiConfig() {
 
   if (loading || profileLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('loadFailed')} {/* Re-using label or a global one, wait, loading is better. Let's use useTranslations from overview or just hardcode Loading... actually I should add loading to aiConfig */}
+      <div className="text-muted-foreground flex items-center justify-center py-16">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('loadFailed')}{' '}
+        {/* Re-using label or a global one, wait, loading is better. Let's use useTranslations from overview or just hardcode Loading... actually I should add loading to aiConfig */}
         {/* Wait, I didn't add loading to aiConfig. I'll just use loading. */}
       </div>
     );
@@ -243,13 +269,10 @@ export function AiConfig() {
 
   return (
     <div>
-      <SettingsPanelHead
-        title={t('title')}
-        description={t('description')}
-      />
+      <SettingsPanelHead title={t('title')} description={t('description')} />
 
       {!canEdit && (
-        <p className="mb-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        <p className="border-border bg-muted/40 text-muted-foreground mb-4 rounded-md border px-3 py-2 text-sm">
           {t('adminOnlyConfig')}
         </p>
       )}
@@ -258,11 +281,10 @@ export function AiConfig() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4 text-primary" /> {t('providerAndKey')}
+              <Sparkles className="text-primary h-4 w-4" />{' '}
+              {t('providerAndKey')}
             </CardTitle>
-            <CardDescription>
-              {t('encryptionNotice')}
-            </CardDescription>
+            <CardDescription>{t('encryptionNotice')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -277,7 +299,9 @@ export function AiConfig() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="openai">{PROVIDER_LABEL.openai}</SelectItem>
+                    <SelectItem value="openai">
+                      {PROVIDER_LABEL.openai}
+                    </SelectItem>
                     <SelectItem value="anthropic">
                       {PROVIDER_LABEL.anthropic}
                     </SelectItem>
@@ -322,7 +346,7 @@ export function AiConfig() {
                   <button
                     type="button"
                     onClick={() => setShowKey((s) => !s)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
                     tabIndex={-1}
                   >
                     {showKey ? (
@@ -350,7 +374,7 @@ export function AiConfig() {
             <div className="space-y-2">
               <Label htmlFor="ai-embeddings-key">
                 {t('embeddingsKey')}{' '}
-                <span className="font-normal text-muted-foreground">
+                <span className="text-muted-foreground font-normal">
                   {t('optionalSemanticSearch')}
                 </span>
               </Label>
@@ -372,7 +396,7 @@ export function AiConfig() {
                 disabled={disabled}
                 autoComplete="off"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {t('embeddingsHint', {
                   sameKeyText: provider === 'openai' ? t('sameKeyText') : '',
                 })}
@@ -383,10 +407,10 @@ export function AiConfig() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{t('behaviour')}</CardTitle>
-            <CardDescription>
-              {t('behaviourDesc')}
-            </CardDescription>
+            <CardTitle className="text-base">
+              {t('behaviour')} · Perfil do agente
+            </CardTitle>
+            <CardDescription>{t('behaviourDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -401,12 +425,12 @@ export function AiConfig() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+            <div className="border-border flex items-center justify-between gap-4 rounded-md border p-3">
               <div>
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-foreground text-sm font-medium">
                   {t('enableAssistant')}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {t('enableAssistantDesc')}
                 </p>
               </div>
@@ -417,12 +441,12 @@ export function AiConfig() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+            <div className="border-border flex items-center justify-between gap-4 rounded-md border p-3">
               <div>
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-foreground text-sm font-medium">
                   {t('autoReply')}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {t('autoReplyDesc')}
                 </p>
               </div>
@@ -436,7 +460,7 @@ export function AiConfig() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <Label htmlFor="ai-max">{t('maxAutoReplies')}</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {t('maxAutoRepliesDesc')}
                 </p>
               </div>
@@ -448,7 +472,7 @@ export function AiConfig() {
                 value={maxPerConversation}
                 onChange={(e) =>
                   setMaxPerConversation(
-                    Math.min(20, Math.max(1, Number(e.target.value) || 1)),
+                    Math.min(20, Math.max(1, Number(e.target.value) || 1))
                   )
                 }
                 disabled={disabled || !autoReplyEnabled}
@@ -458,7 +482,7 @@ export function AiConfig() {
 
             <div className="space-y-2">
               <Label htmlFor="ai-handoff">{t('handoffTo')}</Label>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {t('handoffToDesc')}
               </p>
               <Select
@@ -482,6 +506,331 @@ export function AiConfig() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Treinamento do agente</CardTitle>
+            <CardDescription>
+              Defina persona, objetivo, regras, canais, gatilhos e como o agente
+              aprende com a equipe.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-name">Nome do agente</Label>
+                <Input
+                  id="ai-agent-name"
+                  value={agentSettings.name}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({ ...s, name: e.target.value }))
+                  }
+                  disabled={disabled}
+                  maxLength={80}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-tone">Tom de voz</Label>
+                <Input
+                  id="ai-agent-tone"
+                  value={agentSettings.tone}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({ ...s, tone: e.target.value }))
+                  }
+                  placeholder="Amigável, consultivo e objetivo"
+                  disabled={disabled}
+                  maxLength={100}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ai-agent-persona">Persona e identidade</Label>
+              <Textarea
+                id="ai-agent-persona"
+                value={agentSettings.persona}
+                onChange={(e) =>
+                  setAgentSettings((s) => ({ ...s, persona: e.target.value }))
+                }
+                placeholder="Quem é o agente, como se apresenta e qual experiência deve oferecer."
+                rows={3}
+                disabled={disabled}
+                maxLength={4000}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ai-agent-objective">Objetivo comercial</Label>
+              <Textarea
+                id="ai-agent-objective"
+                value={agentSettings.objective}
+                onChange={(e) =>
+                  setAgentSettings((s) => ({ ...s, objective: e.target.value }))
+                }
+                placeholder="Ex.: entender a necessidade, qualificar o lead e marcar uma demonstração."
+                rows={2}
+                disabled={disabled}
+                maxLength={2000}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-behavior">
+                  Instruções de comportamento
+                </Label>
+                <Textarea
+                  id="ai-agent-behavior"
+                  value={agentSettings.behaviorInstructions}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      behaviorInstructions: e.target.value,
+                    }))
+                  }
+                  placeholder="Como conduzir conversas, perguntas de qualificação, estilo de respostas…"
+                  rows={5}
+                  disabled={disabled}
+                  maxLength={8000}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-prohibited">
+                  Regras e assuntos proibidos
+                </Label>
+                <Textarea
+                  id="ai-agent-prohibited"
+                  value={agentSettings.prohibitedTopics}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      prohibitedTopics: e.target.value,
+                    }))
+                  }
+                  placeholder="O que não prometer, revelar, recomendar ou discutir."
+                  rows={5}
+                  disabled={disabled}
+                  maxLength={4000}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ai-agent-handoff">
+                Regras de transferência para atendente
+              </Label>
+              <Textarea
+                id="ai-agent-handoff"
+                value={agentSettings.handoffRules}
+                onChange={(e) =>
+                  setAgentSettings((s) => ({
+                    ...s,
+                    handoffRules: e.target.value,
+                  }))
+                }
+                rows={2}
+                disabled={disabled}
+                maxLength={4000}
+              />
+            </div>
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">Canais atendidos</p>
+              {(
+                [
+                  ['whatsapp_cloud', 'WhatsApp Cloud API'],
+                  ['whatsapp_evolution', 'WhatsApp conectado pela Evolution'],
+                ] as const
+              ).map(([channel, label]) => (
+                <label
+                  key={channel}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={agentSettings.enabledChannels.includes(channel)}
+                    disabled={disabled}
+                    onChange={(e) =>
+                      setAgentSettings((s) => ({
+                        ...s,
+                        enabledChannels: e.target.checked
+                          ? [...s.enabledChannels, channel]
+                          : s.enabledChannels.filter((v) => v !== channel),
+                      }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+              <p className="text-muted-foreground text-xs">
+                Instagram e Messenger aparecem quando esses canais estiverem
+                conectados ao CRM.
+              </p>
+            </div>
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">Gatilhos de atendimento</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={agentSettings.inboundEnabled}
+                  disabled={disabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      inboundEnabled: e.target.checked,
+                    }))
+                  }
+                />
+                Responder mensagens recebidas automaticamente
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={agentSettings.firstMessageOnly}
+                  disabled={disabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      firstMessageOnly: e.target.checked,
+                    }))
+                  }
+                />
+                Atuar somente na primeira mensagem da conversa
+              </label>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-keywords">
+                  Palavras-chave de ativação (uma por linha; vazio = todas)
+                </Label>
+                <Textarea
+                  id="ai-agent-keywords"
+                  value={agentSettings.triggerKeywords.join('\n')}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      triggerKeywords: e.target.value
+                        .split('\n')
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                        .slice(0, 50),
+                    }))
+                  }
+                  rows={3}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">Follow-up automático</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={agentSettings.followUpEnabled}
+                  disabled={disabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      followUpEnabled: e.target.checked,
+                    }))
+                  }
+                />
+                Habilitar retomadas quando o cliente não responder
+              </label>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-followup-delays">
+                  Intervalos em horas (separados por vírgula; até 5)
+                </Label>
+                <Input
+                  id="ai-agent-followup-delays"
+                  value={agentSettings.followUpDelaysHours.join(', ')}
+                  disabled={disabled || !agentSettings.followUpEnabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      followUpDelaysHours: e.target.value
+                        .split(',')
+                        .map((v) => Number(v.trim()))
+                        .filter(
+                          (v) => Number.isInteger(v) && v >= 1 && v <= 8760
+                        )
+                        .slice(0, 5),
+                    }))
+                  }
+                  placeholder="24, 72"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-followup-rules">
+                  Orientação para as mensagens de follow-up
+                </Label>
+                <Textarea
+                  id="ai-agent-followup-rules"
+                  value={agentSettings.followUpInstructions}
+                  disabled={disabled || !agentSettings.followUpEnabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      followUpInstructions: e.target.value,
+                    }))
+                  }
+                  rows={3}
+                  maxLength={4000}
+                  placeholder="Retome com contexto, sem pressionar e sem repetir a mensagem anterior."
+                />
+              </div>
+              <p className="text-muted-foreground text-xs">
+                As retomadas usam os intervalos definidos e são canceladas
+                quando o cliente responde ou um atendente assume a conversa.
+              </p>
+            </div>
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">Auto training</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={agentSettings.autoTrainingEnabled}
+                  disabled={disabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      autoTrainingEnabled: e.target.checked,
+                    }))
+                  }
+                />
+                Aprender com pares de mensagens reais respondidas pela equipe
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={agentSettings.trainingRequiresApproval}
+                  disabled={disabled || !agentSettings.autoTrainingEnabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      trainingRequiresApproval: e.target.checked,
+                    }))
+                  }
+                />
+                Exigir aprovação de administrador antes de usar cada exemplo
+                (recomendado)
+              </label>
+              <div className="space-y-2">
+                <Label htmlFor="ai-agent-training-guidance">
+                  Orientação de treinamento
+                </Label>
+                <Textarea
+                  id="ai-agent-training-guidance"
+                  value={agentSettings.autoTrainingInstructions}
+                  disabled={disabled || !agentSettings.autoTrainingEnabled}
+                  onChange={(e) =>
+                    setAgentSettings((s) => ({
+                      ...s,
+                      autoTrainingInstructions: e.target.value,
+                    }))
+                  }
+                  rows={2}
+                  maxLength={4000}
+                  placeholder="Padrões de linguagem e atendimento a reforçar."
+                />
+              </div>
+              {canEdit && <AiTrainingReview />}
             </div>
           </CardContent>
         </Card>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/ai/admin-client';
+import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import {
   ingestExternalWhatsAppMessage,
   type ExternalMessageContentType,
@@ -107,22 +108,46 @@ export async function POST(request: Request) {
     }
 
     try {
-      await ingestExternalWhatsAppMessage(supabaseAdmin(), accountId, {
-        phone,
-        name:
-          key?.fromMe === true
-            ? null
-            : typeof message.pushName === 'string'
-              ? message.pushName.trim() || null
-              : null,
-        direction: key?.fromMe === true ? 'outbound' : 'inbound',
-        messageId,
-        contentText: content.text,
-        contentType: content.type,
-        mediaUrl,
-        mediaType,
-        createdAt,
-      });
+      const ingested = await ingestExternalWhatsAppMessage(
+        supabaseAdmin(),
+        accountId,
+        {
+          phone,
+          name:
+            key?.fromMe === true
+              ? null
+              : typeof message.pushName === 'string'
+                ? message.pushName.trim() || null
+                : null,
+          direction: key?.fromMe === true ? 'outbound' : 'inbound',
+          messageId,
+          contentText: content.text,
+          contentType: content.type,
+          mediaUrl,
+          mediaType,
+          createdAt,
+        }
+      );
+      if (
+        key?.fromMe !== true &&
+        ingested?.messageInserted &&
+        content.type === 'text'
+      ) {
+        const { data: account } = await supabaseAdmin()
+          .from('accounts')
+          .select('owner_user_id')
+          .eq('id', accountId)
+          .maybeSingle();
+        if (typeof account?.owner_user_id === 'string') {
+          await dispatchInboundToAiReply({
+            accountId,
+            conversationId: ingested.conversationId,
+            contactId: ingested.contactId,
+            configOwnerUserId: account.owner_user_id,
+            channel: 'whatsapp_evolution',
+          });
+        }
+      }
       processed++;
     } catch (error) {
       console.error(

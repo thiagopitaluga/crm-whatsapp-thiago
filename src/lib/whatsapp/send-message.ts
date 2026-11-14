@@ -36,6 +36,7 @@ import {
 } from '@/lib/whatsapp/interactive';
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { captureHumanTrainingExample } from '@/lib/ai/training';
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -119,8 +120,13 @@ export function validateSendMessageParams(params: {
   templateName?: string | null;
   interactivePayload?: InteractiveMessagePayload | null;
 }): void {
-  const { messageType, contentText, mediaUrl, templateName, interactivePayload } =
-    params;
+  const {
+    messageType,
+    contentText,
+    mediaUrl,
+    templateName,
+    interactivePayload,
+  } = params;
 
   if (!messageType) {
     throw new SendMessageError('bad_request', 'message_type is required', 400);
@@ -508,6 +514,32 @@ export async function sendMessageToConversation(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId);
+
+  // When auto-training is enabled, pair the latest customer text with this
+  // real human reply. Admins review examples by default before the model uses them.
+  try {
+    const { error: followupCancelError } = await supabaseAdmin()
+      .from('ai_followup_jobs')
+      .update({ status: 'cancelled' })
+      .eq('account_id', accountId)
+      .eq('conversation_id', conversationId)
+      .eq('status', 'pending');
+    if (followupCancelError) {
+      console.error(
+        '[ai follow-up] cancel-on-agent-send failed:',
+        followupCancelError.message
+      );
+    }
+    await captureHumanTrainingExample({
+      db: supabaseAdmin(),
+      accountId,
+      conversationId,
+      sourceMessageId: messageRecord.id,
+      reply: persistedText,
+    });
+  } catch (trainingError) {
+    console.error('[ai training] capture failed:', trainingError);
+  }
 
   // Pause any active Flow run for this contact — the agent stepping in
   // is the strongest "yield, human is here" signal. Best-effort.
