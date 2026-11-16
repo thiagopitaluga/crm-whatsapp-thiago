@@ -11,8 +11,12 @@ import {
   Megaphone,
   RefreshCw,
   ShieldCheck,
+  ImageOff,
+  Play,
 } from 'lucide-react';
 import type { MetaMetricGroup } from '@/lib/meta-ads/dashboard';
+import type { CreativePreview } from '@/lib/meta-ads/creative';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 type Connection = {
   id: string;
@@ -105,10 +109,16 @@ function PerformanceTable({
   rows,
   currency,
   hasData,
+  previews,
+  showCreatives,
+  onPreview,
 }: {
   rows: MetaMetricGroup[];
   currency: string | null;
   hasData: boolean;
+  previews: Record<string, CreativePreview>;
+  showCreatives: boolean;
+  onPreview: (item: MetaMetricGroup, preview: CreativePreview) => void;
 }) {
   if (!hasData)
     return (
@@ -128,6 +138,7 @@ function PerformanceTable({
       <table className="w-full min-w-[760px] text-left text-sm">
         <thead className="bg-muted/50 text-muted-foreground text-xs">
           <tr>
+            {showCreatives && <th scope="col" className="px-4 py-3 font-medium">Criativo</th>}
             <th scope="col" className="px-4 py-3 font-medium">
               Nome
             </th>
@@ -154,6 +165,14 @@ function PerformanceTable({
               key={item.id}
               className="border-border hover:bg-muted/30 border-t"
             >
+              {showCreatives && <td className="px-4 py-2">
+                {previews[item.id]?.imageUrl || previews[item.id]?.isVideo ? <button type="button" onClick={() => onPreview(item, previews[item.id])} className="relative block size-14 overflow-hidden rounded-md border border-border bg-muted focus-visible:outline-2 focus-visible:outline-primary" aria-label={`Ver criativo de ${item.name}`}>
+                  {/* Meta returns signed CDN URLs, so these are rendered directly. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {previews[item.id].imageUrl && <img src={previews[item.id].imageUrl!} alt="" className="h-full w-full object-cover" loading="lazy" onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />}
+                  {previews[item.id].isVideo && <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white"><Play className="size-5 fill-current" /></span>}
+                </button> : <span className="flex size-14 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground" title="Prévia indisponível"><ImageOff className="size-5" /></span>}
+              </td>}
               <td
                 className="max-w-[300px] truncate px-4 py-3 font-medium"
                 title={item.name}
@@ -193,6 +212,11 @@ export default function MetaAdsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [previews, setPreviews] = useState<Record<string, CreativePreview>>({});
+  const [previewUnavailable, setPreviewUnavailable] = useState(false);
+  const [selectedCreative, setSelectedCreative] = useState<{ name: string; id: string; preview: CreativePreview } | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoLoading, setVideoLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -226,6 +250,32 @@ export default function MetaAdsPage() {
     void load();
     return () => controller.abort();
   }, [days, adAccount, refresh]);
+
+  useEffect(() => {
+    setPreviews({}); setPreviewUnavailable(false);
+    const accountId = overview?.selectedAdAccountId;
+    if (level !== 'ads' || !accountId || !overview?.hasAdsData) return;
+    const controller = new AbortController();
+    fetch(`/api/meta-ads/creatives?ad_account_id=${encodeURIComponent(accountId)}`, { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => { if (!response.ok) throw new Error('Prévia indisponível'); return response.json() as Promise<{ previews: Record<string, CreativePreview> }>; })
+      .then((data) => setPreviews(data.previews ?? {}))
+      .catch(() => { if (!controller.signal.aborted) setPreviewUnavailable(true); });
+    return () => controller.abort();
+  }, [overview?.selectedAdAccountId, overview?.hasAdsData, level, refresh]);
+
+  useEffect(() => {
+    setVideoUrl(null);
+    if (!selectedCreative?.preview.isVideo || !overview?.selectedAdAccountId) { setVideoLoading(false); return; }
+    const controller = new AbortController();
+    setVideoLoading(true);
+    const params = new URLSearchParams({ ad_account_id: overview.selectedAdAccountId, ad_id: selectedCreative.id });
+    fetch(`/api/meta-ads/creatives?${params}`, { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => response.ok ? response.json() as Promise<{ videoUrl: string | null }> : { videoUrl: null })
+      .then((result) => setVideoUrl(result.videoUrl))
+      .catch(() => { if (!controller.signal.aborted) setVideoUrl(null); })
+      .finally(() => { if (!controller.signal.aborted) setVideoLoading(false); });
+    return () => controller.abort();
+  }, [selectedCreative, overview?.selectedAdAccountId]);
 
   const connection = overview?.connections.find(
     (item) => item.meta_ad_account_id === overview.selectedAdAccountId
@@ -536,8 +586,22 @@ export default function MetaAdsPage() {
           rows={overview?.ads[level] ?? []}
           currency={currency}
           hasData={hasData}
+          showCreatives={level === 'ads'}
+          previews={previews}
+          onPreview={(item, preview) => setSelectedCreative({ name: item.name, id: item.id, preview })}
         />
+        {level === 'ads' && previewUnavailable && <p className="text-xs text-muted-foreground">Não foi possível carregar as prévias na Meta. Confira a conexão e atualize o painel.</p>}
       </section>
+
+      <Dialog open={!!selectedCreative} onOpenChange={(open) => { if (!open) setSelectedCreative(null); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogTitle className="pr-8">{selectedCreative?.name}</DialogTitle>
+          {selectedCreative && <div className="flex min-h-40 items-center justify-center overflow-hidden rounded-lg bg-black">
+            {videoUrl ? <video src={videoUrl} controls autoPlay playsInline className="max-h-[70vh] w-full" /> : selectedCreative.preview.imageUrl && <img src={selectedCreative.preview.imageUrl} alt={`Criativo de ${selectedCreative.name}`} className="max-h-[70vh] max-w-full object-contain" />}
+          </div>}
+          {selectedCreative?.preview.isVideo && !videoUrl && <p className="text-sm text-muted-foreground">{videoLoading ? 'Carregando vídeo…' : 'A Meta não disponibilizou o vídeo para reprodução. A imagem exibida é a prévia do criativo.'}</p>}
+        </DialogContent>
+      </Dialog>
 
       <section className="space-y-3" aria-label="Leads de formulários no CRM">
         <div className="flex flex-wrap items-end justify-between gap-3">

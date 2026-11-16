@@ -102,6 +102,28 @@ export class MetaGraphReadClient {
     return this.list(`act_${adAccountId}/${type}`, { fields, limit: '500' });
   }
 
+  adCreatives(adAccountId: string) {
+    if (!META_ID.test(adAccountId)) throw new Error('Invalid Meta ad account');
+    return this.list(`act_${adAccountId}/ads`, {
+      fields: 'id,creative{thumbnail_url,image_url,object_story_spec,asset_feed_spec}',
+      limit: '100',
+    });
+  }
+
+  async object(id: string, fields: string): Promise<Record<string, unknown>> {
+    if (!META_ID.test(id)) throw new Error('Invalid Meta object');
+    const url = new URL(id, this.base);
+    url.searchParams.set('fields', fields);
+    const response = await this.transport(url.toString(), {
+      headers: { Authorization: `Bearer ${this.token}` },
+      cache: 'no-store', signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`Meta Graph returned ${response.status}`);
+    const data = await response.json();
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid Meta Graph response');
+    return data as Record<string, unknown>;
+  }
+
   leadForms(pageId: string) {
     if (!META_ID.test(pageId)) throw new Error('Invalid Meta Page');
     return this.list(`${pageId}/leadgen_forms`, {
