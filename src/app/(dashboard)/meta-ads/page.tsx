@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { MetaMetricGroup } from '@/lib/meta-ads/dashboard';
 import type { CreativePreview } from '@/lib/meta-ads/creative';
+import { PerformanceTable } from '@/components/meta-ads/performance-table';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 type Connection = {
@@ -102,103 +103,6 @@ function MetricCard({
       </p>
       <p className="text-muted-foreground mt-1 text-xs">{caption}</p>
     </article>
-  );
-}
-
-function PerformanceTable({
-  rows,
-  currency,
-  hasData,
-  previews,
-  showCreatives,
-  onPreview,
-}: {
-  rows: MetaMetricGroup[];
-  currency: string | null;
-  hasData: boolean;
-  previews: Record<string, CreativePreview>;
-  showCreatives: boolean;
-  onPreview: (item: MetaMetricGroup, preview: CreativePreview) => void;
-}) {
-  if (!hasData)
-    return (
-      <div className="border-border text-muted-foreground rounded-xl border border-dashed px-5 py-12 text-center text-sm">
-        Os dados de anúncios aparecerão após conectar a API oficial e fazer a
-        primeira sincronização.
-      </div>
-    );
-  if (!rows.length)
-    return (
-      <div className="border-border text-muted-foreground rounded-xl border border-dashed px-5 py-12 text-center text-sm">
-        Nenhum item com desempenho neste período.
-      </div>
-    );
-  return (
-    <div className="border-border overflow-x-auto rounded-xl border">
-      <table className="w-full min-w-[760px] text-left text-sm">
-        <thead className="bg-muted/50 text-muted-foreground text-xs">
-          <tr>
-            {showCreatives && <th scope="col" className="px-4 py-3 font-medium">Criativo</th>}
-            <th scope="col" className="px-4 py-3 font-medium">
-              Nome
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Investimento
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Impressões
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Cliques
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Leads Meta
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Custo/lead
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((item) => (
-            <tr
-              key={item.id}
-              className="border-border hover:bg-muted/30 border-t"
-            >
-              {showCreatives && <td className="px-4 py-2">
-                {previews[item.id]?.imageUrl || previews[item.id]?.isVideo ? <button type="button" onClick={() => onPreview(item, previews[item.id])} className="relative block size-14 overflow-hidden rounded-md border border-border bg-muted focus-visible:outline-2 focus-visible:outline-primary" aria-label={`Ver criativo de ${item.name}`}>
-                  {/* Meta returns signed CDN URLs, so these are rendered directly. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {previews[item.id].imageUrl && <img src={previews[item.id].imageUrl!} alt="" className="h-full w-full object-cover" loading="lazy" onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />}
-                  {previews[item.id].isVideo && <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white"><Play className="size-5 fill-current" /></span>}
-                </button> : <span className="flex size-14 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground" title="Prévia indisponível"><ImageOff className="size-5" /></span>}
-              </td>}
-              <td
-                className="max-w-[300px] truncate px-4 py-3 font-medium"
-                title={item.name}
-              >
-                {item.name}
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums">
-                {money(item.spend, currency)}
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums">
-                {nf.format(item.impressions)}
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums">
-                {nf.format(item.clicks)}
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums">
-                {nf.format(item.reportedLeads)}
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums">
-                {item.cpl === null ? '—' : money(item.cpl, currency)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
@@ -586,6 +490,7 @@ export default function MetaAdsPage() {
           rows={overview?.ads[level] ?? []}
           currency={currency}
           hasData={hasData}
+          accountId={overview?.selectedAdAccountId ?? null}
           showCreatives={level === 'ads'}
           previews={previews}
           onPreview={(item, preview) => setSelectedCreative({ name: item.name, id: item.id, preview })}

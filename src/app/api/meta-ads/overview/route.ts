@@ -46,7 +46,7 @@ export async function GET(request: Request) {
         const { data, error } = await supabase
           .from('meta_ads_daily_insights')
           .select(
-            'report_date, meta_ad_account_id, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, currency, spend, impressions, clicks, link_clicks, reported_leads'
+            'report_date, meta_ad_account_id, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, currency, spend, impressions, clicks, link_clicks, reported_leads, actions'
           )
           .eq('account_id', accountId)
           .eq('meta_ad_account_id', selected.meta_ad_account_id)

@@ -13,6 +13,7 @@ export interface MetaInsightRow {
   clicks: number | string;
   link_clicks: number | string;
   reported_leads: number | string;
+  actions?: unknown;
 }
 
 export interface MetaMetricGroup {
@@ -25,6 +26,12 @@ export interface MetaMetricGroup {
   reportedLeads: number;
   cpl: number | null;
   ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  linkCtr: number | null;
+  costPerLinkClick: number | null;
+  leadConversionRate: number | null;
+  actions: Record<string, number>;
 }
 
 type Level = 'campaign' | 'adset' | 'ad';
@@ -35,13 +42,18 @@ function amount(value: number | string): number {
 }
 
 function calculated(
-  group: Omit<MetaMetricGroup, 'cpl' | 'ctr'>
+  group: Omit<MetaMetricGroup, 'cpl' | 'ctr' | 'cpc' | 'cpm' | 'linkCtr' | 'costPerLinkClick' | 'leadConversionRate'>
 ): MetaMetricGroup {
   return {
     ...group,
     cpl: group.reportedLeads > 0 ? group.spend / group.reportedLeads : null,
     ctr:
       group.impressions > 0 ? (group.clicks / group.impressions) * 100 : null,
+    cpc: group.clicks > 0 ? group.spend / group.clicks : null,
+    cpm: group.impressions > 0 ? group.spend * 1000 / group.impressions : null,
+    linkCtr: group.impressions > 0 ? group.linkClicks * 100 / group.impressions : null,
+    costPerLinkClick: group.linkClicks > 0 ? group.spend / group.linkClicks : null,
+    leadConversionRate: group.linkClicks > 0 ? group.reportedLeads * 100 / group.linkClicks : null,
   };
 }
 
@@ -54,6 +66,7 @@ export function aggregateMetaInsights(rows: MetaInsightRow[]) {
     clicks: 0,
     linkClicks: 0,
     reportedLeads: 0,
+    actions: {} as Record<string, number>,
   };
   const byDay = new Map<string, typeof totals>();
   const byLevel: Record<Level, Map<string, typeof totals>> = {
@@ -75,6 +88,13 @@ export function aggregateMetaInsights(rows: MetaInsightRow[]) {
       item.clicks += metrics.clicks;
       item.linkClicks += metrics.linkClicks;
       item.reportedLeads += metrics.reportedLeads;
+      if (Array.isArray(row.actions)) for (const value of row.actions) {
+        if (!value || typeof value !== 'object') continue;
+        const action = value as Record<string, unknown>;
+        const actionValue = Number(action.value);
+        if (typeof action.action_type !== 'string' || !/^[a-zA-Z0-9_.:-]{1,120}$/.test(action.action_type) || !Number.isFinite(actionValue) || actionValue < 0) continue;
+        item.actions[action.action_type] = (item.actions[action.action_type] ?? 0) + actionValue;
+      }
     };
     add(totals);
     if (!byDay.has(row.report_date))
@@ -87,6 +107,7 @@ export function aggregateMetaInsights(rows: MetaInsightRow[]) {
         clicks: 0,
         linkClicks: 0,
         reportedLeads: 0,
+        actions: {},
       });
     add(byDay.get(row.report_date)!);
     const dimensions: Array<[Level, string | null, string]> = [
@@ -106,6 +127,7 @@ export function aggregateMetaInsights(rows: MetaInsightRow[]) {
           clicks: 0,
           linkClicks: 0,
           reportedLeads: 0,
+          actions: {},
         });
       add(byLevel[level].get(key)!);
     }
