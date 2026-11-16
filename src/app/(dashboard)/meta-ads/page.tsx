@@ -120,6 +120,7 @@ export default function MetaAdsPage() {
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
   const [selectedCreative, setSelectedCreative] = useState<{ name: string; id: string; preview: CreativePreview } | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
 
   useEffect(() => {
@@ -169,13 +170,14 @@ export default function MetaAdsPage() {
 
   useEffect(() => {
     setVideoUrl(null);
+    setVideoPreviewUrl(null);
     if (!selectedCreative?.preview.isVideo || !overview?.selectedAdAccountId) { setVideoLoading(false); return; }
     const controller = new AbortController();
     setVideoLoading(true);
     const params = new URLSearchParams({ ad_account_id: overview.selectedAdAccountId, ad_id: selectedCreative.id });
     fetch(`/api/meta-ads/creatives?${params}`, { signal: controller.signal, cache: 'no-store' })
-      .then(async (response) => response.ok ? response.json() as Promise<{ videoUrl: string | null }> : { videoUrl: null })
-      .then((result) => setVideoUrl(result.videoUrl))
+      .then(async (response) => response.ok ? response.json() as Promise<{ videoUrl: string | null; previewUrl: string | null }> : { videoUrl: null, previewUrl: null })
+      .then((result) => { setVideoUrl(result.videoUrl); setVideoPreviewUrl(result.previewUrl); })
       .catch(() => { if (!controller.signal.aborted) setVideoUrl(null); })
       .finally(() => { if (!controller.signal.aborted) setVideoLoading(false); });
     return () => controller.abort();
@@ -462,31 +464,10 @@ export default function MetaAdsPage() {
               Valores da API oficial, quando conectada.
             </p>
           </div>
-          <div
-            className="border-border inline-flex rounded-lg border p-1"
-            role="group"
-            aria-label="Nível do relatório"
-          >
-            {(
-              [
-                ['campaigns', 'Campanhas'],
-                ['adsets', 'Conjuntos'],
-                ['ads', 'Anúncios'],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setLevel(key)}
-                aria-pressed={level === key}
-                className={`rounded-md px-3 py-1.5 text-sm ${level === key ? 'bg-amber-500 text-black' : 'text-muted-foreground hover:bg-muted'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+
         </div>
         <PerformanceTable
+          toolbar={<div className="border-border inline-flex rounded-lg border p-1" role="group" aria-label="Nível do relatório">{([['campaigns', 'Campanhas'], ['adsets', 'Conjuntos'], ['ads', 'Anúncios']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setLevel(key)} aria-pressed={level === key} className={`rounded-md px-3 py-1.5 text-sm ${level === key ? 'bg-amber-500 text-black' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}</div>}
           rows={overview?.ads[level] ?? []}
           currency={currency}
           hasData={hasData}
@@ -502,9 +483,9 @@ export default function MetaAdsPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogTitle className="pr-8">{selectedCreative?.name}</DialogTitle>
           {selectedCreative && <div className="flex min-h-40 items-center justify-center overflow-hidden rounded-lg bg-black">
-            {videoUrl ? <video src={videoUrl} controls autoPlay playsInline className="max-h-[70vh] w-full" /> : selectedCreative.preview.imageUrl && <img src={selectedCreative.preview.imageUrl} alt={`Criativo de ${selectedCreative.name}`} className="max-h-[70vh] max-w-full object-contain" />}
+            {videoUrl ? <video src={videoUrl} controls playsInline onError={() => setVideoUrl(null)} className="max-h-[70vh] w-full" /> : videoPreviewUrl ? <iframe src={videoPreviewUrl} title={`Prévia do anúncio ${selectedCreative.name}`} className="h-[65vh] w-full bg-white" sandbox="allow-scripts allow-same-origin allow-popups" allow="autoplay; encrypted-media; fullscreen" referrerPolicy="no-referrer" /> : selectedCreative.preview.imageUrl && <img src={selectedCreative.preview.imageUrl} alt={`Criativo de ${selectedCreative.name}`} className="max-h-[70vh] max-w-full object-contain" />}
           </div>}
-          {selectedCreative?.preview.isVideo && !videoUrl && <p className="text-sm text-muted-foreground">{videoLoading ? 'Carregando vídeo…' : 'A Meta não disponibilizou o vídeo para reprodução. A imagem exibida é a prévia do criativo.'}</p>}
+          {selectedCreative?.preview.isVideo && !videoUrl && !videoPreviewUrl && <p className="text-sm text-muted-foreground">{videoLoading ? 'Carregando vídeo…' : 'A Meta não disponibilizou o vídeo para reprodução. A imagem exibida é a prévia do criativo.'}</p>}
         </DialogContent>
       </Dialog>
 

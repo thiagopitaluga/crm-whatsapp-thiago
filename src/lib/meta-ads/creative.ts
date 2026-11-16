@@ -30,3 +30,14 @@ export function creativePreview(value: unknown): CreativePreview {
     .map(metaMediaUrl).find(Boolean) ?? null;
   return { imageUrl, isVideo: !!videoId || videos.length > 0, videoId };
 }
+
+export function metaAdPreviewUrl(body: unknown): string | null {
+  if (typeof body !== 'string') return null;
+  const src = body.match(/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
+  if (!src) return null;
+  try {
+    const url = new URL(src.replaceAll('&amp;', '&'));
+    if (url.protocol !== 'https:' || !['www.facebook.com', 'web.facebook.com', 'facebook.com'].includes(url.hostname.toLowerCase()) || url.pathname !== '/ads/api/preview_iframe.php' || url.searchParams.has('access_token')) return null;
+    return url.toString();
+  } catch { return null; }
+}

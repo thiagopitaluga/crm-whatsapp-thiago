@@ -3,7 +3,7 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/ai/admin-client';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { MetaGraphReadClient } from '@/lib/meta-ads/graph-client';
-import { creativePreview, metaMediaUrl } from '@/lib/meta-ads/creative';
+import { creativePreview, metaAdPreviewUrl, metaMediaUrl } from '@/lib/meta-ads/creative';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -35,11 +35,18 @@ export async function GET(request: Request) {
       if (!ad) return NextResponse.json({ error: 'Anúncio não encontrado nesta conta.' }, { status: 404 });
       const result = await graph.object(adId, 'creative{thumbnail_url,image_url,object_story_spec,asset_feed_spec}');
       const preview = creativePreview(result.creative);
-      if (!preview.videoId) return NextResponse.json({ videoUrl: null });
-      try {
-        const video = await graph.object(preview.videoId, 'source');
-        return NextResponse.json({ videoUrl: metaMediaUrl(video.source) }, { headers: { 'cache-control': 'no-store' } });
-      } catch { return NextResponse.json({ videoUrl: null }, { headers: { 'cache-control': 'no-store' } }); }
+      let videoUrl: string | null = null;
+      if (preview.videoId) {
+        try { videoUrl = metaMediaUrl((await graph.object(preview.videoId, 'source')).source); } catch { /* Try the official preview. */ }
+      }
+      let previewUrl: string | null = null;
+      {
+        try {
+          const previews = await graph.list(`${adId}/previews`, { ad_format: 'MOBILE_FEED_STANDARD' }, 2);
+          previewUrl = previews.map((item) => metaAdPreviewUrl(item.body)).find(Boolean) ?? null;
+        } catch { /* Some accounts cannot generate previews. */ }
+      }
+      return NextResponse.json({ videoUrl, previewUrl }, { headers: { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
     }
     const ads = await graph.adCreatives(adAccountId);
     const previews = Object.fromEntries(ads.filter((ad) => typeof ad.id === 'string' && idPattern.test(ad.id)).map((ad) => [ad.id as string, creativePreview(ad.creative)]));
