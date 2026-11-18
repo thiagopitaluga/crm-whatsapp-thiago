@@ -37,7 +37,7 @@ interface WebsiteAttributionClick {
   utm_term: string | null;
   gclid: string | null;
   fbclid: string | null;
-  created_at: string;
+  captured_at: string;
 }
 
 interface WhatsAppConversationAttribution {
@@ -164,10 +164,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       supabase
         .from('campaign_attribution_clicks')
         .select(
-          'id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, gclid, fbclid, created_at'
+          'id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, gclid, fbclid, captured_at'
         )
         .eq('resolved_contact_id', contact.id)
-        .order('created_at', { ascending: false })
+        .order('captured_at', { ascending: false })
         .limit(3),
       supabase
         .from('conversation_attributions')
@@ -343,6 +343,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     const hasTechnicalData = Boolean(
                       touchpoint.utm_source ||
                         touchpoint.utm_medium ||
+                        touchpoint.utm_campaign ||
                         touchpoint.utm_term ||
                         touchpoint.utm_content ||
                         touchpoint.gclid ||
@@ -381,6 +382,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                             <div className="mt-2 grid gap-1.5 border-l pl-2">
                               <MetaAttributionDetail label="UTM source" value={touchpoint.utm_source} />
                               <MetaAttributionDetail label="UTM medium" value={touchpoint.utm_medium} />
+                              <MetaAttributionDetail label="UTM campaign" value={touchpoint.utm_campaign} />
                               <MetaAttributionDetail label="UTM term" value={touchpoint.utm_term} />
                               <MetaAttributionDetail label="UTM content" value={touchpoint.utm_content} />
                               <MetaAttributionDetail label="gclid" value={touchpoint.gclid} />

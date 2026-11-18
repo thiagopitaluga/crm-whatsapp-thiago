@@ -70,6 +70,7 @@ vi.mock('@supabase/supabase-js', () => ({
         case 'conversations':
           // findOrCreateConversation: select().eq().eq().order().limit()
           return {
+            update: () => ({ eq: () => Promise.resolve({ error: null }) }),
             select: () => ({
               eq: () => ({
                 eq: () => ({
@@ -84,6 +85,10 @@ vi.mock('@supabase/supabase-js', () => ({
               }),
             }),
           }
+        case 'whatsapp_channels':
+          return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }
+        case 'attribution_touchpoints':
+          return { upsert: async () => ({ error: null }) }
         case 'broadcast_recipients':
           // flagBroadcastReplyIfAny: select().eq().eq().in().order().limit()
           return {
@@ -143,6 +148,7 @@ vi.mock('@supabase/supabase-js', () => ({
           }
         case 'conversation_attributions':
           return {
+            select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }),
             upsert: (row: Record<string, unknown>, options: unknown) => {
               h.state.attributionUpsertCalls.push({ row, options })
               return Promise.resolve({ error: null })

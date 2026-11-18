@@ -7,6 +7,9 @@ import {
   type ExternalMessageContentType,
 } from '@/lib/leads/ingest';
 import { extensionForMime } from '@/lib/media/filename';
+import { normalizeEvolutionReferral } from '@/lib/whatsapp/evolution-referral';
+import { resolveInboundAttribution } from '@/lib/attribution/click-tracking';
+import { recordEvolutionCtwaAttribution } from '@/lib/attribution/ctwa-inbound';
 import {
   fetchEvolutionMediaBase64,
   getEvolutionInstanceName,
@@ -138,6 +141,16 @@ export async function POST(request: Request) {
       );
       if (ingested?.conversationId) {
         await supabaseAdmin().from('conversations').update({ whatsapp_channel_key: channelKey }).eq('id', ingested.conversationId);
+      }
+      if (key?.fromMe !== true && ingested?.messageInserted) {
+        try {
+          const db = supabaseAdmin();
+          const referral = normalizeEvolutionReferral(message);
+          if (referral) await recordEvolutionCtwaAttribution({ db, accountId, conversationId: ingested.conversationId, contactId: ingested.contactId, messageId, referral, occurredAt: createdAt });
+        } catch (error) { console.error('[evolution-webhook] attribution failed:', error instanceof Error ? error.message : 'unknown error'); }
+        try {
+          await resolveInboundAttribution(supabaseAdmin(), accountId, content.text, { contactId: ingested.contactId, conversationId: ingested.conversationId });
+        } catch (error) { console.error('[evolution-webhook] tracking link failed:', error instanceof Error ? error.message : 'unknown error'); }
       }
       if (
         key?.fromMe !== true &&

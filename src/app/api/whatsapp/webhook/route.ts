@@ -6,7 +6,7 @@ import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 import { normalizeMetaCtwaReferral } from '@/lib/whatsapp/ctwa-referral';
 import { resolveInboundAttribution } from '@/lib/attribution/click-tracking';
-import { resolveMetaMarketingAttribution } from '@/lib/attribution/meta-marketing';
+import { enrichConnectedMetaAttribution } from '@/lib/attribution/connected-meta';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature';
@@ -792,26 +792,6 @@ async function processMessage(
     firstMessageId: message.id,
   });
 
-  // The Marketing API receives only the signed source id Meta supplied. The
-  // resolver first verifies this CRM tenant has an active connection to the
-  // returned ad account, and does not affect inbound-message delivery when
-  // no connection/token is configured or the reporting API is unavailable.
-  if (ctwaReferral?.sourceId) {
-    try {
-      await resolveMetaMarketingAttribution({
-        db: supabaseAdmin(),
-        accountId,
-        conversationId: conversation.id,
-        sourceId: ctwaReferral.sourceId,
-      });
-    } catch (error) {
-      console.error(
-        '[webhook] failed to resolve Meta Marketing attribution:',
-        error
-      );
-    }
-  }
-
   // Project the signed referral into the provider-neutral touchpoint ledger.
   // The existing conversation_attributions row remains the Meta-specific
   // source of truth; this parallel record is what lets contact reporting use
@@ -838,7 +818,7 @@ async function processMessage(
             occurred_at: new Date().toISOString(),
             raw_metadata: ctwaReferral.metadata,
           },
-          { onConflict: 'account_id,conversation_id,provider,method' }
+          { onConflict: 'account_id,conversation_id,provider,method', ignoreDuplicates: true }
         );
       if (touchpointError) {
         console.error(
@@ -849,6 +829,15 @@ async function processMessage(
     } catch (error) {
       console.error('[webhook] failed to persist Meta attribution touchpoint:', error);
     }
+  }
+
+  if (ctwaReferral?.sourceId) {
+    try {
+      const { data: saved } = await supabaseAdmin().from('conversation_attributions').select('source_id')
+        .eq('account_id', accountId).eq('conversation_id', conversation.id).eq('provider', 'meta').maybeSingle();
+      if (saved?.source_id === ctwaReferral.sourceId)
+        await enrichConnectedMetaAttribution(supabaseAdmin(), accountId, conversation.id, ctwaReferral.sourceId);
+    } catch (error) { console.error('[webhook] failed to resolve Meta attribution:', error instanceof Error ? error.message : 'unknown error'); }
   }
 
   // First-party campaign links append a random reference marker to the
