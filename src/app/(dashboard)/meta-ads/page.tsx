@@ -17,6 +17,7 @@ import {
 import type { MetaMetricGroup } from '@/lib/meta-ads/dashboard';
 import type { CreativePreview } from '@/lib/meta-ads/creative';
 import { PerformanceTable } from '@/components/meta-ads/performance-table';
+import { TrafficSalesReport } from '@/components/meta-ads/traffic-sales-report';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 type Connection = {
@@ -488,6 +489,8 @@ export default function MetaAdsPage() {
           {selectedCreative?.preview.isVideo && !videoUrl && !videoPreviewUrl && <p className="text-sm text-muted-foreground">{videoLoading ? 'Carregando vídeo…' : 'A Meta não disponibilizou o vídeo para reprodução. A imagem exibida é a prévia do criativo.'}</p>}
         </DialogContent>
       </Dialog>
+
+      <TrafficSalesReport accountId={overview?.selectedAdAccountId ?? null} days={days} adsCurrency={currency} ads={overview?.ads ?? { campaigns: [], adsets: [], ads: [] }} refresh={refresh} />
 
       <section className="space-y-3" aria-label="Leads de formulários no CRM">
         <div className="flex flex-wrap items-end justify-between gap-3">
