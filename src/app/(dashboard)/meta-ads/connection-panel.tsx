@@ -3,16 +3,22 @@
 import { useEffect, useState } from 'react';
 
 type Account = { id: string; name: string; currency: string; status: number };
+type Page = { id: string; name: string };
 type Status = {
-  canManage: boolean; pending: boolean; accounts: Account[];
+  canManage: boolean; pending: boolean; accounts: Account[]; pages: Page[]; leadsGranted: boolean;
+  missingPermissions: string[];
+  pipelines: { id: string; name: string }[];
   credentials: { integration_id: string; token_expires_at: string }[];
 };
-export default function MetaConnectionPanel({ adAccountId, integrationId, days, active, onChanged }: {
+export default function MetaConnectionPanel({ adAccountId, integrationId, days, active, leadPages, leadsGranted, lastLeadsSync, onChanged }: {
   adAccountId: string; integrationId?: string; days: number; active: boolean;
+  leadPages: string[]; leadsGranted: boolean; lastLeadsSync: string | null;
   onChanged: (id: string) => void;
 }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [choice, setChoice] = useState('');
+  const [selectedPages, setSelectedPages] = useState<string[]>([]);
+  const [pipelineChoice, setPipelineChoice] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -25,6 +31,7 @@ export default function MetaConnectionPanel({ adAccountId, integrationId, days, 
         if (!response.ok) throw new Error(body.error || 'Não foi possível verificar a conexão.');
         setStatus(body);
         setChoice(body.accounts[0]?.id || '');
+        setPipelineChoice(body.pipelines?.[0]?.id || '');
         const result = new URLSearchParams(window.location.search).get('meta_connection');
         if (result === 'error') setError('A Meta não concluiu a autorização. Tente conectar novamente.');
         if (result === 'cancelled') setMessage('A autorização foi cancelada. Você pode tentar novamente quando quiser.');
@@ -39,25 +46,28 @@ export default function MetaConnectionPanel({ adAccountId, integrationId, days, 
   async function post(action: string, id: string) {
     const response = await fetch('/api/meta-ads/connect/' + action, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adAccountId: id, days }),
+      body: JSON.stringify({ adAccountId: id, days, pageIds: selectedPages, pipelineId: pipelineChoice }),
     });
-    const body = await response.json() as { error?: string; insightRows?: number };
+    const body = await response.json() as { error?: string; insightRows?: number; imported?: number; failed?: number };
     if (!response.ok) throw new Error(body.error || 'Não foi possível concluir a operação.');
     return body;
   }
-  async function run(action: 'select' | 'sync' | 'disconnect') {
+  async function run(action: 'select' | 'sync' | 'sync-leads' | 'disconnect') {
     const id = action === 'select' ? choice : adAccountId;
     if (!id) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      await post(action, id);
+      const result = await post(action, id);
       if (action === 'select') {
         setStatus(previous => previous ? { ...previous, pending: false } : previous);
         onChanged(id);
-        setMessage('Conta conectada. Buscando as métricas do período...');
+        setMessage('Conta conectada. Buscando métricas e formulários...');
         await post('sync', id);
+        if (selectedPages.length) await post('sync-leads', id);
       }
-      setMessage(action === 'disconnect' ? 'Conta desconectada. O histórico de métricas foi preservado.' : 'Métricas sincronizadas com a Meta.');
+      setMessage(action === 'disconnect' ? 'Conta desconectada. O histórico de métricas foi preservado.'
+        : action === 'sync-leads' ? `Formulários sincronizados: ${result.imported ?? 0} novos leads, ${result.failed ?? 0} pendentes de revisão.`
+          : action === 'select' && selectedPages.length ? 'Conta conectada. Métricas e formulários sincronizados.' : 'Métricas sincronizadas com a Meta.');
       onChanged(id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível concluir a operação.');
@@ -83,7 +93,7 @@ export default function MetaConnectionPanel({ adAccountId, integrationId, days, 
       {!status && !error && <p className="text-muted-foreground text-sm">Verificando conexão...</p>}
       {status && !status.canManage && <p className="text-muted-foreground text-sm">Um administrador pode conectar e sincronizar as contas desta empresa.</p>}
       {status?.canManage && status.pending && (
-        <div className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-lg p-3">
+        <div className="bg-muted/40 space-y-3 rounded-lg p-3">
           {status.accounts.length ? <>
             <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">Conta autorizada na Meta
               <select value={choice} onChange={event => setChoice(event.target.value)} disabled={busy}
@@ -93,7 +103,25 @@ export default function MetaConnectionPanel({ adAccountId, integrationId, days, 
                 </option>)}
               </select>
             </label>
-            <button type="button" className={button} disabled={busy || !choice} onClick={() => void run('select')}>Conectar e buscar métricas</button>
+            <fieldset className="space-y-2 text-sm">
+              <legend className="font-medium">Páginas dos formulários desta empresa</legend>
+              {status.pages.map(page => <label key={page.id} className="border-border bg-background flex items-center gap-2 rounded-lg border p-2">
+                <input type="checkbox" checked={selectedPages.includes(page.id)} disabled={busy}
+                  onChange={event => setSelectedPages(previous => event.target.checked ? [...previous, page.id] : previous.filter(id => id !== page.id))} />
+                <span>{page.name} · {page.id}</span>
+              </label>)}
+              {status.missingPermissions.length > 0 && <p className="text-amber-600">Permissões ainda não concedidas por esta conta Meta: {status.missingPermissions.join(', ')}. É possível conectar anúncios, mas os formulários só poderão ser importados após conceder o acesso à Página.</p>}
+              {!status.missingPermissions.length && !status.pages.length && <p className="text-amber-600">Nenhuma Página com token foi disponibilizada. Confira o acesso à Página no Meta Business.</p>}
+              <p className="text-muted-foreground text-xs">Selecione apenas as Páginas ligadas a esta empresa. As respostas dos formulários dessas Páginas serão importadas para o CRM.</p>
+            </fieldset>
+            {selectedPages.length > 0 && <label className="flex flex-col gap-1 text-sm">Funil para os leads de formulário
+              <select value={pipelineChoice} onChange={event => setPipelineChoice(event.target.value)} disabled={busy}
+                className="border-border bg-background min-h-10 max-w-full rounded-lg border px-3">
+                {status.pipelines.map(pipeline => <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>)}
+              </select>
+              {!status.pipelines.length && <span className="text-amber-600">Crie um funil antes de importar leads de formulários.</span>}
+            </label>}
+            <button type="button" className={button} disabled={busy || !choice || (selectedPages.length > 0 && !pipelineChoice)} onClick={() => void run('select')}>Conectar e buscar métricas</button>
           </> : <p className="text-sm">Nenhuma conta de anúncios foi disponibilizada pela Meta. Confira seu acesso às contas e tente autorizar novamente.</p>}
         </div>
       )}
@@ -101,7 +129,12 @@ export default function MetaConnectionPanel({ adAccountId, integrationId, days, 
         <button type="button" className={button} disabled={busy || expired} onClick={() => void run('sync')}>
           {busy ? 'Aguarde, processando...' : 'Sincronizar ' + days + ' dias'}
         </button>
+        <button type="button" className={button} disabled={busy || expired || !leadsGranted || !leadPages.length} onClick={() => void run('sync-leads')}>
+          Sincronizar leads de formulários
+        </button>
         <button type="button" className={button} disabled={busy} onClick={() => void run('disconnect')}>Desconectar conta</button>
+        {leadsGranted && leadPages.length > 0 && <span className="text-muted-foreground text-xs">{leadPages.length} Página(s) · Última coleta: {lastLeadsSync ? new Date(lastLeadsSync).toLocaleString('pt-BR') : 'ainda não realizada'}</span>}
+        {!leadsGranted && <span className="text-muted-foreground text-xs">Reconecte a Meta e selecione a Página para habilitar a importação dos formulários.</span>}
         {expiry && <span className="text-muted-foreground text-xs">{expired ? 'Autorização expirada. Reconecte a conta.' : 'Autorização válida até ' + expiry.toLocaleDateString('pt-BR')}</span>}
       </div>}
       {busy && <p className="text-muted-foreground text-sm" role="status">Buscando os dados oficiais. Períodos maiores podem levar alguns minutos.</p>}

@@ -202,6 +202,8 @@ export default function MetaAdsPage() {
       label: 'Primeira sincronização de anúncios',
       done: Boolean(connection?.ads_last_synced_at),
     },
+    { label: 'Permissão de leads e Página vinculada', done: Boolean(connection?.leads_retrieval_granted && connection.meta_page_ids.length) },
+    { label: 'Primeira sincronização de formulários', done: Boolean(connection?.leads_last_synced_at) },
   ];
 
   return (
@@ -271,6 +273,9 @@ export default function MetaAdsPage() {
         integrationId={connection?.id}
         days={days}
         active={Boolean(connection?.is_active)}
+        leadPages={connection?.meta_page_ids ?? []}
+        leadsGranted={Boolean(connection?.leads_retrieval_granted)}
+        lastLeadsSync={connection?.leads_last_synced_at ?? null}
         onChanged={(id) => { setAdAccount(id); setRefresh(value => value + 1); }}
       />
 
@@ -430,7 +435,8 @@ export default function MetaAdsPage() {
           </div>
           <p className="text-muted-foreground mt-2 text-sm">
             Conecte sua conta acima e sincronize o período para consultar os
-            dados oficiais. A importação de formulários exige uma autorização adicional.
+            dados oficiais. Para importar respostas de formulários, reconecte a Meta,
+            autorize o acesso a leads e selecione a Página correspondente.
           </p>
           <ul className="mt-4 space-y-2.5">
             {setup.map((item) => (

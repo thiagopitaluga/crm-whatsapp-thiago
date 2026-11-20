@@ -114,6 +114,26 @@ describe('Meta Ads connection authorization boundaries', () => {
     expect(m.rpc).not.toHaveBeenCalled();
     expect(m.list).toHaveBeenCalledTimes(1);
   });
+  it('does not link a Page when leads_retrieval was not granted to the token', async () => {
+    m.list.mockResolvedValueOnce([{ permission: 'ads_read', status: 'granted' }])
+      .mockResolvedValueOnce([{ account_id: '12345678', name: 'Allowed account' }])
+      .mockResolvedValueOnce([{ permission: 'ads_read', status: 'granted' }]);
+    const response = await POST(post('select', { adAccountId: '12345678', pageIds: ['23456789'] }));
+    expect(response.status).toBe(403);
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
+  it('does not link a Page outside the Meta user’s authorized Pages', async () => {
+    const permissions = ['ads_read', 'leads_retrieval', 'pages_show_list', 'pages_read_engagement', 'pages_manage_ads']
+      .map(permission => ({ permission, status: 'granted' }));
+    m.list.mockResolvedValueOnce(permissions)
+      .mockResolvedValueOnce([{ account_id: '12345678', name: 'Allowed account' }])
+      .mockResolvedValueOnce(permissions)
+      .mockResolvedValueOnce([{ id: '34567890', name: 'Allowed Page', access_token: 'page-secret' }]);
+    const response = await POST(post('select', { adAccountId: '12345678', pageIds: ['23456789'] }));
+    expect(response.status).toBe(403);
+    expect(m.rpc).not.toHaveBeenCalled();
+    expect(await response.text()).not.toContain('page-secret');
+  });
   it('reports a tenant ownership conflict without exposing credentials', async () => {
     m.list.mockResolvedValueOnce([{ permission: 'ads_read', status: 'granted' }])
       .mockResolvedValueOnce([{ account_id: '12345678', name: 'Allowed account' }]);

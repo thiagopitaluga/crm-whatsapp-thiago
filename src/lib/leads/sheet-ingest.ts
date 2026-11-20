@@ -20,6 +20,8 @@ export interface SheetLeadInput {
   company?: string | null;
   /** Account-scoped pipeline name; resolved server-side before any write. */
   pipeline: string;
+  /** Stable account-scoped pipeline ID when the caller already selected one. */
+  pipelineId?: string | null;
   /** Blank means the pipeline's first stage. */
   stage?: string | null;
   /** CRM outcome associated with the upstream stage. */
@@ -67,7 +69,8 @@ export async function ingestSheetLead(
     db,
     accountId,
     input.pipeline,
-    input.stage
+    input.stage,
+    input.pipelineId
   );
   const auditUserId = await resolveAuditUserId(db, accountId);
   const contact = await findOrCreateContact(db, accountId, auditUserId, {
@@ -301,15 +304,16 @@ async function resolvePipelineTarget(
   db: SupabaseClient,
   accountId: string,
   pipelineName: string,
-  requestedStage?: string | null
+  requestedStage?: string | null,
+  pipelineId?: string | null
 ): Promise<PipelineTarget> {
   const normalizedPipeline = pipelineName.trim();
-  const { data: pipelines, error: pipelineError } = await db
+  let query = db
     .from('pipelines')
     .select('id, name')
-    .eq('account_id', accountId)
-    .ilike('name', normalizedPipeline)
-    .limit(2);
+    .eq('account_id', accountId);
+  query = pipelineId ? query.eq('id', pipelineId) : query.ilike('name', normalizedPipeline);
+  const { data: pipelines, error: pipelineError } = await query.limit(2);
 
   if (pipelineError) {
     throw new SheetLeadIngestError('Failed to resolve pipeline', 500);

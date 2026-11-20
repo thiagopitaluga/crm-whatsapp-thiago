@@ -5,7 +5,6 @@ import { ingestSheetLead } from '@/lib/leads/sheet-ingest';
 import { MetaGraphReadClient } from './graph-client';
 import { normalizeMetaInsight, normalizeMetaLead } from './normalize';
 
-const META_PIPELINE = 'Formulário Meta';
 const META_ID = /^\d{5,32}$/;
 
 async function assertIntegration(
@@ -15,7 +14,7 @@ async function assertIntegration(
 ) {
   const { data, error } = await db
     .from('meta_ad_account_integrations')
-    .select('meta_ad_account_id, meta_page_ids, is_active')
+    .select('meta_ad_account_id, meta_page_ids, meta_leads_pipeline_id, is_active')
     .eq('account_id', accountId)
     .eq('provider', 'meta')
     .eq('meta_ad_account_id', adAccountId)
@@ -25,6 +24,7 @@ async function assertIntegration(
   return data as {
     meta_ad_account_id: string;
     meta_page_ids: string[];
+    meta_leads_pipeline_id: string | null;
     is_active: boolean;
   };
 }
@@ -106,14 +106,21 @@ export async function syncMetaAdsRange(
 /** Explicit server-side entrypoint for the future leads_retrieval connection. */
 export async function syncMetaFormLeads(
   db: SupabaseClient,
-  graph: MetaGraphReadClient,
+  pageGraph: (pageId: string) => MetaGraphReadClient,
   accountId: string,
   adAccountId: string
 ) {
   const integration = await assertIntegration(db, accountId, adAccountId);
+  if (!integration.meta_leads_pipeline_id)
+    throw new Error('Choose a CRM pipeline before importing Meta form leads');
+  const { data: pipeline, error: pipelineError } = await db.from('pipelines')
+    .select('id,name').eq('account_id', accountId)
+    .eq('id', integration.meta_leads_pipeline_id).maybeSingle();
+  if (pipelineError || !pipeline) throw new Error('The selected Meta lead pipeline is unavailable');
   let imported = 0;
   let failed = 0;
   for (const pageId of integration.meta_page_ids) {
+    const graph = pageGraph(pageId);
     const forms = await graph.leadForms(pageId);
     for (const form of forms) {
       const formId = typeof form.id === 'string' ? form.id : '';
@@ -168,7 +175,8 @@ export async function syncMetaFormLeads(
             name: lead.name,
             email: lead.email,
             company: lead.company,
-            pipeline: META_PIPELINE,
+            pipeline: pipeline.name,
+            pipelineId: pipeline.id,
             source: 'meta_api',
             sourceId: lead.leadId,
             formData: fields,
