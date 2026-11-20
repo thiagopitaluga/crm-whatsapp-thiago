@@ -17,6 +17,10 @@ import {
   Plus,
   MousePointerClick,
   Megaphone,
+  Eye,
+  FolderOpen,
+  History,
+  ListTodo,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -288,33 +292,35 @@ export function ContactSidebar({
   return (
     <div className="border-border bg-card flex h-full w-70 flex-col border-l">
       <div
-        className="border-border grid grid-cols-3 gap-1 border-b p-2"
+        className="border-border flex justify-between gap-1 border-b p-2"
         role="tablist"
         aria-label="Ficha do contato"
       >
         {(
           [
-            ['overview', 'Visão'],
-            ['data', 'Dados'],
-            ['files', 'Arquivos'],
-            ['history', 'Histórico'],
-            ['tasks', 'Tarefas'],
-            ['campaigns', 'Campanhas'],
+            ['overview', 'Visão', Eye],
+            ['data', 'Dados', User],
+            ['files', 'Arquivos', FolderOpen],
+            ['history', 'Histórico', History],
+            ['tasks', 'Tarefas', ListTodo],
+            ['campaigns', 'Campanhas', Megaphone],
           ] as const
-        ).map(([key, label]) => (
+        ).map(([key, label, Icon]) => (
           <button
             key={key}
             role="tab"
+            title={label}
+            aria-label={label}
             aria-selected={activeTab === key}
             onClick={() => setActiveTab(key)}
             className={cn(
-              'rounded-md px-1 py-2 text-xs transition-colors',
+              'flex size-9 items-center justify-center rounded-md transition-colors',
               activeTab === key
                 ? 'bg-primary/15 text-primary font-medium'
                 : 'text-muted-foreground hover:bg-muted'
             )}
           >
-            {label}
+            <Icon className="size-4" aria-hidden="true" />
           </button>
         ))}
       </div>

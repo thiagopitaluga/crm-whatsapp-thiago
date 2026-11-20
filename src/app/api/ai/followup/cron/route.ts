@@ -15,6 +15,7 @@ import { latestUserMessage } from '@/lib/ai/query';
 import { logAiUsage } from '@/lib/ai/usage';
 import { engineSendText } from '@/lib/flows/meta-send';
 import { processDueAiAgentTriggerJobs } from '@/lib/ai/agent-triggers';
+import { dispatchNotifications } from '@/lib/notifications/dispatch';
 
 export const maxDuration = 120;
 
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
   }
 
   const db = supabaseAdmin();
+  await dispatchNotifications().catch(() => console.error('Notification dispatch failed'));
   let scheduledTriggers = { processed: 0, failed: 0, skipped: 0 };
   try {
     scheduledTriggers = await processDueAiAgentTriggerJobs(db, 10);

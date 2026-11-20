@@ -6,6 +6,15 @@
  * immutable Next.js build assets plus the offline notice live in CacheStorage.
  */
 const STATIC_CACHE = "organizap-static-v1";
+self.addEventListener('push', event => {
+ let data={}; try { data=event.data.json(); } catch { /* Empty push. */ }
+ const url=typeof data.url==='string' && /^\/(?!\/)/.test(data.url) ? data.url : '/notifications';
+ event.waitUntil(self.registration.showNotification(data.title || 'Organizap',{body:data.body || 'Há uma nova atualização.',icon:'/pwa/icon-192.png',tag:data.tag,data:{url}}));
+});
+self.addEventListener('notificationclick', event => {
+ event.notification.close();
+ event.waitUntil(self.clients.openWindow(event.notification.data?.url || '/notifications'));
+});
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,

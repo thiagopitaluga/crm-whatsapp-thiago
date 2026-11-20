@@ -192,7 +192,7 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned' | 'group_broadcast';
+export type NotificationType = 'conversation_assigned' | 'group_broadcast' | 'new_message' | 'task_due' | 'sale_won' | 'system';
 
 export interface Notification {
   id: string;

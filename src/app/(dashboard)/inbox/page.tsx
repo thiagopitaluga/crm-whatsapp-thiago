@@ -56,6 +56,7 @@ function InboxPageInner() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inboxAllowed, setInboxAllowed] = useState<boolean | null>(null);
   const inboxAllowedRef = useRef<boolean | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState('unknown');
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -246,65 +247,49 @@ function InboxPageInner() {
     }
   }, []);
 
-  // Check WhatsApp connection status on mount
   useEffect(() => {
-    const checkConnection = async () => {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) return;
-
-      // Any of the account's connected WhatsApp numbers can serve the
-      // inbox; inspect the same channel list that AI agents use.
-      const channelsResponse = await fetch('/api/ai/agents/channels', {
-        cache: 'no-store',
-      });
-      if (channelsResponse.ok) {
-        const channelData = (await channelsResponse.json()) as {
-          channels?: { connected?: boolean }[];
-          defaultQrConnected?: boolean | null;
-        };
-        if (
-          channelData.defaultQrConnected ||
-          channelData.channels?.some((channel) => channel.connected)
-        ) {
-          setWhatsappConnected(true);
-          return;
+    let cancelled = false;
+    let pending = false;
+    const check = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await fetch('/api/whatsapp/connection-status', {
+          cache: 'no-store',
+        });
+        const data = response.ok
+          ? await response.json()
+          : { status: 'unknown' };
+        if (!cancelled) {
+          setWhatsappStatus(data.status);
+          setWhatsappConnected(
+            data.status === 'connected'
+              ? true
+              : data.status === 'disconnected'
+                ? false
+                : null
+          );
         }
+      } catch {
+        if (!cancelled) {
+          setWhatsappStatus('unknown');
+          setWhatsappConnected(null);
+        }
+      } finally {
+        pending = false;
       }
-
-      // whatsapp_config is one-row-per-account post-multi-user, so
-      // the previous `.eq('user_id', user.id)` would miss the row
-      // for any teammate who didn't personally save the config —
-      // the "WhatsApp not connected" banner would show in the
-      // shared inbox even though the admin had it configured.
-      // Resolve account_id via the profile and query by that.
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('account_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      const accountId = profile?.account_id as string | undefined;
-      if (!accountId) {
-        setWhatsappConnected(false);
-        return;
-      }
-
-      const { data } = await supabase
-        .from('whatsapp_config')
-        .select('status')
-        .eq('account_id', accountId)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      setWhatsappConnected(data?.status === 'connected');
     };
-
-    checkConnection();
+    void check();
+    const interval = setInterval(() => void check(), 30_000);
+    const visible = () => {
+      if (document.visibilityState === 'visible') void check();
+    };
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', visible);
+    };
   }, []);
 
   // Handle realtime message events
@@ -667,10 +652,14 @@ function InboxPageInner() {
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
-      {whatsappConnected === false && (
+      {(whatsappConnected === false || whatsappStatus === 'connecting') && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
-          <p className="text-xs text-amber-400">{t('whatsappNotConnected')}</p>
+          <p className="text-xs text-amber-400">
+            {whatsappStatus === 'connecting'
+              ? 'O WhatsApp desta conta está conectando ou aguardando pareamento. Confira em Conexões.'
+              : t('whatsappNotConnected')}
+          </p>
         </div>
       )}
 
