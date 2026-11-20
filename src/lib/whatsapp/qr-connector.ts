@@ -464,37 +464,70 @@ async function fetchEvolutionQrConnector(
 
   if (suffix === 'messages/media') {
     const body = parseJsonBody(init.body);
-    const phone = typeof body?.phone === 'string' ? body.phone.replace(/\D/g, '') : '';
+    const phone =
+      typeof body?.phone === 'string' ? body.phone.replace(/\D/g, '') : '';
     const kind = typeof body?.kind === 'string' ? body.kind : '';
     const url = typeof body?.url === 'string' ? body.url : '';
     const caption = typeof body?.caption === 'string' ? body.caption : '';
-    if (!/^\d{8,15}$/.test(phone) || !['image', 'video', 'audio', 'document'].includes(kind) || !url)
+    if (
+      !/^\d{8,15}$/.test(phone) ||
+      !['image', 'video', 'audio', 'document'].includes(kind) ||
+      !url
+    )
       return jsonResponse({ error: 'invalid_media' }, 400);
-    const response = await evolutionRequest(baseUrl, apiKey, `message/sendMedia/${instance}`, {
-      method: 'POST',
-      body: JSON.stringify({ number: phone, mediatype: kind, media: url, caption }),
-      signal: timeout,
-    });
+    const response = await evolutionRequest(
+      baseUrl,
+      apiKey,
+      `message/sendMedia/${instance}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          number: phone,
+          mediatype: kind,
+          media: url,
+          caption,
+        }),
+        signal: timeout,
+      }
+    );
     if (!response.ok) return response;
     const payload = asRecord(await response.json().catch(() => null));
     const key = asRecord(payload?.key);
     const data = asRecord(payload?.data);
     const messageKey = asRecord(data?.key);
-    const messageId = [key?.id, messageKey?.id, payload?.messageId].find((value) => typeof value === 'string');
-    return typeof messageId === 'string' ? jsonResponse({ messageId }) : jsonResponse({ error: 'message_id_missing' }, 502);
+    const messageId = [key?.id, messageKey?.id, payload?.messageId].find(
+      (value) => typeof value === 'string'
+    );
+    return typeof messageId === 'string'
+      ? jsonResponse({ messageId })
+      : jsonResponse({ error: 'message_id_missing' }, 502);
   }
 
   if (suffix === 'messages/read') {
     const body = parseJsonBody(init.body);
-    const phone = typeof body?.phone === 'string' ? body.phone.replace(/\D/g, '') : '';
+    const phone =
+      typeof body?.phone === 'string' ? body.phone.replace(/\D/g, '') : '';
     const messageId = typeof body?.messageId === 'string' ? body.messageId : '';
     if (!/^\d{8,15}$/.test(phone) || !messageId || messageId.length > 200)
       return jsonResponse({ error: 'invalid_read_receipt' }, 400);
-    return evolutionRequest(baseUrl, apiKey, `chat/markMessageAsRead/${instance}`, {
-      method: 'POST',
-      body: JSON.stringify({ readMessages: [{ remoteJid: `${phone}@s.whatsapp.net`, fromMe: false, id: messageId }] }),
-      signal: timeout,
-    });
+    return evolutionRequest(
+      baseUrl,
+      apiKey,
+      `chat/markMessageAsRead/${instance}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          readMessages: [
+            {
+              remoteJid: `${phone}@s.whatsapp.net`,
+              fromMe: false,
+              id: messageId,
+            },
+          ],
+        }),
+        signal: timeout,
+      }
+    );
   }
 
   if (suffix === 'groups/send') {
@@ -940,6 +973,68 @@ function evolutionInstanceName(accountId: string): string {
 
 export function getEvolutionInstanceName(accountId: string): string {
   return evolutionInstanceName(accountId);
+}
+
+export async function fetchEvolutionProfilePicture(
+  accountId: string,
+  phone: string,
+  instanceName?: string,
+  forceRefresh = false
+): Promise<string | null> {
+  const number = phone.replace(/\D/g, '');
+  if (
+    !/^[0-9a-f-]{36}$/i.test(accountId) ||
+    !/^\d{8,15}$/.test(number) ||
+    process.env.WHATSAPP_QR_PROVIDER !== 'evolution'
+  )
+    return null;
+  const { baseUrl, apiKey } = evolutionConfiguration();
+  const instance = encodeURIComponent(
+    instanceName ?? evolutionInstanceName(accountId)
+  );
+  if (!forceRefresh) {
+    try {
+      const cached = await evolutionRequest(
+        baseUrl,
+        apiKey,
+        'chat/findContacts/' + instance,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            where: { remoteJid: number + '@s.whatsapp.net' },
+          }),
+          signal: AbortSignal.timeout(3_000),
+        }
+      );
+      if (cached.ok) {
+        const payload = await cached.json().catch(() => null);
+        const rows = Array.isArray(payload)
+          ? payload
+          : extractArray(payload, ['records', 'data']);
+        const contact = rows
+          .map(asRecord)
+          .find((row) => row?.remoteJid === number + '@s.whatsapp.net');
+        if (typeof contact?.profilePicUrl === 'string' && contact.profilePicUrl)
+          return contact.profilePicUrl;
+      }
+    } catch {
+      /* Try the live profile endpoint when no cached photo is available. */
+    }
+  }
+  const response = await evolutionRequest(
+    baseUrl,
+    apiKey,
+    'chat/fetchProfilePictureUrl/' + instance,
+    {
+      method: 'POST',
+      body: JSON.stringify({ number }),
+      signal: AbortSignal.timeout(7_000),
+    }
+  );
+  if (!response.ok) return null;
+  const data = asRecord(await response.json().catch(() => null));
+  const url = data?.profilePictureUrl ?? data?.profilePicUrl;
+  return typeof url === 'string' ? url : null;
 }
 
 async function evolutionRequest(

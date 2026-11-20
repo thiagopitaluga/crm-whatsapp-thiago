@@ -16,6 +16,7 @@ import type {
 import { PipelineBoard } from '@/components/pipelines/pipeline-board';
 import { PipelineSettings } from '@/components/pipelines/pipeline-settings';
 import { DealForm } from '@/components/pipelines/deal-form';
+import { LeadChatPanel } from '@/components/pipelines/lead-chat-panel';
 import { TaskForm } from '@/components/tasks/task-form';
 import { Button } from '@/components/ui/button';
 import {
@@ -579,6 +580,7 @@ export default function PipelinesPage() {
     setDefaultStageId(deal.stage_id);
     setDealFormOpen(true);
   }, []);
+  const [chatDeal, setChatDeal] = useState<Deal | null>(null);
 
   const handleQuickValue = useCallback(
     async (deal: Deal, value: number) => {
@@ -1365,31 +1367,35 @@ export default function PipelinesPage() {
               className="border-destructive/40 bg-destructive/10 text-destructive flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm"
             >
               <span>Não foi possível carregar os leads deste funil.</span>
-              <Button variant="outline" size="sm" onClick={() => void refreshDeals()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refreshDeals()}
+              >
                 Tentar novamente
               </Button>
             </div>
           )}
           <PipelineBoard
-          stages={stages}
-          deals={filteredDeals}
-          onDealMoved={handleDealMoved}
-          onRenameStage={handleRenameStage}
-          onAddDeal={handleAddDeal}
-          onEditDeal={handleEditDeal}
-          members={members}
-          onValueChange={handleQuickValue}
-          onStatusChange={handleQuickStatus}
-          onAddNote={(deal) => setQuickNoteDeal(deal)}
-          onScheduleTask={(deal) => setTaskDeal(deal)}
-          onAssign={handleQuickAssign}
-          tags={tags}
-          onToggleTag={handleToggleTag}
-          onCreateTag={(deal) => {
-            setNewTagName('');
-            setNewTagDeal(deal);
-          }}
-          cardLayout={selectedCardLayout}
+            stages={stages}
+            deals={filteredDeals}
+            onDealMoved={handleDealMoved}
+            onRenameStage={handleRenameStage}
+            onAddDeal={handleAddDeal}
+            onEditDeal={setChatDeal}
+            members={members}
+            onValueChange={handleQuickValue}
+            onStatusChange={handleQuickStatus}
+            onAddNote={(deal) => setQuickNoteDeal(deal)}
+            onScheduleTask={(deal) => setTaskDeal(deal)}
+            onAssign={handleQuickAssign}
+            tags={tags}
+            onToggleTag={handleToggleTag}
+            onCreateTag={(deal) => {
+              setNewTagName('');
+              setNewTagDeal(deal);
+            }}
+            cardLayout={selectedCardLayout}
           />
         </div>
       )}
@@ -1673,6 +1679,33 @@ export default function PipelinesPage() {
       </Dialog>
 
       {/* Deal Form (Sheet) */}
+      {chatDeal && (
+        <LeadChatPanel
+          key={chatDeal.id}
+          deal={chatDeal}
+          onClose={() => setChatDeal(null)}
+          onEdit={() => {
+            void (async () => {
+              const { data, error } = await supabase
+                .from('deals')
+                .select('*')
+                .eq('id', chatDeal.id)
+                .eq('account_id', accountId!)
+                .maybeSingle();
+              if (error || !data) {
+                toast.error('Não foi possível carregar o negócio para edição.');
+                return;
+              }
+              const currentStages = await loadStages(data.pipeline_id);
+              setSelectedPipelineId(data.pipeline_id);
+              setStages(currentStages);
+              setChatDeal(null);
+              handleEditDeal(data);
+            })();
+          }}
+          onChanged={() => void refreshDeals()}
+        />
+      )}
       <DealForm
         open={dealFormOpen}
         onOpenChange={setDealFormOpen}

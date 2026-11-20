@@ -23,6 +23,7 @@ import { ContactDataPanel, type ExtendedContact } from './contact-data-panel';
 import { ContactOverview } from './contact-overview';
 import type { Contact, Conversation, Deal } from '@/types';
 import { cn } from '@/lib/utils';
+import { ContactAvatar } from '@/components/contacts/contact-avatar';
 const tabs = [
   ['overview', 'Informações', Info],
   ['data', 'Dados', SlidersHorizontal],
@@ -35,15 +36,17 @@ export function ContactSidebar({
   contact,
   conversation = null,
   onContactUpdated,
+  initialDealId,
 }: {
   contact: Contact | null;
   conversation?: Conversation | null;
   onContactUpdated?: () => void;
+  initialDealId?: string;
 }) {
   const { accountId } = useAuth();
   const [tab, setTab] = useState<SidebarTab>('overview'),
     [deals, setDeals] = useState<Deal[]>([]),
-    [dealId, setDealId] = useState(''),
+    [dealId, setDealId] = useState(initialDealId ?? ''),
     [refresh, setRefresh] = useState(0),
     [source, setSource] = useState('WhatsApp'),
     [detail, setDetail] = useState<ContactDetailTab | null>(null),
@@ -108,22 +111,12 @@ export function ContactSidebar({
       className="bg-card flex h-full w-80 flex-col border-l"
     >
       <header className="shrink-0 border-b px-4 pt-5 pb-3 text-center">
-        <div className="bg-primary/10 text-primary mx-auto flex size-14 items-center justify-center overflow-hidden rounded-full text-lg font-semibold">
-          {current.avatar_url ? (
-            <img
-              src={current.avatar_url}
-              alt=""
-              className="size-full object-cover"
-            />
-          ) : (
-            name
-              .split(/\s+/)
-              .slice(0, 2)
-              .map((w) => w[0])
-              .join('')
-              .toUpperCase()
-          )}
-        </div>
+        <ContactAvatar
+          id={current.id}
+          name={name}
+          url={current.avatar_url}
+          className="bg-primary/10 text-primary mx-auto size-14 text-lg font-semibold"
+        />
         <h3 className="mt-2 text-sm font-semibold break-words">{name}</h3>
         <button
           title="Copiar telefone"
