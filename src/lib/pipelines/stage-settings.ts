@@ -21,10 +21,23 @@ export interface StageRule {
   id: string;
   name: string;
   enabled: boolean;
-  event: 'entered' | 'no_reply';
+  event:
+    'entered' | 'no_reply' | 'keyword' | 'tag_added' | 'ai_check' | 'inactive';
   hours: number;
-  action: 'message' | 'add_tag';
+  action:
+    | 'message'
+    | 'add_tag'
+    | 'remove_tag'
+    | 'notify_user'
+    | 'move_stage'
+    | 'move_pipeline'
+    | 'webhook'
+    | 'ai_message'
+    | 'ai_decide'
+    | 'disable_ai';
   value: string;
+  condition?: string;
+  target?: string;
   transport?: 'cloud' | 'qr';
 }
 export interface StageSettings {
@@ -81,14 +94,41 @@ export function validateStageSettings(value: unknown): string | null {
       !r.name.trim() ||
       r.name.length > 100 ||
       typeof r.enabled !== 'boolean' ||
-      !['entered', 'no_reply'].includes(r.event) ||
-      !['message', 'add_tag'].includes(r.action) ||
+      ![
+        'entered',
+        'no_reply',
+        'keyword',
+        'tag_added',
+        'ai_check',
+        'inactive',
+      ].includes(r.event) ||
+      ![
+        'message',
+        'add_tag',
+        'remove_tag',
+        'notify_user',
+        'move_stage',
+        'move_pipeline',
+        'webhook',
+        'ai_message',
+        'ai_decide',
+        'disable_ai',
+      ].includes(r.action) ||
       !Number.isInteger(r.hours) ||
       r.hours < 1 ||
       r.hours > 8760 ||
       typeof r.value !== 'string' ||
       r.value.length > 4000 ||
-      (r.enabled && !r.value.trim())
+      (r.enabled &&
+        !['disable_ai', 'ai_message', 'ai_decide'].includes(r.action) &&
+        !r.value.trim()) ||
+      (r.enabled &&
+        ['keyword', 'tag_added', 'ai_check'].includes(r.event) &&
+        !r.condition?.trim()) ||
+      (r.condition !== undefined &&
+        (typeof r.condition !== 'string' || r.condition.length > 2000)) ||
+      (r.target !== undefined &&
+        (typeof r.target !== 'string' || r.target.length > 100))
     )
       return 'Revise os campos dos gatilhos.';
     ids.add(r.id);

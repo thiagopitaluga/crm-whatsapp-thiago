@@ -25,7 +25,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ArrowDownUp,
-  PlugZap,
+  Plug,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
   { href: '/automations', labelKey: 'automations', icon: Zap },
   { href: '/notifications', labelKey: 'notifications', icon: Bell },
   { href: '/agents', labelKey: 'aiAgents', icon: Bot },
-  { href: '/connections', labelKey: 'connections', icon: PlugZap },
+  { href: '/connections', labelKey: 'connections', icon: Plug },
 ];
 
 const bottomNavItems = [

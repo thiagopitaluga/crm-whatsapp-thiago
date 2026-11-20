@@ -19,7 +19,7 @@ import {
   type StageRule,
 } from '@/lib/pipelines/stage-settings';
 import type { PipelineStage, Tag } from '@/types';
-import { StageIntegrations } from './stage-integrations';
+import Link from 'next/link';
 
 const field = 'w-full rounded-md border bg-background p-2 text-sm';
 export function StageSettingsButton({
@@ -39,6 +39,15 @@ export function StageSettingsButton({
   const [jobs, setJobs] = useState<
     Array<{ id: string; kind: string; status: string; error: string | null }>
   >([]);
+  const [choices, setChoices] = useState<{
+    stages: Array<{ id: string; name: string }>;
+    pipelines: Array<{ id: string; name: string }>;
+    users: Array<{
+      user_id: string;
+      full_name: string | null;
+      email: string | null;
+    }>;
+  }>({ stages: [], pipelines: [], users: [] });
   async function show() {
     setOpen(true);
     setLoading(true);
@@ -53,6 +62,7 @@ export function StageSettingsButton({
         throw new Error(body.error || 'Não foi possível carregar.');
       setSettings(body.settings);
       setJobs(body.jobs ?? []);
+      setChoices(body.choices ?? { stages: [], pipelines: [], users: [] });
       setLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao carregar.');
@@ -100,6 +110,8 @@ export function StageSettingsButton({
               : 'Novo gatilho',
       event: kind === 'followup' ? 'no_reply' : 'entered',
       hours: 24,
+      condition: '',
+      target: '',
       action: kind === 'tag' ? 'add_tag' : 'message',
       value:
         kind === 'welcome'
@@ -314,15 +326,29 @@ export function StageSettingsButton({
                             })
                           }
                         >
-                          <option value="entered">Ao entrar nesta etapa</option>
+                          <option value="entered">
+                            Quando o lead entra nesta etapa
+                          </option>
                           <option value="no_reply">
-                            Sem resposta após entrar
+                            Quando o lead fica sem responder
+                          </option>
+                          <option value="keyword">
+                            Quando o lead manda palavra-chave
+                          </option>
+                          <option value="tag_added">
+                            Quando uma tag é adicionada
+                          </option>
+                          <option value="ai_check">
+                            Avaliação livre (IA verifica)
+                          </option>
+                          <option value="inactive">
+                            Quando o lead fica parado X dias
                           </option>
                         </select>
                       </label>
-                      {r.event === 'no_reply' && (
+                      {(r.event === 'no_reply' || r.event === 'inactive') && (
                         <label className="block">
-                          Esperar (horas)
+                          Esperar ({r.event === 'inactive' ? 'dias' : 'horas'})
                           <input
                             className={field}
                             type="number"
@@ -337,6 +363,41 @@ export function StageSettingsButton({
                           />
                         </label>
                       )}
+                      {['keyword', 'tag_added', 'ai_check'].includes(
+                        r.event
+                      ) && (
+                        <label className="block">
+                          {r.event === 'keyword'
+                            ? 'Palavra-chave'
+                            : r.event === 'tag_added'
+                              ? 'ID da tag'
+                              : 'Instrução para a IA'}
+                          {r.event === 'tag_added' ? (
+                            <select
+                              className={field}
+                              value={r.condition ?? ''}
+                              onChange={(e) =>
+                                updateRule(r.id, { condition: e.target.value })
+                              }
+                            >
+                              <option value="">Selecione a tag</option>
+                              {tags.map((tag) => (
+                                <option key={tag.id} value={tag.id}>
+                                  {tag.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              className={field}
+                              value={r.condition ?? ''}
+                              onChange={(e) =>
+                                updateRule(r.id, { condition: e.target.value })
+                              }
+                            />
+                          )}
+                        </label>
+                      )}
                       <label className="block">
                         Ação
                         <select
@@ -349,10 +410,22 @@ export function StageSettingsButton({
                             })
                           }
                         >
-                          <option value="message">
-                            Enviar mensagem WhatsApp
-                          </option>
+                          <option value="message">Enviar mensagem</option>
                           <option value="add_tag">Adicionar tag</option>
+                          <option value="remove_tag">Remover tag</option>
+                          <option value="notify_user">Notificar usuário</option>
+                          <option value="move_stage">Mover de etapa</option>
+                          <option value="move_pipeline">Mudar de funil</option>
+                          <option value="webhook">Disparar webhook</option>
+                          <option value="ai_message">
+                            IA escreve a mensagem
+                          </option>
+                          <option value="ai_decide">
+                            IA decide o que fazer
+                          </option>
+                          <option value="disable_ai">
+                            Desativar IA nesta etapa
+                          </option>
                         </select>
                       </label>
                       {r.action === 'message' ? (
@@ -386,7 +459,7 @@ export function StageSettingsButton({
                             />
                           </label>
                         </>
-                      ) : (
+                      ) : ['add_tag', 'remove_tag'].includes(r.action) ? (
                         <label className="block">
                           Tag
                           <select
@@ -404,6 +477,56 @@ export function StageSettingsButton({
                             ))}
                           </select>
                         </label>
+                      ) : (
+                        r.action !== 'disable_ai' && (
+                          <label className="block">
+                            {r.action === 'notify_user'
+                              ? 'ID do usuário'
+                              : r.action === 'move_stage'
+                                ? 'ID da etapa'
+                                : r.action === 'move_pipeline'
+                                  ? 'ID do funil'
+                                  : r.action === 'webhook'
+                                    ? 'URL HTTPS do webhook'
+                                    : 'Instrução para a IA'}
+                            {[
+                              'notify_user',
+                              'move_stage',
+                              'move_pipeline',
+                            ].includes(r.action) ? (
+                              <select
+                                className={field}
+                                value={r.value}
+                                onChange={(e) =>
+                                  updateRule(r.id, { value: e.target.value })
+                                }
+                              >
+                                <option value="">Selecione</option>
+                                {(r.action === 'notify_user'
+                                  ? choices.users.map((v) => ({
+                                      id: v.user_id,
+                                      name: v.full_name || v.email || v.user_id,
+                                    }))
+                                  : r.action === 'move_stage'
+                                    ? choices.stages
+                                    : choices.pipelines
+                                ).map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                className={field}
+                                value={r.value}
+                                onChange={(e) =>
+                                  updateRule(r.id, { value: e.target.value })
+                                }
+                              />
+                            )}
+                          </label>
+                        )
                       )}
                     </div>
                   ))}
@@ -471,6 +594,16 @@ export function StageSettingsButton({
                 <section className="space-y-3 border-t pt-4">
                   <h3 className="font-semibold">Evento do Meta (pixel)</h3>
                   <p className="text-muted-foreground text-xs">
+                    Configure o ID do pixel e o token em{' '}
+                    <Link
+                      className="text-primary underline"
+                      href="/connections?tab=pixel"
+                    >
+                      Conexões → Pixel do Meta
+                    </Link>
+                    .
+                  </p>
+                  <p className="text-muted-foreground text-xs">
                     Enviado pela API de Conversões ao entrar na etapa, com
                     telefone e e-mail protegidos por hash.
                   </p>
@@ -493,7 +626,7 @@ export function StageSettingsButton({
                     </select>
                   </label>
                 </section>
-                {editable && <StageIntegrations />}
+
                 {editable && (
                   <section className="space-y-2 border-t pt-4">
                     <h3 className="font-semibold">Execuções recentes</h3>
