@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import {
   CONVERSATION_SELECT,
@@ -19,8 +18,14 @@ import { useAuth } from '@/hooks/use-auth';
 import { ConversationList } from '@/components/inbox/conversation-list';
 import { MessageThread } from '@/components/inbox/message-thread';
 import { ContactSidebar } from '@/components/inbox/contact-sidebar';
-import { WifiOff } from 'lucide-react';
+import { WifiOff, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
@@ -38,7 +43,6 @@ export default function InboxPage() {
 }
 
 function InboxPageInner() {
-  const t = useTranslations('Inbox.page');
   const { accountId, isAgent } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -53,10 +57,10 @@ function InboxPageInner() {
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
+  const [mobileContactOpen, setMobileContactOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inboxAllowed, setInboxAllowed] = useState<boolean | null>(null);
   const inboxAllowedRef = useRef<boolean | null>(null);
-  const [whatsappStatus, setWhatsappStatus] = useState('unknown');
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -261,7 +265,6 @@ function InboxPageInner() {
           ? await response.json()
           : { status: 'unknown' };
         if (!cancelled) {
-          setWhatsappStatus(data.status);
           setWhatsappConnected(
             data.status === 'connected'
               ? true
@@ -272,7 +275,6 @@ function InboxPageInner() {
         }
       } catch {
         if (!cancelled) {
-          setWhatsappStatus('unknown');
           setWhatsappConnected(null);
         }
       } finally {
@@ -652,13 +654,12 @@ function InboxPageInner() {
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
-      {(whatsappConnected === false || whatsappStatus === 'connecting') && (
+      {whatsappConnected === false && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
           <p className="text-xs text-amber-400">
-            {whatsappStatus === 'connecting'
-              ? 'O WhatsApp desta conta está conectando ou aguardando pareamento. Confira em Conexões.'
-              : t('whatsappNotConnected')}
+            O WhatsApp desta conta está desconectado. Abra Conexões para
+            reconectar seu número.
           </p>
         </div>
       )}
@@ -712,6 +713,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            onOpenContactMobile={() => setMobileContactOpen(true)}
           />
         </div>
 
@@ -719,9 +721,36 @@ function InboxPageInner() {
             agent hasn't collapsed it via the thread-header toggle (#258).
             On mobile it's always hidden (the `lg:block` below), so the
             toggle — which is itself desktop-only — never affects it. */}
-        {contactPanelOpen && (
-          <div className="hidden lg:block">
+        <div className="relative hidden shrink-0 lg:block">
+          <button
+            type="button"
+            aria-label={
+              contactPanelOpen
+                ? 'Recolher ficha do contato'
+                : 'Expandir ficha do contato'
+            }
+            title={
+              contactPanelOpen
+                ? 'Recolher ficha do contato'
+                : 'Expandir ficha do contato'
+            }
+            aria-expanded={contactPanelOpen}
+            onClick={handleToggleContactPanel}
+            className={cn(
+              'border-background bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-primary absolute top-16 z-20 flex size-6 items-center justify-center rounded-full border-2 shadow-md focus-visible:outline-2',
+              contactPanelOpen ? '-left-3' : 'right-1'
+            )}
+          >
+            {contactPanelOpen ? (
+              <ChevronsRight className="size-3.5" />
+            ) : (
+              <ChevronsLeft className="size-3.5" />
+            )}
+          </button>
+          {contactPanelOpen && (
             <ContactSidebar
+              key={activeContact?.id}
+              conversation={activeConversation}
               contact={activeContact}
               onContactUpdated={() => {
                 if (!activeContact) return;
@@ -739,8 +768,21 @@ function InboxPageInner() {
                   });
               }}
             />
-          </div>
-        )}
+          )}
+        </div>
+        <Sheet open={mobileContactOpen} onOpenChange={setMobileContactOpen}>
+          <SheetContent side="right" className="w-80 max-w-full gap-0 p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Ficha do contato</SheetTitle>
+            </SheetHeader>
+            <ContactSidebar
+              key={activeContact?.id}
+              contact={activeContact}
+              conversation={activeConversation}
+              onContactUpdated={handleManualRefresh}
+            />
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );

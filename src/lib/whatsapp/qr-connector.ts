@@ -225,7 +225,9 @@ async function fetchEvolutionQrConnector(
           ? 'connected'
           : state === 'connecting'
             ? 'awaiting_qr_scan'
-            : 'disconnected',
+            : state === 'close' || state === 'closed'
+              ? 'disconnected'
+              : 'unknown',
       qr_available: state !== 'open' && state !== 'close',
       qr_version: qrVersion,
       last_error: null,

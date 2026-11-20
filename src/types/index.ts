@@ -410,6 +410,7 @@ export interface Deal {
   notes?: string;
   expected_close_date?: string;
   status?: DealStatus;
+  temperature?: 'cold' | 'warm' | 'hot' | null;
   created_at: string;
   updated_at?: string;
   /** Hydrated by the Kanban query to show a contact's latest message. */

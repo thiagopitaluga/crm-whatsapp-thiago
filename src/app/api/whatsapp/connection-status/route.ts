@@ -1,3 +1,4 @@
+import { aggregateConnectionStatus } from '@/lib/whatsapp/connection-status';
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { fetchQrConnector } from '@/lib/whatsapp/qr-connector';
@@ -34,28 +35,28 @@ export async function GET() {
             target
           );
           if (!response.ok) return 'unknown';
-          return (await response.json()).status as string;
+          const value = (await response.json()).status;
+          return typeof value === 'string' &&
+            [
+              'connected',
+              'connecting',
+              'reconnecting',
+              'starting',
+              'awaiting_qr_scan',
+              'disconnected',
+              'logged_out',
+            ].includes(value)
+            ? value
+            : 'unknown';
         } catch {
           return 'unknown';
         }
       })
     );
-    const status =
-      cloud.data?.some((c) => c.status === 'connected') ||
-      statuses.includes('connected')
-        ? 'connected'
-        : statuses.some((s) =>
-              [
-                'connecting',
-                'reconnecting',
-                'starting',
-                'awaiting_qr_scan',
-              ].includes(s)
-            )
-          ? 'connecting'
-          : statuses.includes('unknown')
-            ? 'unknown'
-            : 'disconnected';
+    const status = aggregateConnectionStatus(
+      statuses,
+      cloud.data?.some((c) => c.status === 'connected')
+    );
     return NextResponse.json(
       { status },
       { headers: { 'cache-control': 'no-store' } }
