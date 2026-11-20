@@ -257,7 +257,7 @@ export default function PipelinesPage() {
       const query = supabase
         .from('deals')
         .select(
-          '*, contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
+          '*, contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_notes(note_text,created_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
         )
         .eq('pipeline_id', pipelineId)
         .eq('account_id', accountId)
@@ -467,6 +467,14 @@ export default function PipelinesPage() {
     if (!selectedPipelineId) return;
     setDeals(await loadDeals(selectedPipelineId));
   }, [loadDeals, selectedPipelineId]);
+
+  useEffect(() => {
+    const visible = () => {
+      if (document.visibilityState === 'visible') void refreshDeals();
+    };
+    document.addEventListener('visibilitychange', visible);
+    return () => document.removeEventListener('visibilitychange', visible);
+  }, [refreshDeals]);
 
   const moveDeal = useCallback(
     async (dealId: string, newStageId: string): Promise<boolean> => {
@@ -737,28 +745,12 @@ export default function PipelinesPage() {
       return;
     }
 
-    const nextDealNotes = [quickNoteDeal.notes?.trim(), noteText]
-      .filter(Boolean)
-      .join('\n\n');
-    const { error: dealError } = await supabase
-      .from('deals')
-      .update({ notes: nextDealNotes })
-      .eq('id', quickNoteDeal.id);
     setSavingQuickNote(false);
-    if (dealError) {
-      toast.error(t('toastFailedQuickUpdate'));
-      return;
-    }
-
-    setDeals((previous) =>
-      previous.map((deal) =>
-        deal.id === quickNoteDeal.id ? { ...deal, notes: nextDealNotes } : deal
-      )
-    );
+    await refreshDeals();
     setQuickNote('');
     setQuickNoteDeal(null);
     toast.success(t('toastNoteAdded'));
-  }, [accountId, quickNote, quickNoteDeal, supabase, t]);
+  }, [accountId, quickNote, quickNoteDeal, supabase, t, refreshDeals]);
 
   const handleToggleTag = useCallback(
     async (deal: Deal, tag: Tag) => {

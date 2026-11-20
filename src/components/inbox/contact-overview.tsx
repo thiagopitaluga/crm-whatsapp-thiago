@@ -235,9 +235,9 @@ export function ContactOverview({
         </p>
       )}
       <section className="space-y-2">
-        <h4 className={heading}>Observações ({notes.length})</h4>
+        <h4 className={heading}>Notas ({notes.length})</h4>
         <textarea
-          aria-label="Nova observação"
+          aria-label="Nova nota"
           value={text}
           onChange={(e) => setText(e.target.value)}
           className={control}
@@ -280,7 +280,7 @@ export function ContactOverview({
             })
           }
         >
-          Adicionar observação
+          Adicionar nota
         </Button>
         {notes.map((note) => (
           <div key={note.id} className="bg-muted rounded-md p-2 text-xs">

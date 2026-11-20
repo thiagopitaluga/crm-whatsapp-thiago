@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import type { Notification } from '@/types';
-import { Bell, CheckCheck, Loader2, Send, UserPlus } from 'lucide-react';
+import { Bell, Loader2, Send, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -29,7 +29,6 @@ export default function NotificationsPage() {
     null
   );
   const [error, setError] = useState<string | null>(null);
-  const [markingAll, setMarkingAll] = useState(false);
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -129,29 +128,6 @@ export default function NotificationsPage() {
     [markRead, router]
   );
 
-  const unreadIds =
-    notifications?.filter((n) => !n.read_at).map((n) => n.id) ?? [];
-
-  const markAllRead = useCallback(async () => {
-    if (unreadIds.length === 0) return;
-    setMarkingAll(true);
-    const now = new Date().toISOString();
-    setNotifications(
-      (prev) =>
-        prev?.map((n) => (n.read_at ? n : { ...n, read_at: now })) ?? prev
-    );
-    const supabase = createClient();
-    const { error: updateErr } = await supabase
-      .from('notifications')
-      .update({ read_at: now })
-      .is('read_at', null);
-    setMarkingAll(false);
-    if (updateErr) {
-      toast.error('Failed to mark all as read');
-      load();
-    }
-  }, [unreadIds.length, load]);
-
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
@@ -177,22 +153,10 @@ export default function NotificationsPage() {
         <div>
           <h1 className="text-foreground text-2xl font-bold">Notificações</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Configure os avisos no celular, lembretes por WhatsApp e horários de silêncio.
+            Configure os avisos no celular, lembretes por WhatsApp e horários de
+            silêncio.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={unreadIds.length === 0 || markingAll}
-          onClick={markAllRead}
-        >
-          {markingAll ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <CheckCheck className="h-4 w-4" />
-          )}
-          Marcar tudo como lido
-        </Button>
       </div>
 
       <NotificationSettings />

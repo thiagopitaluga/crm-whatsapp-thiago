@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type {
   Deal,
   DealStatus,
@@ -23,6 +23,7 @@ import {
   Check,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/currency';
+import { cardNotes } from '@/lib/contacts/card-notes';
 import { useTranslations } from 'next-intl';
 import {
   DropdownMenu,
@@ -91,8 +92,6 @@ export function DealCard({
   const [savingValue, setSavingValue] = useState(false);
   const [movingStageId, setMovingStageId] = useState<string | null>(null);
 
-  useEffect(() => setValue(String(deal.value ?? 0)), [deal.id, deal.value]);
-
   const contactName =
     deal.contact?.name?.trim() || deal.title || t('noContact');
   const phone = deal.contact?.phone || t('noPhone');
@@ -113,6 +112,7 @@ export function DealCard({
   const assigneeName =
     deal.assignee?.full_name?.trim() || deal.assignee?.email || null;
   const contactTags = deal.contact?.tags ?? [];
+  const visibleNotes = cardNotes(deal.notes, deal.contact?.contact_notes);
   const customValues = (deal.contact?.custom_values ?? []).filter(
     (item) =>
       item.custom_field &&
@@ -220,7 +220,7 @@ export function DealCard({
           <span className="min-w-0 truncate">{phone}</span>
           {layout.show_created_at && deal.contact?.created_at ? (
             <span
-              className="ml-auto shrink-0 whitespace-nowrap text-[10px]"
+              className="ml-auto shrink-0 text-[10px] whitespace-nowrap"
               title={`Criado em ${new Date(deal.contact.created_at).toLocaleString('pt-BR')}`}
             >
               {new Date(deal.contact.created_at).toLocaleString('pt-BR', {
@@ -304,6 +304,7 @@ export function DealCard({
               disabled={isOverlay}
               onClick={(event) => {
                 stopCardInteraction(event);
+                setValue(String(deal.value ?? 0));
                 setEditingValue(true);
               }}
               onPointerDown={stopCardInteraction}
@@ -340,13 +341,13 @@ export function DealCard({
         </a>
       )}
 
-      {layout.show_notes && deal.notes?.trim() && (
+      {layout.show_notes && visibleNotes && (
         <div
           className="border-primary/40 text-muted-foreground mt-3 flex gap-1.5 border-l-2 pl-2 text-xs leading-5"
-          title={deal.notes}
+          title={visibleNotes}
         >
           <StickyNote className="text-primary mt-0.5 size-3.5 shrink-0" />
-          <p className="line-clamp-3">{deal.notes}</p>
+          <p className="line-clamp-3">{visibleNotes}</p>
         </div>
       )}
 

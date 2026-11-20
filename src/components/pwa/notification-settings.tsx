@@ -1,8 +1,16 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Bell, Smartphone } from 'lucide-react';
+import { Bell, Download, Check, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useAppInstall } from '@/hooks/use-app-install';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 type Settings = {
   messages: boolean;
   allMessages: boolean;
@@ -29,14 +37,15 @@ const defaults: Settings = {
   quietStart: '22:00',
   quietEnd: '08:00',
 };
-type InstallEvent = Event & { prompt: () => Promise<void> };
 export function NotificationSettings() {
+  const { installed, ios, prompt, requestInstall } = useAppInstall();
+  const [installHelp, setInstallHelp] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [settings, setSettings] = useState(defaults),
     [key, setKey] = useState<string | null>(null),
     [enabled, setEnabled] = useState(false),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
-    [install, setInstall] = useState<InstallEvent | null>(null),
     [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -60,17 +69,23 @@ export function NotificationSettings() {
     if ('serviceWorker' in navigator)
       void navigator.serviceWorker.ready
         .then((r) => r.pushManager?.getSubscription())
-        .then((s) => {
-          if (!cancelled) setEnabled(!!s);
+        .then(async (s) => {
+          if (!s) return;
+          const response = await fetch(
+            `/api/notifications/subscribe?endpoint=${encodeURIComponent(s.endpoint)}`
+          );
+          if (!response.ok) throw Error('Falha ao conferir aparelho');
+          const data = await response.json();
+          if (!cancelled)
+            setEnabled(
+              data.subscribed === true && Notification.permission === 'granted'
+            );
+        })
+        .catch(() => {
+          /* Browser may block service workers in private mode. */
         });
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setInstall(e as InstallEvent);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
     return () => {
       cancelled = true;
-      window.removeEventListener('beforeinstallprompt', handler);
     };
   }, []);
   async function save() {
@@ -92,7 +107,24 @@ export function NotificationSettings() {
         throw Error(
           'Este navegador não oferece avisos push. No iPhone, instale na tela inicial e abra o app.'
         );
-      const registration = await navigator.serviceWorker.ready;
+      if (!enabled && !key)
+        throw Error('Avisos ainda não configurados no servidor.');
+      if (!enabled && (await Notification.requestPermission()) !== 'granted')
+        throw Error('Permita notificações nas configurações do navegador.');
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                Error(
+                  'Não foi possível preparar os avisos. Atualize a página e tente novamente.'
+                )
+              ),
+            10000
+          )
+        ),
+      ]);
       if (enabled) {
         const sub = await registration.pushManager.getSubscription();
         if (sub) {
@@ -107,17 +139,16 @@ export function NotificationSettings() {
         setEnabled(false);
         return;
       }
-      if (!key) throw Error('Avisos ainda não configurados no servidor.');
-      if ((await Notification.requestPermission()) !== 'granted')
-        throw Error('Permita notificações nas configurações do navegador.');
       await save();
-      const binary = atob(key.replace(/-/g, '+').replace(/_/g, '/'));
+      const binary = atob(key!.replace(/-/g, '+').replace(/_/g, '/'));
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: bytes,
-      });
+      const sub =
+        (await registration.pushManager.getSubscription()) ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: bytes,
+        }));
       const r = await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -163,11 +194,78 @@ export function NotificationSettings() {
           Android: menu do Chrome → Instalar app. iPhone: Safari → Compartilhar
           → Adicionar à Tela de Início. Entre com a mesma conta do Organizap.
         </p>
-        {install && (
-          <Button className="mt-3" onClick={() => void install.prompt()}>
-            Instalar Organizap
-          </Button>
-        )}
+        <Button
+          className="mt-3"
+          disabled={installed || installing}
+          onClick={async () => {
+            if (!prompt) {
+              setInstallHelp(true);
+              return;
+            }
+            setInstalling(true);
+            try {
+              await requestInstall();
+            } catch {
+              setInstallHelp(true);
+            } finally {
+              setInstalling(false);
+            }
+          }}
+        >
+          {installed ? (
+            <Check className="size-4" />
+          ) : (
+            <Download className="size-4" />
+          )}
+          {installed
+            ? 'Aplicativo instalado'
+            : installing
+              ? 'Abrindo instalação…'
+              : 'Instalar aplicativo'}
+        </Button>
+        <Dialog open={installHelp} onOpenChange={setInstallHelp}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Instalar Organizap</DialogTitle>
+              <DialogDescription>
+                Adicione o Organizap à tela inicial e entre com a mesma conta do
+                CRM.
+              </DialogDescription>
+            </DialogHeader>
+            <ol className="list-decimal space-y-2 pl-5 text-sm">
+              {ios ? (
+                <>
+                  <li>Abra este site no Safari do iPhone ou iPad.</li>
+                  <li>
+                    Toque em Compartilhar e depois em Adicionar à Tela de
+                    Início.
+                  </li>
+                  <li>
+                    Confirme em Adicionar e abra o Organizap pelo novo ícone.
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>Abra este site no Chrome ou Edge.</li>
+                  <li>
+                    No menu do navegador, escolha Instalar app ou Instalar
+                    Organizap. No computador, procure também o ícone de
+                    instalação na barra de endereço.
+                  </li>
+                  <li>
+                    Confirme a instalação e abra pelo novo ícone. Se a opção não
+                    aparecer, verifique se o app já está instalado ou use um
+                    navegador compatível fora do modo privado.
+                  </li>
+                </>
+              )}
+            </ol>
+            <p className="text-muted-foreground text-sm">
+              Depois, volte a Notificações no aplicativo e toque em Ligar avisos
+              para permitir os alertas neste aparelho.
+            </p>
+          </DialogContent>
+        </Dialog>
       </div>
       <div className="bg-card space-y-3 rounded-xl border p-5">
         <h2 className="flex items-center gap-2 font-semibold">

@@ -1,5 +1,22 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
+export async function GET(request: Request) {
+  try {
+    const { supabase, userId, accountId } = await requireRole('agent');
+    const endpoint = new URL(request.url).searchParams.get('endpoint');
+    const { data, error } = await supabase
+      .from('push_subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('account_id', accountId)
+      .eq('endpoint', endpoint ?? '')
+      .maybeSingle();
+    if (error) throw error;
+    return NextResponse.json({ subscribed: !!data });
+  } catch (e) {
+    return toErrorResponse(e);
+  }
+}
 export async function POST(request: Request) {
   try {
     const { supabase, userId, accountId } = await requireRole('agent');
@@ -26,17 +43,15 @@ export async function POST(request: Request) {
         { error: 'Assinatura inválida' },
         { status: 400 }
       );
-    const { error } = await supabase
-      .from('push_subscriptions')
-      .upsert(
-        {
-          user_id: userId,
-          account_id: accountId,
-          endpoint: url.href,
-          subscription: sub,
-        },
-        { onConflict: 'endpoint' }
-      );
+    const { error } = await supabase.from('push_subscriptions').upsert(
+      {
+        user_id: userId,
+        account_id: accountId,
+        endpoint: url.href,
+        subscription: sub,
+      },
+      { onConflict: 'endpoint' }
+    );
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e) {

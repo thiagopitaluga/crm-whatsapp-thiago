@@ -415,6 +415,7 @@ export interface Deal {
   updated_at?: string;
   /** Hydrated by the Kanban query to show a contact's latest message. */
   contact?: Contact & {
+    contact_notes?: Pick<ContactNote,'note_text'|'created_at'>[];
     conversations?: Pick<
       Conversation,
       'last_message_text' | 'last_message_at'

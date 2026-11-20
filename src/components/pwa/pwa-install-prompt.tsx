@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useAppInstall } from '@/hooks/use-app-install';
+import { toast } from 'sonner';
 import { Download, Smartphone, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -8,19 +10,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 
 const DISMISS_KEY = 'organizap.pwa-install-dismissed.v1';
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-};
-
-function isInstalled() {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone ===
-      true
-  );
-}
 
 /**
  * A small, per-browser invitation shown to every signed-in user who has not
@@ -30,50 +19,53 @@ function isInstalled() {
 export function PwaInstallPrompt() {
   const { user, loading } = useAuth();
   const t = useTranslations('PwaInstall');
-  const [installEvent, setInstallEvent] =
-    useState<BeforeInstallPromptEvent | null>(null);
-  const [standalone, setStandalone] = useState(true);
-  const [ios, setIos] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    setStandalone(isInstalled());
-    setDismissed(window.localStorage.getItem(DISMISS_KEY) === 'true');
-    setIos(/iPad|iPhone|iPod/.test(window.navigator.userAgent));
-
-    function onBeforeInstallPrompt(event: Event) {
-      event.preventDefault();
-      setInstallEvent(event as BeforeInstallPromptEvent);
+  const {
+    ready,
+    prompt: installEvent,
+    installed: standalone,
+    ios,
+    requestInstall,
+  } = useAppInstall();
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return (
+        typeof window !== 'undefined' &&
+        window.localStorage.getItem(DISMISS_KEY) === 'true'
+      );
+    } catch {
+      return false;
     }
-
-    function onInstalled() {
-      setStandalone(true);
-      setInstallEvent(null);
-    }
-
-    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, []);
+  });
 
   function dismiss() {
-    window.localStorage.setItem(DISMISS_KEY, 'true');
+    try {
+      window.localStorage.setItem(DISMISS_KEY, 'true');
+    } catch {
+      /* Private browsing may block storage. */
+    }
     setDismissed(true);
   }
 
   async function install() {
     if (!installEvent) return;
 
-    await installEvent.prompt();
-    const choice = await installEvent.userChoice;
-    setInstallEvent(null);
-    if (choice.outcome !== 'accepted') dismiss();
+    try {
+      if ((await requestInstall()) === 'dismissed') dismiss();
+    } catch {
+      toast.error(
+        'Não foi possível abrir a instalação. Tente pelo menu do navegador.'
+      );
+    }
   }
 
-  if (loading || !user || standalone || dismissed || (!installEvent && !ios)) {
+  if (
+    !ready ||
+    loading ||
+    !user ||
+    standalone ||
+    dismissed ||
+    (!installEvent && !ios)
+  ) {
     return null;
   }
 
