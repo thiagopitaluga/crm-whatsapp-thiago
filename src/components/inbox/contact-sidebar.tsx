@@ -23,9 +23,18 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { formatCurrency } from '@/lib/currency';
+import {
+  ContactDetailView,
+  type ContactDetailTab,
+} from '@/components/contacts/contact-detail-view';
+import {
+  ContactSidebarSections,
+  type SidebarTab,
+} from './contact-sidebar-sections';
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  onContactUpdated?: () => void;
 }
 
 interface WebsiteAttributionClick {
@@ -112,7 +121,10 @@ function MetaAttributionDetail({
   );
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({
+  contact,
+  onContactUpdated,
+}: ContactSidebarProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
   const tThread = useTranslations('Inbox.messageThread');
 
@@ -130,6 +142,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [touchpoints, setTouchpoints] = useState<AttributionTouchpoint[]>([]);
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  const [activeTab, setActiveTab] = useState<SidebarTab>('overview');
+  const [detailTab, setDetailTab] = useState<ContactDetailTab>('details');
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -272,76 +287,122 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   return (
     <div className="border-border bg-card flex h-full w-70 flex-col border-l">
-      <ScrollArea className="flex-1">
-        <div className="p-4">
-          {/* Contact Info */}
-          <div className="flex flex-col items-center text-center">
-            <div className="bg-muted text-foreground flex h-16 w-16 items-center justify-center rounded-full text-lg font-semibold">
-              {contact.avatar_url ? (
-                <img
-                  src={contact.avatar_url}
-                  alt={displayName}
-                  className="h-16 w-16 rounded-full object-cover"
-                />
-              ) : (
-                initials
+      <div
+        className="border-border grid grid-cols-3 gap-1 border-b p-2"
+        role="tablist"
+        aria-label="Ficha do contato"
+      >
+        {(
+          [
+            ['overview', 'Visão'],
+            ['data', 'Dados'],
+            ['files', 'Arquivos'],
+            ['history', 'Histórico'],
+            ['tasks', 'Tarefas'],
+            ['campaigns', 'Campanhas'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={activeTab === key}
+            onClick={() => setActiveTab(key)}
+            className={cn(
+              'rounded-md px-1 py-2 text-xs transition-colors',
+              activeTab === key
+                ? 'bg-primary/15 text-primary font-medium'
+                : 'text-muted-foreground hover:bg-muted'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {activeTab !== 'overview' && (
+        <ContactSidebarSections
+          key={`${contact.id}-${activeTab}`}
+          contact={contact}
+          tab={activeTab}
+          onOpenDetails={(section) => {
+            setDetailTab(section);
+            setDetailOpen(true);
+          }}
+        />
+      )}
+      {activeTab === 'overview' && (
+        <ScrollArea className="flex-1">
+          <div className="p-4">
+            {/* Contact Info */}
+            <div className="flex flex-col items-center text-center">
+              <div className="bg-muted text-foreground flex h-16 w-16 items-center justify-center rounded-full text-lg font-semibold">
+                {contact.avatar_url ? (
+                  <img
+                    src={contact.avatar_url}
+                    alt={displayName}
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  initials
+                )}
+              </div>
+              <h3 className="text-foreground mt-3 text-sm font-semibold">
+                {displayName}
+              </h3>
+              {contact.company && (
+                <p className="text-muted-foreground text-xs">
+                  {contact.company}
+                </p>
               )}
             </div>
-            <h3 className="text-foreground mt-3 text-sm font-semibold">
-              {displayName}
-            </h3>
-            {contact.company && (
-              <p className="text-muted-foreground text-xs">{contact.company}</p>
-            )}
-          </div>
 
-          {/* Phone */}
-          <div className="mt-4 space-y-2">
-            <button
-              onClick={handleCopyPhone}
-              className="text-muted-foreground hover:bg-muted flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors"
-            >
-              <Phone className="text-muted-foreground h-4 w-4" />
-              <span className="flex-1 text-left">{contact.phone}</span>
-              {copied ? (
-                <Check className="text-primary h-3 w-3" />
-              ) : (
-                <Copy className="text-muted-foreground h-3 w-3" />
-              )}
-            </button>
+            {/* Phone */}
+            <div className="mt-4 space-y-2">
+              <button
+                onClick={handleCopyPhone}
+                className="text-muted-foreground hover:bg-muted flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors"
+              >
+                <Phone className="text-muted-foreground h-4 w-4" />
+                <span className="flex-1 text-left">{contact.phone}</span>
+                {copied ? (
+                  <Check className="text-primary h-3 w-3" />
+                ) : (
+                  <Copy className="text-muted-foreground h-3 w-3" />
+                )}
+              </button>
 
-            {contact.email && (
-              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
-                <Mail className="text-muted-foreground h-4 w-4" />
-                <span className="truncate">{contact.email}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Divider */}
-          <div className="border-border my-4 border-t" />
-
-          {hasAttribution && (
-            <>
-              <div>
-                <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
-                  <MousePointerClick className="h-3 w-3" />
-                  Origem da conversa
+              {contact.email && (
+                <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
+                  <Mail className="text-muted-foreground h-4 w-4" />
+                  <span className="truncate">{contact.email}</span>
                 </div>
-                <div className="mt-2 space-y-2">
-                  {touchpoints.map((touchpoint) => {
-                    const providerLabel =
-                      touchpoint.provider === 'google_ads'
-                        ? 'Google Ads'
-                        : touchpoint.provider === 'meta'
-                          ? 'Meta Ads'
-                          : touchpoint.provider === 'website'
-                            ? 'Site'
-                            : touchpoint.source_platform || 'Origem registrada';
-                    const campaign =
-                      touchpoint.campaign_name || touchpoint.utm_campaign;
-                    const hasTechnicalData = Boolean(
-                      touchpoint.utm_source ||
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="border-border my-4 border-t" />
+
+            {hasAttribution && (
+              <>
+                <div>
+                  <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                    <MousePointerClick className="h-3 w-3" />
+                    Origem da conversa
+                  </div>
+                  <div className="mt-2 space-y-2">
+                    {touchpoints.map((touchpoint) => {
+                      const providerLabel =
+                        touchpoint.provider === 'google_ads'
+                          ? 'Google Ads'
+                          : touchpoint.provider === 'meta'
+                            ? 'Meta Ads'
+                            : touchpoint.provider === 'website'
+                              ? 'Site'
+                              : touchpoint.source_platform ||
+                                'Origem registrada';
+                      const campaign =
+                        touchpoint.campaign_name || touchpoint.utm_campaign;
+                      const hasTechnicalData = Boolean(
+                        touchpoint.utm_source ||
                         touchpoint.utm_medium ||
                         touchpoint.utm_campaign ||
                         touchpoint.utm_term ||
@@ -352,268 +413,345 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                         touchpoint.ctwa_clid ||
                         touchpoint.landing_url ||
                         touchpoint.referrer
-                    );
-                    return (
-                      <div
-                        key={touchpoint.id}
-                        className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2.5"
-                      >
-                        <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
-                          <Megaphone className="text-primary size-3.5" />
-                          {providerLabel}
-                          {touchpoint.source_channel
-                            ? ` · ${touchpoint.source_channel}`
-                            : ''}
+                      );
+                      return (
+                        <div
+                          key={touchpoint.id}
+                          className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2.5"
+                        >
+                          <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
+                            <Megaphone className="text-primary size-3.5" />
+                            {providerLabel}
+                            {touchpoint.source_channel
+                              ? ` · ${touchpoint.source_channel}`
+                              : ''}
+                          </div>
+                          <div className="mt-2 space-y-2">
+                            <MetaAttributionDetail
+                              label="Campanha"
+                              value={campaign}
+                            />
+                            <MetaAttributionDetail
+                              label={
+                                touchpoint.provider === 'google_ads'
+                                  ? 'Grupo de anúncios'
+                                  : 'Conjunto de anúncios'
+                              }
+                              value={
+                                touchpoint.ad_group_name ||
+                                touchpoint.ad_group_id
+                              }
+                            />
+                            <MetaAttributionDetail
+                              label="Anúncio"
+                              value={touchpoint.ad_name || touchpoint.ad_id}
+                            />
+                            <MetaAttributionDetail
+                              label="Posicionamento"
+                              value={touchpoint.placement || touchpoint.network}
+                            />
+                          </div>
+                          {hasTechnicalData && (
+                            <details className="group mt-2">
+                              <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-[10px]">
+                                Ver parâmetros e identificadores
+                              </summary>
+                              <div className="mt-2 grid gap-1.5 border-l pl-2">
+                                <MetaAttributionDetail
+                                  label="UTM source"
+                                  value={touchpoint.utm_source}
+                                />
+                                <MetaAttributionDetail
+                                  label="UTM medium"
+                                  value={touchpoint.utm_medium}
+                                />
+                                <MetaAttributionDetail
+                                  label="UTM campaign"
+                                  value={touchpoint.utm_campaign}
+                                />
+                                <MetaAttributionDetail
+                                  label="UTM term"
+                                  value={touchpoint.utm_term}
+                                />
+                                <MetaAttributionDetail
+                                  label="UTM content"
+                                  value={touchpoint.utm_content}
+                                />
+                                <MetaAttributionDetail
+                                  label="gclid"
+                                  value={touchpoint.gclid}
+                                />
+                                <MetaAttributionDetail
+                                  label="fbclid"
+                                  value={touchpoint.fbclid}
+                                />
+                                <MetaAttributionDetail
+                                  label="msclkid"
+                                  value={touchpoint.msclkid}
+                                />
+                                <MetaAttributionDetail
+                                  label="Clique do WhatsApp"
+                                  value={touchpoint.ctwa_clid}
+                                />
+                                <MetaAttributionDetail
+                                  label="Página de entrada"
+                                  value={touchpoint.landing_url}
+                                />
+                                <MetaAttributionDetail
+                                  label="Referência"
+                                  value={touchpoint.referrer}
+                                />
+                              </div>
+                            </details>
+                          )}
                         </div>
-                        <div className="mt-2 space-y-2">
-                          <MetaAttributionDetail label="Campanha" value={campaign} />
-                          <MetaAttributionDetail
-                            label={touchpoint.provider === 'google_ads' ? 'Grupo de anúncios' : 'Conjunto de anúncios'}
-                            value={touchpoint.ad_group_name || touchpoint.ad_group_id}
-                          />
-                          <MetaAttributionDetail label="Anúncio" value={touchpoint.ad_name || touchpoint.ad_id} />
-                          <MetaAttributionDetail label="Posicionamento" value={touchpoint.placement || touchpoint.network} />
+                      );
+                    })}
+                    {touchpoints.length === 0 &&
+                      whatsAppAttributions.map((attribution) => (
+                        <div
+                          key={attribution.id}
+                          className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2.5"
+                        >
+                          <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
+                            <Megaphone className="text-primary size-3.5" />
+                            Meta Ads · Clique para WhatsApp
+                          </div>
+                          <div className="mt-2 space-y-2">
+                            <MetaAttributionDetail
+                              label="Campanha"
+                              value={
+                                attribution.meta_campaign_name ||
+                                (attribution.meta_campaign_id
+                                  ? `ID ${attribution.meta_campaign_id}`
+                                  : null)
+                              }
+                            />
+                            <MetaAttributionDetail
+                              label="Conjunto de anúncios"
+                              value={
+                                attribution.meta_adset_name ||
+                                (attribution.meta_adset_id
+                                  ? `ID ${attribution.meta_adset_id}`
+                                  : null)
+                              }
+                            />
+                            <MetaAttributionDetail
+                              label="Anúncio"
+                              value={
+                                attribution.meta_ad_name ||
+                                attribution.headline ||
+                                (attribution.meta_ad_id
+                                  ? `ID ${attribution.meta_ad_id}`
+                                  : null)
+                              }
+                            />
+                          </div>
+                          {!attribution.meta_marketing_resolved_at && (
+                            <p className="text-muted-foreground mt-2 text-[10px]">
+                              Dados da campanha aguardando consulta no Meta Ads.
+                            </p>
+                          )}
+                          {attribution.source_id && (
+                            <p
+                              className="text-muted-foreground mt-2 truncate text-[10px]"
+                              title={attribution.source_id}
+                            >
+                              ID de origem: {attribution.source_id}
+                            </p>
+                          )}
+                          {attribution.ctwa_clid && (
+                            <p className="text-muted-foreground mt-1 text-[10px]">
+                              Identificador do clique salvo
+                            </p>
+                          )}
                         </div>
-                        {hasTechnicalData && (
-                          <details className="group mt-2">
-                            <summary className="text-muted-foreground cursor-pointer text-[10px] hover:text-foreground">
-                              Ver parâmetros e identificadores
-                            </summary>
-                            <div className="mt-2 grid gap-1.5 border-l pl-2">
-                              <MetaAttributionDetail label="UTM source" value={touchpoint.utm_source} />
-                              <MetaAttributionDetail label="UTM medium" value={touchpoint.utm_medium} />
-                              <MetaAttributionDetail label="UTM campaign" value={touchpoint.utm_campaign} />
-                              <MetaAttributionDetail label="UTM term" value={touchpoint.utm_term} />
-                              <MetaAttributionDetail label="UTM content" value={touchpoint.utm_content} />
-                              <MetaAttributionDetail label="gclid" value={touchpoint.gclid} />
-                              <MetaAttributionDetail label="fbclid" value={touchpoint.fbclid} />
-                              <MetaAttributionDetail label="msclkid" value={touchpoint.msclkid} />
-                              <MetaAttributionDetail label="Clique do WhatsApp" value={touchpoint.ctwa_clid} />
-                              <MetaAttributionDetail label="Página de entrada" value={touchpoint.landing_url} />
-                              <MetaAttributionDetail label="Referência" value={touchpoint.referrer} />
-                            </div>
-                          </details>
+                      ))}
+                    {touchpoints.length === 0 &&
+                      websiteAttributions.map((attribution) => {
+                        const source =
+                          attribution.utm_source ||
+                          (attribution.gclid
+                            ? 'Google Ads'
+                            : attribution.fbclid
+                              ? 'Meta'
+                              : 'Site');
+                        return (
+                          <div
+                            key={attribution.id}
+                            className="bg-muted rounded-lg px-3 py-2"
+                          >
+                            <p className="text-foreground text-xs font-medium">
+                              {source}
+                              {attribution.utm_medium
+                                ? ` · ${attribution.utm_medium}`
+                                : ''}
+                            </p>
+                            {attribution.utm_campaign && (
+                              <p
+                                className="text-muted-foreground mt-1 truncate text-xs"
+                                title={attribution.utm_campaign}
+                              >
+                                {attribution.utm_campaign}
+                              </p>
+                            )}
+                            {(attribution.gclid || attribution.fbclid) && (
+                              <p className="text-muted-foreground mt-1 text-[10px]">
+                                Identificador de clique salvo
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+                <div className="border-border my-4 border-t" />
+              </>
+            )}
+
+            {/* Tags */}
+            <div>
+              <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                <TagIcon className="h-3 w-3" />
+                {tSidebar('tags')}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {tags.length === 0 ? (
+                  <p className="text-muted-foreground px-1 text-xs">
+                    {tSidebar('noTags')}
+                  </p>
+                ) : (
+                  tags.map((tag) => (
+                    <span
+                      key={tag.contact_tag_id}
+                      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      style={{
+                        backgroundColor: `${tag.color}20`,
+                        color: tag.color,
+                      }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))
+                )}
+              </div>
+              <button
+                className="text-primary mt-2 text-xs hover:underline"
+                onClick={() => {
+                  setDetailTab('tags');
+                  setDetailOpen(true);
+                }}
+              >
+                Gerenciar etiquetas
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="border-border my-4 border-t" />
+
+            {/* Active Deals */}
+            <div>
+              <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                <DollarSign className="h-3 w-3" />
+                {tSidebar('deals')}
+              </div>
+              <div className="mt-2 space-y-2">
+                {deals.length === 0 ? (
+                  <p className="text-muted-foreground px-1 text-xs">
+                    {tSidebar('noDeals')}
+                  </p>
+                ) : (
+                  deals.map((deal) => (
+                    <div
+                      key={deal.id}
+                      className="bg-muted rounded-lg px-3 py-2"
+                    >
+                      <p className="text-foreground text-sm font-medium">
+                        {deal.title}
+                      </p>
+                      <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
+                        <span>
+                          {formatCurrency(
+                            deal.value,
+                            deal.currency ?? defaultCurrency
+                          )}
+                        </span>
+                        {deal.stage && (
+                          <span
+                            className="rounded-full px-1.5 py-0.5 text-[10px]"
+                            style={{
+                              backgroundColor: `${deal.stage.color}20`,
+                              color: deal.stage.color,
+                            }}
+                          >
+                            {deal.stage.name}
+                          </span>
                         )}
                       </div>
-                    );
-                  })}
-                  {touchpoints.length === 0 && whatsAppAttributions.map((attribution) => (
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-border my-4 border-t" />
+
+            {/* Notes */}
+            <div>
+              <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                <StickyNote className="h-3 w-3" />
+                {tSidebar('notes')}
+              </div>
+              <div className="mt-2">
+                <div className="flex gap-2">
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder={tSidebar('addNotePlaceholder')}
+                    rows={2}
+                    className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-lg border px-3 py-2 text-xs outline-none"
+                  />
+                  <Button
+                    size="sm"
+                    className="bg-primary hover:bg-primary/90 h-auto px-2"
+                    onClick={handleAddNote}
+                    disabled={!newNote.trim() || addingNote}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {notes.map((note) => (
                     <div
-                      key={attribution.id}
-                      className="border-primary/20 bg-primary/5 rounded-lg border px-3 py-2.5"
+                      key={note.id}
+                      className="bg-muted rounded-lg px-3 py-2"
                     >
-                      <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
-                        <Megaphone className="text-primary size-3.5" />
-                        Meta Ads · Clique para WhatsApp
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        <MetaAttributionDetail
-                          label="Campanha"
-                          value={
-                            attribution.meta_campaign_name ||
-                            (attribution.meta_campaign_id
-                              ? `ID ${attribution.meta_campaign_id}`
-                              : null)
-                          }
-                        />
-                        <MetaAttributionDetail
-                          label="Conjunto de anúncios"
-                          value={
-                            attribution.meta_adset_name ||
-                            (attribution.meta_adset_id
-                              ? `ID ${attribution.meta_adset_id}`
-                              : null)
-                          }
-                        />
-                        <MetaAttributionDetail
-                          label="Anúncio"
-                          value={
-                            attribution.meta_ad_name ||
-                            attribution.headline ||
-                            (attribution.meta_ad_id
-                              ? `ID ${attribution.meta_ad_id}`
-                              : null)
-                          }
-                        />
-                      </div>
-                      {!attribution.meta_marketing_resolved_at && (
-                        <p className="text-muted-foreground mt-2 text-[10px]">
-                          Dados da campanha aguardando consulta no Meta Ads.
-                        </p>
-                      )}
-                      {attribution.source_id && (
-                        <p
-                          className="text-muted-foreground mt-2 truncate text-[10px]"
-                          title={attribution.source_id}
-                        >
-                          ID de origem: {attribution.source_id}
-                        </p>
-                      )}
-                      {attribution.ctwa_clid && (
-                        <p className="text-muted-foreground mt-1 text-[10px]">
-                          Identificador do clique salvo
-                        </p>
-                      )}
+                      <p className="text-muted-foreground text-xs whitespace-pre-wrap">
+                        {note.note_text}
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-[10px]">
+                        {format(new Date(note.created_at), 'MMM d, yyyy HH:mm')}
+                      </p>
                     </div>
                   ))}
-                  {touchpoints.length === 0 && websiteAttributions.map((attribution) => {
-                    const source =
-                      attribution.utm_source ||
-                      (attribution.gclid
-                        ? 'Google Ads'
-                        : attribution.fbclid
-                          ? 'Meta'
-                          : 'Site');
-                    return (
-                      <div
-                        key={attribution.id}
-                        className="bg-muted rounded-lg px-3 py-2"
-                      >
-                        <p className="text-foreground text-xs font-medium">
-                          {source}
-                          {attribution.utm_medium
-                            ? ` · ${attribution.utm_medium}`
-                            : ''}
-                        </p>
-                        {attribution.utm_campaign && (
-                          <p
-                            className="text-muted-foreground mt-1 truncate text-xs"
-                            title={attribution.utm_campaign}
-                          >
-                            {attribution.utm_campaign}
-                          </p>
-                        )}
-                        {(attribution.gclid || attribution.fbclid) && (
-                          <p className="text-muted-foreground mt-1 text-[10px]">
-                            Identificador de clique salvo
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
-              <div className="border-border my-4 border-t" />
-            </>
-          )}
-
-          {/* Tags */}
-          <div>
-            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
-              <TagIcon className="h-3 w-3" />
-              {tSidebar('tags')}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tags.length === 0 ? (
-                <p className="text-muted-foreground px-1 text-xs">
-                  {tSidebar('noTags')}
-                </p>
-              ) : (
-                tags.map((tag) => (
-                  <span
-                    key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                    }}
-                  >
-                    {tag.name}
-                  </span>
-                ))
-              )}
             </div>
           </div>
-
-          {/* Divider */}
-          <div className="border-border my-4 border-t" />
-
-          {/* Active Deals */}
-          <div>
-            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
-              <DollarSign className="h-3 w-3" />
-              {tSidebar('deals')}
-            </div>
-            <div className="mt-2 space-y-2">
-              {deals.length === 0 ? (
-                <p className="text-muted-foreground px-1 text-xs">
-                  {tSidebar('noDeals')}
-                </p>
-              ) : (
-                deals.map((deal) => (
-                  <div key={deal.id} className="bg-muted rounded-lg px-3 py-2">
-                    <p className="text-foreground text-sm font-medium">
-                      {deal.title}
-                    </p>
-                    <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
-                      <span>
-                        {formatCurrency(
-                          deal.value,
-                          deal.currency ?? defaultCurrency
-                        )}
-                      </span>
-                      {deal.stage && (
-                        <span
-                          className="rounded-full px-1.5 py-0.5 text-[10px]"
-                          style={{
-                            backgroundColor: `${deal.stage.color}20`,
-                            color: deal.stage.color,
-                          }}
-                        >
-                          {deal.stage.name}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="border-border my-4 border-t" />
-
-          {/* Notes */}
-          <div>
-            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
-              <StickyNote className="h-3 w-3" />
-              {tSidebar('notes')}
-            </div>
-            <div className="mt-2">
-              <div className="flex gap-2">
-                <textarea
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder={tSidebar('addNotePlaceholder')}
-                  rows={2}
-                  className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-lg border px-3 py-2 text-xs outline-none"
-                />
-                <Button
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 h-auto px-2"
-                  onClick={handleAddNote}
-                  disabled={!newNote.trim() || addingNote}
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </div>
-
-              <div className="mt-2 space-y-2">
-                {notes.map((note) => (
-                  <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
-                    <p className="text-muted-foreground text-xs whitespace-pre-wrap">
-                      {note.note_text}
-                    </p>
-                    <p className="text-muted-foreground mt-1 text-[10px]">
-                      {format(new Date(note.created_at), 'MMM d, yyyy HH:mm')}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </ScrollArea>
+        </ScrollArea>
+      )}
+      <ContactDetailView
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        contactId={contact.id}
+        initialTab={detailTab}
+        onUpdated={() => {
+          void fetchContactData();
+          onContactUpdated?.();
+        }}
+      />
     </div>
   );
 }
