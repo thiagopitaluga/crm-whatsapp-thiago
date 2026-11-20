@@ -251,8 +251,8 @@ function InboxPageInner() {
       // inbox; inspect the same channel list that AI agents use.
       const channelsResponse = await fetch('/api/ai/agents/channels', { cache: 'no-store' });
       if (channelsResponse.ok) {
-        const channelData = await channelsResponse.json() as { channels?: { connected?: boolean }[] };
-        if (channelData.channels?.some((channel) => channel.connected)) {
+        const channelData = await channelsResponse.json() as { channels?: { connected?: boolean }[]; defaultQrConnected?: boolean | null };
+        if (channelData.defaultQrConnected || channelData.channels?.some((channel) => channel.connected)) {
           setWhatsappConnected(true);
           return;
         }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type {
   Contact,
@@ -60,7 +59,6 @@ import {
   Settings,
   Search,
   SlidersHorizontal,
-  History,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -1361,14 +1359,6 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex justify-end">
-            <Link
-              href={`/movimentacoes?pipeline_id=${selectedPipelineId}`}
-              className="border-border bg-card text-foreground hover:bg-muted inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors"
-            >
-              <History className="size-4" /> Movimentações do funil
-            </Link>
-          </div>
           {dealLoadError && (
             <div
               role="alert"

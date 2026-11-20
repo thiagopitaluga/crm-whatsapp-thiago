@@ -38,7 +38,17 @@ export async function GET() {
       } catch { /* Evolution may be offline or not configured. */ }
       channels.push({ id: channel.id, key: channel.channel_key, label: channel.label, address: null, connected, provider: 'evolution', pairingCodeSupported: process.env.WHATSAPP_QR_PROVIDER === 'evolution' });
     }
-    return NextResponse.json({ channels });
+    // Older QR connections use the account's default instance and may not
+    // have a whatsapp_channels row. Check it separately for the inbox.
+    let defaultQrConnected: boolean | null = null;
+    try {
+      const response = await fetchQrConnector(accountId, 'status', { signal: AbortSignal.timeout(8_000) });
+      if (response.ok) {
+        const status = await response.json() as { status?: unknown };
+        defaultQrConnected = status.status === 'connected';
+      }
+    } catch { /* An unavailable connector is an unknown state. */ }
+    return NextResponse.json({ channels, defaultQrConnected });
   } catch (error) {
     return toErrorResponse(error);
   }
