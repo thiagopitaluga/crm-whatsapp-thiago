@@ -2654,7 +2654,7 @@ export function VisualAutomationWorkspace({
     );
 
   return (
-    <>
+    <div className="instagram-visual-workspace">
       <section className="page-heading">
         <div>
           <p className="eyebrow">AUTOMAÇÃO VISUAL</p>
@@ -2792,6 +2792,6 @@ export function VisualAutomationWorkspace({
           </div>
         )}
       </section>
-    </>
+    </div>
   );
 }
