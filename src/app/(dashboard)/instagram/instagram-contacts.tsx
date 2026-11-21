@@ -5,6 +5,8 @@ type Contact = {
   instagram_user_id: string;
   last_message_at: string;
   channel_id: string;
+  tags?: string[];
+  profile_data?: { username?: string; displayName?: string };
 };
 export function InstagramContacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -24,14 +26,23 @@ export function InstagramContacts() {
     return () => controller.abort();
   }, []);
   const filtered = contacts.filter((contact) =>
-    contact.instagram_user_id.includes(query.trim())
+    [
+      contact.instagram_user_id,
+      contact.profile_data?.username,
+      contact.profile_data?.displayName,
+      ...(contact.tags || []),
+    ].some((s) =>
+      s
+        ?.toLocaleLowerCase('pt-BR')
+        .includes(query.trim().toLocaleLowerCase('pt-BR'))
+    )
   );
   return (
     <section className="border-border bg-card space-y-4 rounded-xl border p-5">
       <h2 className="font-semibold">Contatos do Instagram</h2>
       <p className="text-muted-foreground text-sm">
-        Pessoas que enviaram mensagem, identificadas pelo perfil e canal. Nomes
-        e fotos ainda não são coletados.
+        Pessoas que enviaram mensagem, identificadas pelo perfil e canal. Os
+        atributos disponíveis na Meta são usados nas condições dos fluxos.
       </p>
       <label className="text-sm">
         Buscar por identificador
@@ -52,7 +63,14 @@ export function InstagramContacts() {
               key={c.id}
               className="flex flex-wrap justify-between gap-2 py-3 text-sm"
             >
-              <span>Instagram · {c.instagram_user_id}</span>
+              <span>
+                {c.profile_data?.displayName ||
+                  c.profile_data?.username ||
+                  `Instagram · ${c.instagram_user_id}`}
+                <small className="text-muted-foreground block">
+                  {(c.tags || []).join(' · ')}
+                </small>
+              </span>
               <span className="text-muted-foreground">
                 Última mensagem:{' '}
                 {new Date(c.last_message_at).toLocaleString('pt-BR')}

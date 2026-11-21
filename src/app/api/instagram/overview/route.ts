@@ -31,7 +31,9 @@ export async function GET() {
       throw new Error('Falha ao carregar indicadores.');
     const runs = await db
       .from('instagram_automation_runs')
-      .select('id,status,created_at,updated_at,automation_id')
+      .select(
+        'id,status,created_at,updated_at,automation_id,error_message,next_step,run_at'
+      )
       .eq('account_id', ctx.accountId)
       .order('created_at', { ascending: false })
       .limit(50);

@@ -26,7 +26,9 @@ export async function GET(request: Request) {
     }
     const { data, error } = await db
       .from('instagram_conversations')
-      .select('id,instagram_user_id,last_message_at,channel_id,contact_id')
+      .select(
+        'id,instagram_user_id,last_message_at,channel_id,contact_id,tags,status,profile_data'
+      )
       .eq('account_id', ctx.accountId)
       .order('last_message_at', { ascending: false })
       .limit(200);
@@ -45,6 +47,26 @@ export async function PATCH(request: Request) {
     const body = await request.json().catch(() => null);
     const id =
       typeof body?.conversationId === 'string' ? body.conversationId : '';
+    if (
+      body &&
+      ['open', 'closed', 'human'].includes(body.status) &&
+      /^[0-9a-f-]{36}$/i.test(id)
+    ) {
+      const changed = await supabaseAdmin()
+        .from('instagram_conversations')
+        .update({ status: body.status })
+        .eq('id', id)
+        .eq('account_id', ctx.accountId)
+        .select('id,status')
+        .maybeSingle();
+      if (changed.error) throw changed.error;
+      if (!changed.data)
+        return NextResponse.json(
+          { error: 'Conversa não encontrada.' },
+          { status: 404 }
+        );
+      return NextResponse.json({ conversation: changed.data });
+    }
     const contactId = body?.contactId;
     const validId = (value: unknown) =>
       typeof value === 'string' &&
@@ -161,15 +183,13 @@ export async function POST(request: Request) {
         },
         { status: 502 }
       );
-    const { error: saveError } = await db
-      .from('instagram_messages')
-      .insert({
-        account_id: ctx.accountId,
-        conversation_id: id,
-        external_id: result.message_id,
-        direction: 'outbound',
-        body: text,
-      });
+    const { error: saveError } = await db.from('instagram_messages').insert({
+      account_id: ctx.accountId,
+      conversation_id: id,
+      external_id: result.message_id,
+      direction: 'outbound',
+      body: text,
+    });
     if (saveError)
       return NextResponse.json(
         {

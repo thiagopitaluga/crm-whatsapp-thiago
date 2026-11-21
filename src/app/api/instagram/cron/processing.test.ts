@@ -28,7 +28,7 @@ vi.mock('@/lib/automations/admin-client', () => ({
               filters.status !== state.status
             )
               return { data: null, error: null };
-            state.status = String(update.status);
+            if (update.status) state.status = String(update.status);
             return { data: { id: 'job' }, error: null };
           }
           return { data: state.status === 'pending' ? [row] : [], error: null };
@@ -61,6 +61,8 @@ vi.mock('@/lib/automations/admin-client', () => ({
           filters[k] = v;
           return q;
         },
+        lt: () => q,
+        lte: () => q,
         order: () => q,
         limit: () => q,
         maybeSingle: async () => exec(),

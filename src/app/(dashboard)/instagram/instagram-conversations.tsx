@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { InstagramConversationStatus } from './instagram-conversation-status';
 import { InstagramContactLink } from './instagram-contact-link';
 type Conversation = {
   id: string;
   instagram_user_id: string;
   last_message_at: string;
   contact_id: string | null;
+  status?: string;
 };
 type Message = {
   id: string;
@@ -107,6 +109,19 @@ export function InstagramConversations() {
       <div className="flex min-h-96 flex-col p-4">
         {selected ? (
           <>
+            <InstagramConversationStatus
+              conversationId={selected}
+              status={
+                conversations.find((c) => c.id === selected)?.status || 'open'
+              }
+              onChange={(status) =>
+                setConversations((previous) =>
+                  previous.map((c) =>
+                    c.id === selected ? { ...c, status } : c
+                  )
+                )
+              }
+            />
             <InstagramContactLink
               conversationId={selected}
               contactId={

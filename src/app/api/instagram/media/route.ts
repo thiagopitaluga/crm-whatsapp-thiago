@@ -25,7 +25,11 @@ export async function GET(request: Request) {
         { error: 'Perfil não encontrado.' },
         { status: 404 }
       );
-    const endpoint = new URL('https://graph.instagram.com/v25.0/me/media');
+    const kind =
+      new URL(request.url).searchParams.get('kind') === 'stories'
+        ? 'stories'
+        : 'media';
+    const endpoint = new URL('https://graph.instagram.com/v25.0/me/' + kind);
     endpoint.searchParams.set(
       'fields',
       'id,caption,media_type,thumbnail_url,media_url,timestamp'

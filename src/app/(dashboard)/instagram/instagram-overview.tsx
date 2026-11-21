@@ -10,6 +10,8 @@ type Overview = {
     status: string;
     created_at: string;
     updated_at: string;
+    error_message?: string | null;
+    next_step?: number;
   }[];
 };
 export function InstagramOverview({ results = false }: { results?: boolean }) {
@@ -92,6 +94,14 @@ export function InstagramOverview({ results = false }: { results?: boolean }) {
                         uncertain: 'Confirmação incerta',
                       } as Record<string, string>
                     )[run.status] || run.status}
+                    {run.next_step
+                      ? ` · ${run.next_step} etapa(s) concluída(s)`
+                      : ''}
+                    {run.error_message && (
+                      <small className="text-destructive mt-1 block">
+                        {run.error_message}
+                      </small>
+                    )}
                   </span>
                   <span className="text-muted-foreground">
                     {new Date(run.updated_at).toLocaleString('pt-BR')}

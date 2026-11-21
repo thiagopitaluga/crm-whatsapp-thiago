@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import {
   queueInstagramAutomation,
@@ -41,7 +41,16 @@ export async function POST(request: Request) {
       messaging?: Array<{
         sender?: { id?: string };
         timestamp?: number;
-        message?: { mid?: string; text?: string; is_echo?: boolean };
+        postback?: { mid?: string; title?: string; payload?: string };
+        referral?: { source?: string; ref?: string; ad_id?: string };
+        message?: {
+          mid?: string;
+          text?: string;
+          is_echo?: boolean;
+          reply_to?: { story?: { id?: string } };
+          attachments?: Array<{ type?: string; payload?: { id?: string } }>;
+          referral?: { source?: string; ref?: string; ad_id?: string };
+        };
       }>;
       changes?: Array<{
         field?: string;
@@ -77,7 +86,7 @@ export async function POST(request: Request) {
     for (const change of Array.isArray(entry.changes) ? entry.changes : []) {
       const comment = change?.value;
       if (
-        change?.field !== 'comments' ||
+        !['comments', 'live_comments'].includes(change?.field || '') ||
         !comment?.id ||
         !/^\d+$/.test(comment.id) ||
         typeof comment.text !== 'string' ||
@@ -91,6 +100,8 @@ export async function POST(request: Request) {
           commentId: comment.id,
           mediaId: comment.media?.id || null,
           text: comment.text,
+          live: change.field === 'live_comments',
+          commenterId: comment.from?.id,
         });
       } catch {
         return new Response('Erro ao agendar resposta ao comentário', {
@@ -101,12 +112,26 @@ export async function POST(request: Request) {
     for (const event of Array.isArray(entry.messaging) ? entry.messaging : []) {
       if (!event || typeof event !== 'object') continue;
       const sender = event.sender?.id;
-      const msg = event.message;
+      const msg =
+        event.message ||
+        (event.postback
+          ? {
+              mid:
+                event.postback.mid ||
+                'postback:' +
+                  createHash('sha256')
+                    .update(JSON.stringify(event))
+                    .digest('hex'),
+              text: event.postback.title || 'Opção selecionada',
+            }
+          : undefined);
+      const messageText =
+        msg?.text || (msg?.attachments?.length ? '[Mídia recebida]' : '');
       if (
         !sender ||
         !/^\d+$/.test(sender) ||
         !msg?.mid ||
-        !msg.text ||
+        !messageText ||
         msg.is_echo
       )
         continue;
@@ -132,35 +157,41 @@ export async function POST(request: Request) {
       if (conversationError)
         return new Response('Erro ao registrar conversa', { status: 500 });
       let id = conversation?.id;
+      let previousInteraction: string | undefined;
       if (!id) {
         const existing = await db
           .from('instagram_conversations')
-          .select('id')
+          .select('id,last_message_at')
           .eq('channel_id', channel.id)
           .eq('instagram_user_id', sender)
           .maybeSingle();
         if (existing.error || !existing.data)
           return new Response('Erro ao consultar conversa', { status: 500 });
         id = existing.data.id;
+        previousInteraction = existing.data.last_message_at;
       }
-      const { error } = await db
-        .from('instagram_messages')
-        .upsert(
-          {
-            account_id: channel.account_id,
-            conversation_id: id,
-            external_id: msg.mid,
-            direction: 'inbound',
-            body: msg.text,
-            created_at: created.toISOString(),
-          },
-          { onConflict: 'external_id', ignoreDuplicates: true }
-        );
+      const { error } = await db.from('instagram_messages').upsert(
+        {
+          account_id: channel.account_id,
+          conversation_id: id,
+          external_id: msg.mid,
+          direction: 'inbound',
+          body: messageText,
+          metadata: { postback: event.postback?.payload || null },
+          created_at: created.toISOString(),
+        },
+        { onConflict: 'external_id', ignoreDuplicates: true }
+      );
       if (error)
         return new Response('Erro ao registrar mensagem', { status: 500 });
       const update = await db
         .from('instagram_conversations')
-        .update({ last_message_at: created.toISOString() })
+        .update({
+          last_message_at: created.toISOString(),
+          ...(previousInteraction
+            ? { previous_interaction_at: previousInteraction }
+            : {}),
+        })
         .eq('id', id)
         .eq('account_id', channel.account_id)
         .lt('last_message_at', created.toISOString());
@@ -173,7 +204,26 @@ export async function POST(request: Request) {
           conversationId: id,
           senderId: sender,
           messageId: msg.mid,
-          text: msg.text,
+          text: messageText,
+          postback: event.postback?.payload,
+          event: {
+            storyReply: !!event.message?.reply_to?.story,
+            storyMention: event.message?.attachments?.some(
+              (a) => a.type === 'story_mention'
+            ),
+            shared: event.message?.attachments?.some((a) =>
+              ['share', 'ig_reel', 'ig_post'].includes(a.type || '')
+            ),
+            mediaId:
+              event.message?.reply_to?.story?.id ||
+              event.message?.attachments?.find((a) => a.payload?.id)?.payload
+                ?.id,
+            ad:
+              (event.referral || event.message?.referral)?.source === 'ADS' ||
+              !!(event.referral || event.message?.referral)?.ad_id,
+            reference: (event.referral || event.message?.referral)?.ref,
+            starter: !!event.postback,
+          },
         });
       } catch {
         // A retry can safely reprocess the event because messages and runs are unique.

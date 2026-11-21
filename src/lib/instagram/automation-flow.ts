@@ -57,6 +57,7 @@ export type FlowGraphNode = {
     targetMediaId?: string | null;
     contentBlocks?: ContentBlock[];
     buttons?: MessageButton[];
+    actionType?: string;
   };
 };
 
@@ -68,6 +69,8 @@ export type FlowGraphEdge = {
 
 export type FlowPlanStep =
   | { type: 'content'; content: SendableContent; buttons: MessageButton[] }
+  | { type: 'tag'; tags: string[] }
+  | { type: 'action'; action: string; tags?: string[] }
   | { type: 'delay'; seconds: number };
 
 export type FlowPlan = {
@@ -99,10 +102,12 @@ function conditionResult(
   if (data?.condition === 'has_tag') return tags.includes(value);
   if (data?.condition === 'not_has_tag') return !tags.includes(value);
   if (data?.condition === 'verified_profile') {
+    if (typeof fields.verifiedProfile !== 'boolean') return false;
     return String(fields.verifiedProfile === true) === (value || 'true');
   }
   if (data?.condition === 'followers_count') {
-    const count = Number(fields.followerCount || 0);
+    if (typeof fields.followerCount !== 'number') return false;
+    const count = fields.followerCount;
     return data.conditionOperator === 'lte'
       ? count <= Number(value || 0)
       : count >= Number(value || 0);
@@ -182,12 +187,42 @@ export function resolveFlowPlan(
       steps.push({ type: 'delay', seconds: Math.max(0, legacySeconds) });
     }
     if (current.data?.kind === 'tag') {
-      tags.push(
-        ...(current.data.tags || '')
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      );
+      const added = (current.data.tags || '')
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      tags.push(...added);
+      steps.push({ type: 'tag', tags: added });
+      contact = {
+        ...contact,
+        tags: JSON.stringify([
+          ...new Set([...parseJson<string[]>(contact?.tags, []), ...added]),
+        ]),
+      };
+    }
+    if (
+      current.data?.kind === 'action' &&
+      current.data.actionType &&
+      current.data.actionType !== 'none'
+    ) {
+      const removed = (current.data.tags || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      steps.push({
+        type: 'action',
+        action: current.data.actionType,
+        tags: removed,
+      });
+      if (current.data.actionType === 'remove_tag')
+        contact = {
+          ...contact,
+          tags: JSON.stringify(
+            parseJson<string[]>(contact?.tags, []).filter(
+              (tag) => !removed.includes(tag)
+            )
+          ),
+        };
     }
 
     let branch: string | undefined;
@@ -209,6 +244,7 @@ export function composePrivateReply(plan: FlowPlan, fallback: string) {
   const parts: string[] = [];
   for (const step of plan.steps) {
     if (step.type === 'delay') break;
+    if (step.type !== 'content') continue;
     if (step.content.type === 'text' && step.content.text?.trim())
       parts.push(step.content.text.trim());
     if (step.content.type !== 'text' && step.content.url)
