@@ -1,0 +1,15 @@
+[Unit]
+Description=Send Organizap VPS infrastructure metrics
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/organizap-infra-reporter.env
+ExecStart=/usr/local/bin/organizap-infra-reporter
+User=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+

@@ -21,7 +21,7 @@ export async function GET() {
       if (data.users.length < 1000) break;
     }
 
-    const [profilesResult, membershipsResult, accountsResult, metricsResult, auditResult] =
+    const [profilesResult, membershipsResult, accountsResult, metricsResult, auditResult, infrastructureResult] =
       await Promise.all([
         admin
           .from('profiles')
@@ -39,6 +39,13 @@ export async function GET() {
           .select('id,actor_email,action,target_type,target_id,metadata,created_at')
           .order('created_at', { ascending: false })
           .limit(60),
+        admin
+          .from('infrastructure_snapshots')
+          .select('source,hostname,payload,collected_at,received_at')
+          .eq('source', 'organizap-vps')
+          .order('collected_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
     for (const result of [
@@ -47,6 +54,7 @@ export async function GET() {
       accountsResult,
       metricsResult,
       auditResult,
+      infrastructureResult,
     ]) {
       if (result.error) throw result.error;
     }
@@ -92,10 +100,29 @@ export async function GET() {
 
     return NextResponse.json(
       {
+        generatedAt: new Date().toISOString(),
         users: safeUsers,
         accounts,
         metrics: metricsResult.data,
         audit: auditResult.data ?? [],
+        infrastructure: {
+          vps: infrastructureResult.data ?? null,
+          supabase: {
+            plan: process.env.SUPABASE_PLAN_NAME ?? 'Free',
+            databaseCapacityBytes: Number(
+              process.env.SUPABASE_DATABASE_CAPACITY_BYTES ?? 524288000
+            ),
+            storageCapacityBytes: Number(
+              process.env.SUPABASE_STORAGE_CAPACITY_BYTES ?? 1073741824
+            ),
+          },
+          vercel: {
+            status: 'online',
+            environment: process.env.VERCEL_ENV ?? 'production',
+            region: process.env.VERCEL_REGION ?? null,
+            deployment: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+          },
+        },
       },
       { headers: { 'Cache-Control': 'no-store' } }
     );

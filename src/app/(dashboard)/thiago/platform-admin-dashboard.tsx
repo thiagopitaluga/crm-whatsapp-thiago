@@ -7,11 +7,14 @@ import {
   Building2,
   Database,
   HardDrive,
+  Container,
+  Gauge,
   KeyRound,
   Pencil,
   Plus,
   RefreshCw,
   Search,
+  Server,
   ShieldCheck,
   Trash2,
   UserCog,
@@ -106,10 +109,45 @@ type AuditEntry = {
   created_at: string;
 };
 type Overview = {
+  generatedAt: string;
   users: AdminUser[];
   accounts: Account[];
   metrics: Metrics;
   audit: AuditEntry[];
+  infrastructure: {
+    vps: null | {
+      source: string;
+      hostname: string;
+      collected_at: string;
+      received_at: string;
+      payload: {
+        cpuCores: number;
+        load1: number;
+        load5: number;
+        load15: number;
+        uptimeSeconds: number;
+        memory: { total: number; used: number; available: number; swap_total: number; swap_used: number };
+        disk: { total: number; used: number; available: number };
+        network: { received: number; transmitted: number };
+        docker: {
+          running: number;
+          containers: { name: string; image: string; status: string }[];
+          usage: { Type?: string; Size?: string; Reclaimable?: string; Active?: string }[];
+        };
+      };
+    };
+    supabase: {
+      plan: string;
+      databaseCapacityBytes: number;
+      storageCapacityBytes: number;
+    };
+    vercel: {
+      status: string;
+      environment: string;
+      region: string | null;
+      deployment: string | null;
+    };
+  };
 };
 
 const roleLabels: Record<Role, string> = {
@@ -160,7 +198,7 @@ export function PlatformAdminDashboard() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
-  const [tab, setTab] = useState<'overview' | 'users' | 'accounts' | 'audit'>('overview');
+  const [tab, setTab] = useState<'overview' | 'infrastructure' | 'users' | 'accounts' | 'audit'>('overview');
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
@@ -340,6 +378,7 @@ export function PlatformAdminDashboard() {
       <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-2">
         {([
           ['overview', 'Visão geral'],
+          ['infrastructure', 'Infraestrutura'],
           ['users', 'Acessos'],
           ['accounts', 'Contas'],
           ['audit', 'Auditoria'],
@@ -408,6 +447,10 @@ export function PlatformAdminDashboard() {
         </Card>
       ) : null}
 
+      {overview && tab === 'infrastructure' ? (
+        <InfrastructurePanel overview={overview} />
+      ) : null}
+
       {overview && tab === 'accounts' ? (
         <Card><CardHeader><CardTitle>Contas organizacionais</CardTitle><CardDescription>Empresas ativas e registros sem membros.</CardDescription></CardHeader><CardContent><AccountsTable accounts={metrics?.accounts ?? []} busy={busy} onRename={renameAccount} /></CardContent></Card>
       ) : null}
@@ -448,5 +491,36 @@ function RoleSelect({ value, onChange }: { value: string; onChange: (value: stri
 
 function AccountsTable({ accounts, busy, onRename }: { accounts: AccountMetric[]; busy: string; onRename: (account: AccountMetric) => void }) {
   return <Table><TableHeader><TableRow><TableHead>Conta</TableHead><TableHead>Membros</TableHead><TableHead>Contatos</TableHead><TableHead>Conversas</TableHead><TableHead>Mensagens</TableHead><TableHead>Negócios</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{accounts.map((account) => <TableRow key={account.id}><TableCell><div className="font-medium">{account.name}</div><div className="text-muted-foreground text-xs">Criada em {formatDate(account.created_at)}</div></TableCell><TableCell>{account.members}</TableCell><TableCell>{account.contacts}</TableCell><TableCell>{account.conversations}</TableCell><TableCell>{account.messages}</TableCell><TableCell>{account.deals}</TableCell><TableCell className="text-right"><Button size="sm" variant="outline" disabled={busy === `account:${account.id}`} onClick={() => onRename(account)}><Pencil /> Renomear</Button></TableCell></TableRow>)}</TableBody></Table>;
+}
+
+function percentage(used: number, total: number) {
+  return total > 0 ? Math.min(100, (used / total) * 100) : 0;
+}
+
+function uptime(seconds: number) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  return `${days}d ${hours}h`;
+}
+
+function UsageBar({ label, used, total, detail }: { label: string; used: number; total: number; detail?: string }) {
+  const value = percentage(used, total);
+  const tone = value >= 90 ? 'bg-destructive' : value >= 75 ? 'bg-amber-500' : 'bg-primary';
+  return <div className="space-y-2"><div className="flex items-center justify-between gap-4 text-sm"><span className="font-medium">{label}</span><span className="text-muted-foreground">{formatBytes(used)} / {formatBytes(total)} · {value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span></div><div className="bg-muted h-2 overflow-hidden rounded-full"><div className={`${tone} h-full rounded-full transition-all`} style={{ width: `${value}%` }} /></div>{detail ? <p className="text-muted-foreground text-xs">{detail}</p> : null}</div>;
+}
+
+function InfrastructurePanel({ overview }: { overview: Overview }) {
+  const { metrics, infrastructure } = overview;
+  const vps = infrastructure.vps;
+  const ageMinutes = vps ? Math.floor((new Date(overview.generatedAt).getTime() - new Date(vps.collected_at).getTime()) / 60000) : null;
+  const fresh = ageMinutes !== null && ageMinutes <= 15;
+  return <div className="space-y-4">
+    <div className="grid gap-4 xl:grid-cols-3">
+      <Card><CardHeader><div className="flex items-center justify-between"><div><CardTitle>Supabase</CardTitle><CardDescription>Banco, autenticação e arquivos</CardDescription></div><Database className="text-primary size-5" /></div></CardHeader><CardContent className="space-y-5"><div className="flex items-center justify-between"><span className="text-sm">Plano de referência</span><Badge variant="secondary">{infrastructure.supabase.plan}</Badge></div><UsageBar label="Banco de dados" used={metrics.database_bytes} total={infrastructure.supabase.databaseCapacityBytes} detail={`${formatBytes(Math.max(0, infrastructure.supabase.databaseCapacityBytes - metrics.database_bytes))} disponíveis`} /><UsageBar label="Armazenamento de arquivos" used={metrics.storage_bytes} total={infrastructure.supabase.storageCapacityBytes} detail={`${formatBytes(Math.max(0, infrastructure.supabase.storageCapacityBytes - metrics.storage_bytes))} disponíveis`} /></CardContent></Card>
+      <Card><CardHeader><div className="flex items-center justify-between"><div><CardTitle>VPS InterServer</CardTitle><CardDescription>{vps?.hostname ?? 'Aguardando primeira leitura'}</CardDescription></div><Server className="text-primary size-5" /></div></CardHeader><CardContent className="space-y-5">{vps ? <><div className="flex items-center justify-between"><span className="text-sm">Monitoramento</span><Badge variant={fresh ? 'secondary' : 'destructive'}>{fresh ? 'Online' : 'Desatualizado'}</Badge></div><UsageBar label="Memória RAM" used={vps.payload.memory.used} total={vps.payload.memory.total} /><UsageBar label="Disco" used={vps.payload.disk.used} total={vps.payload.disk.total} /><UsageBar label="Swap" used={vps.payload.memory.swap_used} total={vps.payload.memory.swap_total} /><div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-lg border p-3"><div className="text-muted-foreground text-xs">Carga / núcleos</div><div className="mt-1 font-semibold">{vps.payload.load1.toFixed(2)} / {vps.payload.cpuCores}</div></div><div className="rounded-lg border p-3"><div className="text-muted-foreground text-xs">Uptime</div><div className="mt-1 font-semibold">{uptime(vps.payload.uptimeSeconds)}</div></div></div><p className="text-muted-foreground text-xs">Última coleta há {ageMinutes} min.</p></> : <p className="text-muted-foreground text-sm">O agente da VPS ainda não enviou dados.</p>}</CardContent></Card>
+      <Card><CardHeader><div className="flex items-center justify-between"><div><CardTitle>Aplicação Vercel</CardTitle><CardDescription>Frontend e APIs do Organizap</CardDescription></div><Gauge className="text-primary size-5" /></div></CardHeader><CardContent className="space-y-4"><div className="flex items-center justify-between"><span>Status</span><Badge variant="secondary">Operacional</Badge></div><div className="grid gap-3 text-sm"><div className="rounded-lg border p-3"><div className="text-muted-foreground text-xs">Ambiente</div><div className="mt-1 font-semibold">{infrastructure.vercel.environment}</div></div><div className="rounded-lg border p-3"><div className="text-muted-foreground text-xs">Região atual</div><div className="mt-1 font-semibold">{infrastructure.vercel.region ?? 'Automática'}</div></div><div className="rounded-lg border p-3"><div className="text-muted-foreground text-xs">Versão publicada</div><div className="mt-1 font-mono font-semibold">{infrastructure.vercel.deployment ?? 'Produção'}</div></div></div></CardContent></Card>
+    </div>
+    <Card><CardHeader><div className="flex items-center gap-2"><Container className="text-primary size-5" /><div><CardTitle>Serviços da VPS</CardTitle><CardDescription>Containers e componentes responsáveis por WhatsApp e Evolution.</CardDescription></div></div></CardHeader><CardContent>{vps?.payload.docker.containers.length ? <Table><TableHeader><TableRow><TableHead>Serviço</TableHead><TableHead>Imagem</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{vps.payload.docker.containers.map((container) => <TableRow key={container.name}><TableCell className="font-medium">{container.name}</TableCell><TableCell className="text-muted-foreground text-xs">{container.image}</TableCell><TableCell><Badge variant="secondary">{container.status}</Badge></TableCell></TableRow>)}</TableBody></Table> : <p className="text-muted-foreground text-sm">Nenhum container informado ainda.</p>}{vps?.payload.docker.usage.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{vps.payload.docker.usage.map((item) => <div key={item.Type} className="rounded-lg border p-3 text-sm"><div className="font-medium">{item.Type}</div><div className="text-muted-foreground mt-1 text-xs">{item.Size} · recuperável {item.Reclaimable}</div></div>)}</div> : null}</CardContent></Card>
+  </div>;
 }
 
