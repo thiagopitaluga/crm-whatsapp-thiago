@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/ai/admin-client';
@@ -39,13 +41,18 @@ export async function POST(request: Request) {
     typeof url.searchParams.get('account_id') === 'string'
       ? url.searchParams.get('account_id')!
       : '';
-  const requestedChannelKey = url.searchParams.get('channel_key') || 'whatsapp_evolution';
+  const requestedChannelKey =
+    url.searchParams.get('channel_key') || 'whatsapp_evolution';
   let channelKey = 'whatsapp_evolution';
   let validInstance = instance === getEvolutionInstanceName(accountId);
   if (requestedChannelKey !== 'whatsapp_evolution') {
-    const { data: savedChannel } = await supabaseAdmin().from('whatsapp_channels')
-      .select('channel_key, evolution_instance_name').eq('account_id', accountId)
-      .eq('channel_key', requestedChannelKey).eq('evolution_instance_name', instance).maybeSingle();
+    const { data: savedChannel } = await supabaseAdmin()
+      .from('whatsapp_channels')
+      .select('channel_key, evolution_instance_name')
+      .eq('account_id', accountId)
+      .eq('channel_key', requestedChannelKey)
+      .eq('evolution_instance_name', instance)
+      .maybeSingle();
     validInstance = Boolean(savedChannel);
     channelKey = savedChannel?.channel_key ?? '';
   }
@@ -140,17 +147,47 @@ export async function POST(request: Request) {
         }
       );
       if (ingested?.conversationId) {
-        await supabaseAdmin().from('conversations').update({ whatsapp_channel_key: channelKey }).eq('id', ingested.conversationId);
+        await supabaseAdmin()
+          .from('conversations')
+          .update({ whatsapp_channel_key: channelKey })
+          .eq('id', ingested.conversationId);
       }
       if (key?.fromMe !== true && ingested?.messageInserted) {
         try {
           const db = supabaseAdmin();
           const referral = normalizeEvolutionReferral(message);
-          if (referral) await recordEvolutionCtwaAttribution({ db, accountId, conversationId: ingested.conversationId, contactId: ingested.contactId, messageId, referral, occurredAt: createdAt });
-        } catch (error) { console.error('[evolution-webhook] attribution failed:', error instanceof Error ? error.message : 'unknown error'); }
+          if (referral)
+            await recordEvolutionCtwaAttribution({
+              db,
+              accountId,
+              conversationId: ingested.conversationId,
+              contactId: ingested.contactId,
+              messageId,
+              referral,
+              occurredAt: createdAt,
+            });
+        } catch (error) {
+          console.error(
+            '[evolution-webhook] attribution failed:',
+            error instanceof Error ? error.message : 'unknown error'
+          );
+        }
         try {
-          await resolveInboundAttribution(supabaseAdmin(), accountId, content.text, { contactId: ingested.contactId, conversationId: ingested.conversationId });
-        } catch (error) { console.error('[evolution-webhook] tracking link failed:', error instanceof Error ? error.message : 'unknown error'); }
+          await resolveInboundAttribution(
+            supabaseAdmin(),
+            accountId,
+            content.text,
+            {
+              contactId: ingested.contactId,
+              conversationId: ingested.conversationId,
+            }
+          );
+        } catch (error) {
+          console.error(
+            '[evolution-webhook] tracking link failed:',
+            error instanceof Error ? error.message : 'unknown error'
+          );
+        }
       }
       if (
         key?.fromMe !== true &&
@@ -296,6 +333,7 @@ async function uploadEvolutionMedia(
       body: JSON.stringify({
         account_id: accountId,
         message_id: messageId,
+        content_hash: createHash('sha256').update(bytes).digest('hex'),
         kind: inferStoredMediaKind(mediaKind),
         mime_type: data.mimeType,
         file_name:

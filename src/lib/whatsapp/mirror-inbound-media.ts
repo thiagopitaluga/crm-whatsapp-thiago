@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { downloadMedia } from './meta-api';
 import { extensionForMime } from '@/lib/media/filename';
 import { buildMediaPath, MEDIA_MAX_BYTES } from '@/lib/storage/upload-media';
@@ -116,9 +118,17 @@ export function mirrorFileName(args: {
   mimeType: string | null;
   fileName?: string | null;
   messageTimestamp?: string | number | null;
+  contentHash?: string | null;
 }): string {
-  const { mediaId, mimeType, fileName, messageTimestamp } = args;
+  const { mediaId, mimeType, fileName, messageTimestamp, contentHash } = args;
   const ext = extensionForMime(mimeType);
+
+  // Once bytes are available, their digest is a stronger stable identity than
+  // the provider media id. Reusing the same account-scoped object is lossless
+  // and prevents forwarded copies from consuming storage repeatedly.
+  if (contentHash && /^[0-9a-f]{64}$/.test(contentHash)) {
+    return `${contentHash}.${ext}`;
+  }
 
   // A document's own name is the best download name there is, so keep
   // it. Strip any directory part and its extension — `buildMediaPath`
@@ -230,10 +240,11 @@ export async function mirrorInboundMedia(
       mimeType: uploadType,
       fileName,
       messageTimestamp,
+      contentHash: createHash('sha256').update(uploadBuffer).digest('hex'),
     });
-    // `null` suppresses buildMediaPath's wall-clock stamp: the media id
-    // already makes this path unique AND stable, and it's the stability
-    // that makes a redelivery idempotent rather than duplicative.
+    // `null` suppresses buildMediaPath's wall-clock stamp: the content hash
+    // already makes this path unique and stable. A provider redelivery or a
+    // forwarded byte-identical file therefore reuses the same object.
     const path = buildMediaPath(accountId, objectName, null, MIRROR_FOLDER);
 
     // `upsert: true` for that same reason: on the rare Meta redelivery

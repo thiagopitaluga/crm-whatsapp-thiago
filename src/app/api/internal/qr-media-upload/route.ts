@@ -28,6 +28,10 @@ export async function POST(request: Request) {
     typeof body?.account_id === 'string' ? body.account_id.trim() : '';
   const messageId =
     typeof body?.message_id === 'string' ? body.message_id.trim() : '';
+  const contentHash =
+    typeof body?.content_hash === 'string'
+      ? body.content_hash.trim().toLowerCase()
+      : '';
   const kind = typeof body?.kind === 'string' ? body.kind.trim() : '';
   const mimeType =
     typeof body?.mime_type === 'string'
@@ -39,10 +43,14 @@ export async function POST(request: Request) {
   if (
     !/^[0-9a-f-]{36}$/i.test(accountId) ||
     !messageId ||
+    (contentHash !== '' && !/^[0-9a-f]{64}$/.test(contentHash)) ||
     !MEDIA_KINDS.has(kind) ||
     !mimeType.includes('/')
   ) {
-    return NextResponse.json({ error: 'Invalid media upload request' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Invalid media upload request' },
+      { status: 400 }
+    );
   }
 
   const supabase = createClient(
@@ -54,22 +62,37 @@ export async function POST(request: Request) {
     .select('id')
     .eq('id', accountId)
     .maybeSingle();
-  if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+  if (!account)
+    return NextResponse.json({ error: 'Account not found' }, { status: 404 });
 
-  const baseName = fileName || `${messageId}-${kind}.${extensionForMime(mimeType)}`;
-  // One stable key per provider message makes retries idempotent.
+  // A content-addressed key reuses byte-identical forwarded files inside the
+  // same account. This is lossless: the bytes are never transcoded, and the
+  // account prefix preserves tenant isolation. Older connectors can omit the
+  // hash and retain the provider-message idempotency fallback.
+  const baseName = contentHash
+    ? `${contentHash}.${extensionForMime(mimeType)}`
+    : fileName || `${messageId}-${kind}.${extensionForMime(mimeType)}`;
   const path = buildMediaPath(accountId, baseName, null, 'inbound-qr');
   const bucket = supabase.storage.from('chat-media');
   const { data: signed, error } = await bucket.createSignedUploadUrl(path, {
     upsert: true,
   });
   if (error || !signed?.signedUrl) {
-    console.error('[qr-media-upload] could not create signed upload URL:', error);
-    return NextResponse.json({ error: 'Could not prepare media upload' }, { status: 500 });
+    console.error(
+      '[qr-media-upload] could not create signed upload URL:',
+      error
+    );
+    return NextResponse.json(
+      { error: 'Could not prepare media upload' },
+      { status: 500 }
+    );
   }
 
   const {
     data: { publicUrl },
   } = bucket.getPublicUrl(path);
-  return NextResponse.json({ upload_url: signed.signedUrl, media_url: publicUrl });
+  return NextResponse.json({
+    upload_url: signed.signedUrl,
+    media_url: publicUrl,
+  });
 }

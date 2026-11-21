@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // The resolver is explicitly server-only; Vitest executes the route directly
 // in Node rather than through Next's server-module alias.
-vi.mock('server-only', () => ({}))
+vi.mock('server-only', () => ({}));
 
 // Shared, hoisted state the module mocks close over. Reset per test.
 const h = vi.hoisted(() => ({
@@ -20,7 +20,10 @@ const h = vi.hoisted(() => ({
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
     rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
-    attributionUpsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
+    attributionUpsertCalls: [] as {
+      row: Record<string, unknown>;
+      options: unknown;
+    }[],
     afterCallbacks: [] as (() => Promise<void> | void)[],
     automationStarted: 0,
     automationCompleted: 0,
@@ -28,23 +31,23 @@ const h = vi.hoisted(() => ({
     mirrorInboundMedia: true as boolean | undefined,
     /** Objects the inbound-media mirror pushed into chat-media. */
     storageUploads: [] as {
-      bucket: string
-      path: string
-      options: { contentType?: string }
+      bucket: string;
+      path: string;
+      options: { contentType?: string };
     }[],
     /** Error the next storage upload resolves with, if any. */
     storageUploadError: null as { message: string } | null,
   },
-}))
+}));
 
 vi.mock('next/server', () => ({
   after: (cb: () => Promise<void> | void) => {
-    h.state.afterCallbacks.push(cb)
+    h.state.afterCallbacks.push(cb);
   },
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({ body, init }),
   },
-}))
+}));
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -66,7 +69,7 @@ vi.mock('@supabase/supabase-js', () => ({
                   error: null,
                 }),
             }),
-          }
+          };
         case 'conversations':
           // findOrCreateConversation: select().eq().eq().order().limit()
           return {
@@ -84,11 +87,19 @@ vi.mock('@supabase/supabase-js', () => ({
                 }),
               }),
             }),
-          }
+          };
         case 'whatsapp_channels':
-          return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({ data: null, error: null }),
+                }),
+              }),
+            }),
+          };
         case 'attribution_touchpoints':
-          return { upsert: async () => ({ error: null }) }
+          return { upsert: async () => ({ error: null }) };
         case 'broadcast_recipients':
           // flagBroadcastReplyIfAny: select().eq().eq().in().order().limit()
           return {
@@ -97,14 +108,13 @@ vi.mock('@supabase/supabase-js', () => ({
                 eq: () => ({
                   in: () => ({
                     order: () => ({
-                      limit: () =>
-                        Promise.resolve({ data: [], error: null }),
+                      limit: () => Promise.resolve({ data: [], error: null }),
                     }),
                   }),
                 }),
               }),
             }),
-          }
+          };
         case 'messages':
           return {
             // Two different chains land here, told apart by the count
@@ -136,31 +146,39 @@ vi.mock('@supabase/supabase-js', () => ({
                   },
             // Idempotent insert: upsert(...).select('id')
             upsert: (row: Record<string, unknown>, options: unknown) => {
-              h.state.upsertCalls.push({ row, options })
+              h.state.upsertCalls.push({ row, options });
               return {
                 select: () =>
                   Promise.resolve({
                     data: h.state.messageUpsertResult,
                     error: null,
                   }),
-              }
+              };
             },
-          }
+          };
         case 'conversation_attributions':
           return {
-            select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }),
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: async () => ({ data: null, error: null }),
+                  }),
+                }),
+              }),
+            }),
             upsert: (row: Record<string, unknown>, options: unknown) => {
-              h.state.attributionUpsertCalls.push({ row, options })
-              return Promise.resolve({ error: null })
+              h.state.attributionUpsertCalls.push({ row, options });
+              return Promise.resolve({ error: null });
             },
-          }
+          };
         default:
-          throw new Error(`unexpected table: ${table}`)
+          throw new Error(`unexpected table: ${table}`);
       }
     },
     rpc: (name: string, args: Record<string, unknown>) => {
-      h.state.rpcCalls.push({ name, args })
-      return Promise.resolve({ data: null, error: null })
+      h.state.rpcCalls.push({ name, args });
+      return Promise.resolve({ data: null, error: null });
     },
     // Service-role Storage, used by the inbound-media mirror (#466).
     storage: {
@@ -169,29 +187,29 @@ vi.mock('@supabase/supabase-js', () => ({
           upload: (
             path: string,
             _body: unknown,
-            options: { contentType?: string },
+            options: { contentType?: string }
           ) => {
-            h.state.storageUploads.push({ bucket, path, options })
-            return Promise.resolve({ error: h.state.storageUploadError })
+            h.state.storageUploads.push({ bucket, path, options });
+            return Promise.resolve({ error: h.state.storageUploadError });
           },
           getPublicUrl: (path: string) => ({
             data: { publicUrl: `https://cdn.test/${bucket}/${path}` },
           }),
-        }
+        };
       },
     },
   }),
-}))
+}));
 
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: () => 'plain-token',
   encrypt: (v: string) => v,
   isLegacyFormat: () => false,
-}))
+}));
 vi.mock('@/lib/whatsapp/meta-api', () => ({
   getMediaUrl: vi.fn(),
   downloadMedia: vi.fn(),
-}))
+}));
 vi.mock('@/lib/contacts/dedupe', () => ({
   findExistingContact: vi.fn(async () => ({
     id: 'contact-1',
@@ -199,32 +217,32 @@ vi.mock('@/lib/contacts/dedupe', () => ({
     phone: '15551230000',
   })),
   isUniqueViolation: () => false,
-}))
+}));
 vi.mock('@/lib/whatsapp/webhook-signature', () => ({
   verifyMetaWebhookSignature: () => true,
-}))
+}));
 vi.mock('@/lib/whatsapp/template-webhook', () => ({
   isTemplateWebhookField: () => false,
   handleTemplateWebhookChange: vi.fn(),
-}))
+}));
 vi.mock('@/lib/automations/engine', () => ({
   runAutomationsForTrigger: h.runAutomationsForTrigger,
-}))
+}));
 vi.mock('@/lib/flows/engine', () => ({
   dispatchInboundToFlows: h.dispatchInboundToFlows,
-}))
+}));
 vi.mock('@/lib/ai/auto-reply', () => ({
   dispatchInboundToAiReply: h.dispatchInboundToAiReply,
-}))
+}));
 vi.mock('@/lib/webhooks/deliver', () => ({
   dispatchWebhookEvent: h.dispatchWebhookEvent,
-}))
+}));
 
-import { POST } from './route'
-import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+import { POST } from './route';
+import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api';
 
-const mockGetMediaUrl = vi.mocked(getMediaUrl)
-const mockDownloadMedia = vi.mocked(downloadMedia)
+const mockGetMediaUrl = vi.mocked(getMediaUrl);
+const mockDownloadMedia = vi.mocked(downloadMedia);
 
 const TEXT_MESSAGE = {
   id: 'wamid.TEST1',
@@ -232,7 +250,7 @@ const TEXT_MESSAGE = {
   timestamp: '1700000000',
   type: 'text',
   text: { body: 'hello' },
-}
+};
 
 function inboundRequest(message: Record<string, unknown> = TEXT_MESSAGE) {
   const body = {
@@ -250,102 +268,102 @@ function inboundRequest(message: Record<string, unknown> = TEXT_MESSAGE) {
         ],
       },
     ],
-  }
+  };
   return {
     text: async () => JSON.stringify(body),
     headers: { get: () => 'sha256=stub' },
-  } as unknown as Request
+  } as unknown as Request;
 }
 
 async function runWebhook(message?: Record<string, unknown>) {
-  const res = await POST(inboundRequest(message))
+  const res = await POST(inboundRequest(message));
   // Drain the after() callback exactly as the runtime would.
-  for (const cb of h.state.afterCallbacks) await cb()
-  return res
+  for (const cb of h.state.afterCallbacks) await cb();
+  return res;
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  h.state.messageUpsertResult = [{ id: 'msg-1' }]
-  h.state.priorCustomerMsgCount = 0
-  h.state.replyContextParent = null
-  h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
-  h.state.upsertCalls = []
-  h.state.rpcCalls = []
-  h.state.attributionUpsertCalls = []
-  h.state.afterCallbacks = []
-  h.state.automationStarted = 0
-  h.state.automationCompleted = 0
-  h.state.mirrorInboundMedia = true
-  h.state.storageUploads = []
-  h.state.storageUploadError = null
+  vi.clearAllMocks();
+  h.state.messageUpsertResult = [{ id: 'msg-1' }];
+  h.state.priorCustomerMsgCount = 0;
+  h.state.replyContextParent = null;
+  h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' };
+  h.state.upsertCalls = [];
+  h.state.rpcCalls = [];
+  h.state.attributionUpsertCalls = [];
+  h.state.afterCallbacks = [];
+  h.state.automationStarted = 0;
+  h.state.automationCompleted = 0;
+  h.state.mirrorInboundMedia = true;
+  h.state.storageUploads = [];
+  h.state.storageUploadError = null;
   mockGetMediaUrl.mockResolvedValue({
     url: 'https://lookaside.fbsbx.com/whatsapp/abc',
     mimeType: 'image/jpeg',
     fileSize: 2048,
-  })
+  });
   mockDownloadMedia.mockResolvedValue({
     buffer: Buffer.alloc(2048),
     contentType: 'image/jpeg',
-  })
-  h.dispatchInboundToFlows.mockResolvedValue({ consumed: false })
-  h.dispatchInboundToAiReply.mockResolvedValue(undefined)
-  h.dispatchWebhookEvent.mockResolvedValue(undefined)
+  });
+  h.dispatchInboundToFlows.mockResolvedValue({ consumed: false });
+  h.dispatchInboundToAiReply.mockResolvedValue(undefined);
+  h.dispatchWebhookEvent.mockResolvedValue(undefined);
   h.runAutomationsForTrigger.mockImplementation(() => {
-    h.state.automationStarted++
+    h.state.automationStarted++;
     return new Promise<void>((resolve) => {
       setTimeout(() => {
-        h.state.automationCompleted++
-        resolve()
-      }, 0)
-    })
-  })
-})
+        h.state.automationCompleted++;
+        resolve();
+      }, 0);
+    });
+  });
+});
 
 describe('inbound webhook: idempotent insert (#367)', () => {
   it('a genuine first delivery persists once and fans out downstream', async () => {
-    await runWebhook()
+    await runWebhook();
 
     // Inserted via upsert with the (conversation_id, message_id) conflict
     // target — not a bare insert.
-    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.state.upsertCalls).toHaveLength(1);
     expect(h.state.upsertCalls[0].options).toMatchObject({
       onConflict: 'conversation_id,message_id',
       ignoreDuplicates: true,
-    })
+    });
     // Downstream side effects ran exactly once.
-    expect(h.state.rpcCalls).toHaveLength(1)
-    expect(h.dispatchInboundToFlows).toHaveBeenCalledTimes(1)
-    expect(h.dispatchWebhookEvent).toHaveBeenCalledTimes(1)
-  })
+    expect(h.state.rpcCalls).toHaveLength(1);
+    expect(h.dispatchInboundToFlows).toHaveBeenCalledTimes(1);
+    expect(h.dispatchWebhookEvent).toHaveBeenCalledTimes(1);
+  });
 
   it('a replayed delivery is a no-op: no unread bump, no fan-out', async () => {
     // Upsert hits the unique index and returns no row.
-    h.state.messageUpsertResult = []
+    h.state.messageUpsertResult = [];
 
-    await runWebhook()
+    await runWebhook();
 
-    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.state.upsertCalls).toHaveLength(1);
     // None of the downstream side effects fire on a replay.
-    expect(h.state.rpcCalls).toHaveLength(0)
-    expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
-    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
-    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
-    expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
-  })
-})
+    expect(h.state.rpcCalls).toHaveLength(0);
+    expect(h.dispatchInboundToFlows).not.toHaveBeenCalled();
+    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled();
+    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled();
+    expect(h.dispatchWebhookEvent).not.toHaveBeenCalled();
+  });
+});
 
 describe('inbound webhook: atomic unread bump (#369)', () => {
   it('increments unread through the DB-side RPC, not a read-modify-write', async () => {
-    await runWebhook()
+    await runWebhook();
 
-    expect(h.state.rpcCalls).toHaveLength(1)
+    expect(h.state.rpcCalls).toHaveLength(1);
     expect(h.state.rpcCalls[0]).toMatchObject({
       name: 'bump_conversation_on_inbound',
       args: { p_conversation_id: 'conv-1' },
-    })
-  })
-})
+    });
+  });
+});
 
 describe('inbound webhook: Meta Click-to-WhatsApp attribution', () => {
   it('persists a signed Meta referral against the resolved account, conversation, and contact', async () => {
@@ -358,9 +376,9 @@ describe('inbound webhook: Meta Click-to-WhatsApp attribution', () => {
         ctwa_clid: 'ctwa-click-123',
         headline: 'Lotes em oferta',
       },
-    })
+    });
 
-    expect(h.state.attributionUpsertCalls).toHaveLength(1)
+    expect(h.state.attributionUpsertCalls).toHaveLength(1);
     expect(h.state.attributionUpsertCalls[0]).toMatchObject({
       row: {
         account_id: 'acc-1',
@@ -376,21 +394,21 @@ describe('inbound webhook: Meta Click-to-WhatsApp attribution', () => {
         onConflict: 'account_id,conversation_id,provider',
         ignoreDuplicates: true,
       },
-    })
-  })
+    });
+  });
 
   it('does not create an attribution for a normal WhatsApp message or a duplicate delivery', async () => {
-    await runWebhook()
-    expect(h.state.attributionUpsertCalls).toHaveLength(0)
+    await runWebhook();
+    expect(h.state.attributionUpsertCalls).toHaveLength(0);
 
-    h.state.messageUpsertResult = []
+    h.state.messageUpsertResult = [];
     await runWebhook({
       ...TEXT_MESSAGE,
       referral: { ctwa_clid: 'replayed-click' },
-    })
-    expect(h.state.attributionUpsertCalls).toHaveLength(0)
-  })
-})
+    });
+    expect(h.state.attributionUpsertCalls).toHaveLength(0);
+  });
+});
 
 describe('inbound webhook: template quick-reply buttons (#478)', () => {
   // A customer tapping a QUICK_REPLY button on a broadcast template.
@@ -404,22 +422,22 @@ describe('inbound webhook: template quick-reply buttons (#478)', () => {
     type: 'button',
     button: { text: 'Yes, interested', payload: 'YES_INTERESTED' },
     context: { id: 'wamid.BROADCAST1' },
-  }
+  };
 
   it('stores the tap as an interactive reply, not an unsupported message', async () => {
-    await runWebhook(templateButtonTap)
+    await runWebhook(templateButtonTap);
 
-    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.state.upsertCalls).toHaveLength(1);
     expect(h.state.upsertCalls[0].row).toMatchObject({
       content_type: 'interactive',
       content_text: 'Yes, interested',
       interactive_reply_id: 'YES_INTERESTED',
       reply_to_message_id: null,
-    })
-  })
+    });
+  });
 
   it('routes the tap to flows and fires the interactive_reply trigger', async () => {
-    await runWebhook(templateButtonTap)
+    await runWebhook(templateButtonTap);
 
     expect(h.dispatchInboundToFlows).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -429,30 +447,30 @@ describe('inbound webhook: template quick-reply buttons (#478)', () => {
           reply_title: 'Yes, interested',
           meta_message_id: 'wamid.BTN1',
         },
-      }),
-    )
+      })
+    );
     const triggers = h.runAutomationsForTrigger.mock.calls.map(
-      (call) => (call[0] as { triggerType: string }).triggerType,
-    )
-    expect(triggers).toContain('interactive_reply')
+      (call) => (call[0] as { triggerType: string }).triggerType
+    );
+    expect(triggers).toContain('interactive_reply');
     // The AI auto-reply must stay out of it — a button tap is not a
     // free-text question.
-    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
-  })
+    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled();
+  });
 
   it('falls back to the label when the template button carries no payload', async () => {
     await runWebhook({
       ...templateButtonTap,
       button: { text: 'Track my order' },
-    })
+    });
 
     expect(h.state.upsertCalls[0].row).toMatchObject({
       content_type: 'interactive',
       content_text: 'Track my order',
       interactive_reply_id: 'Track my order',
-    })
-  })
-})
+    });
+  });
+});
 
 describe('inbound webhook: inbound media is mirrored (#466)', () => {
   const IMAGE_MESSAGE = {
@@ -461,54 +479,57 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
     timestamp: '1700000000',
     type: 'image',
     image: { id: '1234567890123456', mime_type: 'image/jpeg', caption: 'hi' },
-  }
+  };
 
   it('stores a durable bucket URL instead of the expiring proxy path', async () => {
-    await runWebhook(IMAGE_MESSAGE)
+    await runWebhook(IMAGE_MESSAGE);
 
-    expect(h.state.storageUploads).toHaveLength(1)
-    expect(h.state.storageUploads[0].bucket).toBe('chat-media')
-    expect(h.state.storageUploads[0].path).toBe(
-      'account-acc-1/inbound/1234567890123456-image-1700000000.jpg',
-    )
+    expect(h.state.storageUploads).toHaveLength(1);
+    expect(h.state.storageUploads[0].bucket).toBe('chat-media');
+    expect(h.state.storageUploads[0].path).toMatch(
+      /^account-acc-1\/inbound\/[0-9a-f]{40}\.jpg$/
+    );
     expect(h.state.upsertCalls[0].row).toMatchObject({
-      media_url:
-        'https://cdn.test/chat-media/account-acc-1/inbound/1234567890123456-image-1700000000.jpg',
+      media_url: expect.stringMatching(
+        /^https:\/\/cdn\.test\/chat-media\/account-acc-1\/inbound\/[0-9a-f]{40}\.jpg$/
+      ),
       // Meta's MIME type used to be discarded outright (`void mediaType`).
       media_type: 'image/jpeg',
-    })
-  })
+    });
+  });
 
   it('falls back to the proxy URL when the upload is refused', async () => {
-    h.state.storageUploadError = { message: 'mime type not supported' }
+    h.state.storageUploadError = { message: 'mime type not supported' };
 
-    await runWebhook(IMAGE_MESSAGE)
+    await runWebhook(IMAGE_MESSAGE);
 
     // The message still lands, and it still lands with a usable URL —
     // the mirror failing must never cost us the message.
-    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.state.upsertCalls).toHaveLength(1);
     expect(h.state.upsertCalls[0].row).toMatchObject({
       media_url: '/api/whatsapp/media/1234567890123456',
       media_type: 'image/jpeg',
-    })
-  })
+    });
+  });
 
   it('falls back to the proxy URL when the download from Meta throws', async () => {
-    mockDownloadMedia.mockRejectedValueOnce(new Error('Media download failed: 404'))
+    mockDownloadMedia.mockRejectedValueOnce(
+      new Error('Media download failed: 404')
+    );
 
-    await runWebhook(IMAGE_MESSAGE)
+    await runWebhook(IMAGE_MESSAGE);
 
     expect(h.state.upsertCalls[0].row).toMatchObject({
       media_url: '/api/whatsapp/media/1234567890123456',
-    })
-  })
+    });
+  });
 
   it('skips media larger than the bucket accepts, without downloading it', async () => {
     mockGetMediaUrl.mockResolvedValue({
       url: 'https://lookaside.fbsbx.com/whatsapp/big',
       mimeType: 'application/pdf',
       fileSize: 40 * 1024 * 1024,
-    })
+    });
 
     await runWebhook({
       id: 'wamid.DOC1',
@@ -520,26 +541,26 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
         mime_type: 'application/pdf',
         filename: 'huge.pdf',
       },
-    })
+    });
 
-    expect(mockDownloadMedia).not.toHaveBeenCalled()
-    expect(h.state.storageUploads).toHaveLength(0)
+    expect(mockDownloadMedia).not.toHaveBeenCalled();
+    expect(h.state.storageUploads).toHaveLength(0);
     expect(h.state.upsertCalls[0].row).toMatchObject({
       media_url: '/api/whatsapp/media/999',
       media_type: 'application/pdf',
-    })
-  })
+    });
+  });
 
-  it("names the object after a document's own filename", async () => {
+  it('content-addresses a document without changing its bytes', async () => {
     mockGetMediaUrl.mockResolvedValue({
       url: 'https://lookaside.fbsbx.com/whatsapp/doc',
       mimeType: 'application/pdf',
       fileSize: 4096,
-    })
+    });
     mockDownloadMedia.mockResolvedValue({
       buffer: Buffer.alloc(4096),
       contentType: 'application/pdf',
-    })
+    });
 
     await runWebhook({
       id: 'wamid.DOC2',
@@ -552,53 +573,53 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
         filename: 'invoice.pdf',
         caption: 'have a look',
       },
-    })
+    });
 
-    expect(h.state.storageUploads[0].path).toBe(
-      'account-acc-1/inbound/1234567890123456-invoice.pdf',
-    )
-  })
+    expect(h.state.storageUploads[0].path).toMatch(
+      /^account-acc-1\/inbound\/[0-9a-f]{40}\.pdf$/
+    );
+  });
 
   it('does not mirror when the account has opted out', async () => {
-    h.state.mirrorInboundMedia = false
+    h.state.mirrorInboundMedia = false;
 
-    await runWebhook(IMAGE_MESSAGE)
+    await runWebhook(IMAGE_MESSAGE);
 
-    expect(mockDownloadMedia).not.toHaveBeenCalled()
-    expect(h.state.storageUploads).toHaveLength(0)
+    expect(mockDownloadMedia).not.toHaveBeenCalled();
+    expect(h.state.storageUploads).toHaveLength(0);
     expect(h.state.upsertCalls[0].row).toMatchObject({
       media_url: '/api/whatsapp/media/1234567890123456',
       // Still recorded — the MIME type costs nothing and makes the
       // download name right even for proxied media.
       media_type: 'image/jpeg',
-    })
-  })
+    });
+  });
 
   it('mirrors when the column is absent, e.g. a row read before migration 039', async () => {
-    h.state.mirrorInboundMedia = undefined
+    h.state.mirrorInboundMedia = undefined;
 
-    await runWebhook(IMAGE_MESSAGE)
+    await runWebhook(IMAGE_MESSAGE);
 
-    expect(h.state.storageUploads).toHaveLength(1)
-  })
+    expect(h.state.storageUploads).toHaveLength(1);
+  });
 
   it('leaves text messages alone', async () => {
-    await runWebhook()
+    await runWebhook();
 
-    expect(mockGetMediaUrl).not.toHaveBeenCalled()
-    expect(h.state.storageUploads).toHaveLength(0)
-    expect(h.state.upsertCalls[0].row).toMatchObject({ media_type: null })
-  })
-})
+    expect(mockGetMediaUrl).not.toHaveBeenCalled();
+    expect(h.state.storageUploads).toHaveLength(0);
+    expect(h.state.upsertCalls[0].row).toMatchObject({ media_type: null });
+  });
+});
 
 describe('inbound webhook: after() awaits automations (#368)', () => {
   it('every triggered automation settles before the after() callback resolves', async () => {
-    await runWebhook()
+    await runWebhook();
 
     // first_inbound_message + new_message_received + keyword_match.
-    expect(h.state.automationStarted).toBe(3)
+    expect(h.state.automationStarted).toBe(3);
     // If the dispatches were fire-and-forget, completed would still be 0
     // here — the callback would have resolved before the timers fired.
-    expect(h.state.automationCompleted).toBe(3)
-  })
-})
+    expect(h.state.automationCompleted).toBe(3);
+  });
+});
