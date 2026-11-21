@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { resumePendingExecution } from '@/lib/automations/engine';
 import type { AutomationContext } from '@/lib/automations/engine';
 import { drainStageJobs } from '@/lib/pipelines/stage-runner';
+import { GET as drainInstagramJobs } from '@/app/api/instagram/cron/route';
 export const maxDuration = 300;
 
 /**
@@ -36,6 +37,10 @@ export async function GET(request: Request) {
   }
 
   const admin = supabaseAdmin();
+  if (process.env.INSTAGRAM_AUTOMATION_ENABLED === 'true') {
+    const instagram = await drainInstagramJobs(request);
+    if (!instagram.ok) console.error('[cron] Instagram job processing failed', instagram.status);
+  }
   const stageProcessed = await drainStageJobs();
   const { data: due, error } = await admin
     .from('automation_pending_executions')

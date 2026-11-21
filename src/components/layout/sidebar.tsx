@@ -26,6 +26,7 @@ import {
   ChevronsRight,
   ArrowDownUp,
   Plug,
+  Camera,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { href: '/groups', labelKey: 'groups', icon: UsersRound },
   { href: '/movimentacoes', labelKey: 'movements', icon: ArrowDownUp },
   { href: '/meta-ads', labelKey: 'metaAds', icon: ChartNoAxesCombined },
+  { href: '/instagram', labelKey: 'instagram', icon: Camera },
   { href: '/broadcasts', labelKey: 'broadcasts', icon: Radio },
   { href: '/automations', labelKey: 'automations', icon: Zap },
   { href: '/notifications', labelKey: 'notifications', icon: Bell },

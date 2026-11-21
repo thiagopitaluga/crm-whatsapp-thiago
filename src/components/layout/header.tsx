@@ -32,6 +32,7 @@ const pageTitles: Record<string, string> = {
   '/broadcasts': 'broadcasts',
   '/groups': 'groups',
   '/meta-ads': 'metaAds',
+  '/instagram': 'instagram',
   '/automations': 'automations',
   '/settings': 'settings',
 };
