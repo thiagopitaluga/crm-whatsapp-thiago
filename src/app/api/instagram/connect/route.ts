@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { encrypt } from '@/lib/whatsapp/encryption';
+import { exchangeInstagramToken } from '@/lib/instagram/access-token';
 
 export const runtime = 'nodejs';
 const cookieName = '__Host-instagram-oauth';
@@ -44,14 +45,12 @@ export async function GET(request: NextRequest) {
     const db = supabaseAdmin();
     if (!callback) {
       const state = randomBytes(32).toString('hex');
-      const { error } = await db
-        .from('instagram_oauth_sessions')
-        .insert({
-          state_hash: hash(state),
-          account_id: ctx.accountId,
-          user_id: ctx.userId,
-          expires_at: new Date(Date.now() + 600_000).toISOString(),
-        });
+      const { error } = await db.from('instagram_oauth_sessions').insert({
+        state_hash: hash(state),
+        account_id: ctx.accountId,
+        user_id: ctx.userId,
+        expires_at: new Date(Date.now() + 600_000).toISOString(),
+      });
       if (error) throw error;
       const url = new URL('https://www.instagram.com/oauth/authorize');
       for (const [key, value] of Object.entries({
@@ -106,10 +105,14 @@ export async function GET(request: NextRequest) {
     const token = (await tokenResponse.json()) as { access_token?: string };
     if (!tokenResponse.ok || !token.access_token)
       throw new Error('Falha ao autorizar Instagram.');
+    const authorization = await exchangeInstagramToken(
+      token.access_token,
+      secret
+    );
     const profileResponse = await fetch(
       'https://graph.instagram.com/v25.0/me?fields=user_id,username',
       {
-        headers: { Authorization: 'Bearer ' + token.access_token },
+        headers: { Authorization: 'Bearer ' + authorization.accessToken },
         cache: 'no-store',
       }
     );
@@ -138,7 +141,7 @@ export async function GET(request: NextRequest) {
       {
         method: 'POST',
         headers: {
-          Authorization: 'Bearer ' + token.access_token,
+          Authorization: 'Bearer ' + authorization.accessToken,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
@@ -152,7 +155,8 @@ export async function GET(request: NextRequest) {
       throw new Error('Falha ao registrar webhook.');
     const values = {
       username: profile.username || 'Instagram',
-      access_token_encrypted: encrypt(token.access_token),
+      access_token_encrypted: encrypt(authorization.accessToken),
+      token_expires_at: authorization.expiresAt,
       updated_at: new Date().toISOString(),
     };
     const { error } = existing.data
@@ -161,13 +165,11 @@ export async function GET(request: NextRequest) {
           .update(values)
           .eq('instagram_id', profile.user_id)
           .eq('account_id', ctx.accountId)
-      : await db
-          .from('instagram_channels')
-          .insert({
-            ...values,
-            account_id: ctx.accountId,
-            instagram_id: profile.user_id,
-          });
+      : await db.from('instagram_channels').insert({
+          ...values,
+          account_id: ctx.accountId,
+          instagram_id: profile.user_id,
+        });
     if (error) throw error;
     return back('connected');
   } catch (error) {
