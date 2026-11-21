@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
         client_id: appId,
         redirect_uri: redirect,
         response_type: 'code',
+        force_reauth: 'true',
         scope:
           'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments',
         state,

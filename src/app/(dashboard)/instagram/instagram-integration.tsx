@@ -48,8 +48,9 @@ export function InstagramIntegration() {
       <div>
         <h2 className="font-semibold">Perfis do Instagram</h2>
         <p className="text-muted-foreground mt-1 text-sm">
-          Conecte um perfil profissional para receber e responder mensagens
-          nesta empresa.
+          Conecte contas comerciais ou de criador para receber e responder
+          mensagens nesta empresa. O Instagram pedirá um novo login para você
+          escolher o perfil.
         </p>
       </div>
       {canManage && configured ? (
@@ -57,7 +58,7 @@ export function InstagramIntegration() {
           className="bg-primary text-primary-foreground inline-block rounded-lg px-4 py-2 text-sm"
           href="/api/instagram/connect"
         >
-          Conectar perfil
+          {channels.length ? 'Conectar outro perfil' : 'Conectar perfil'}
         </a>
       ) : (
         <p className="text-muted-foreground text-sm">
