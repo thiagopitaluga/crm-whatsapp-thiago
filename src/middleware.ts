@@ -2,8 +2,11 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // The scheduler authenticates with CRON_SECRET, not a browser session.
-  if (request.nextUrl.pathname === '/api/whatsapp/group-broadcasts/cron') {
+  // The schedulers authenticate with CRON_SECRET, not a browser session.
+  if (
+    request.nextUrl.pathname === '/api/whatsapp/group-broadcasts/cron' ||
+    request.nextUrl.pathname === '/api/meta-ads/reports/cron'
+  ) {
     return NextResponse.next({ request })
   }
   let supabaseResponse = NextResponse.next({ request })

@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OrganiZAP Meta Ads reports every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=false
+Unit=organizap-meta-report-cron.service
+
+[Install]
+WantedBy=timers.target

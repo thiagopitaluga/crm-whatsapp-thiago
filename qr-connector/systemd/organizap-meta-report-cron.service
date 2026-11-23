@@ -1,0 +1,15 @@
+[Unit]
+Description=Process due OrganiZAP Meta Ads WhatsApp reports
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=150
+DynamicUser=yes
+EnvironmentFile=/etc/organizap/group-broadcast-cron.env
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 135 --header "Authorization: Bearer ${CRON_SECRET}" https://organizap.tpxdigital.com/api/meta-ads/reports/cron
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

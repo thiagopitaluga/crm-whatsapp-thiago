@@ -702,7 +702,7 @@ async function sendEvolutionGroupMessages(
   const groupsResponse = await evolutionRequest(
     baseUrl,
     apiKey,
-    `group/fetchAllGroups/${instance}`,
+    `group/fetchAllGroups/${instance}?getParticipants=false`,
     { signal }
   );
   if (!groupsResponse.ok) return groupsResponse;
