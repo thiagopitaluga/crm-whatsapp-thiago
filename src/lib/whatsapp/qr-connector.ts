@@ -410,13 +410,14 @@ async function fetchEvolutionQrConnector(
     const participants = rawParticipants.map((row) =>
       normalizeEvolutionParticipant(row, ownerJid)
     );
-    const subject = await getEvolutionGroupSubject(
-      baseUrl,
-      apiKey,
-      instance,
-      groupId,
-      timeout
-    );
+    const subject =
+      (await getEvolutionGroupSubject(
+        baseUrl,
+        apiKey,
+        instance,
+        groupId,
+        timeout
+      )) ?? 'grupo';
     if (
       !ownerJid ||
       !participants.some(
@@ -699,27 +700,6 @@ async function sendEvolutionGroupMessages(
     return jsonResponse({ error: 'invalid_group_send_payload' }, 400);
   }
 
-  const groupsResponse = await evolutionRequest(
-    baseUrl,
-    apiKey,
-    `group/fetchAllGroups/${instance}?getParticipants=false`,
-    { signal }
-  );
-  if (!groupsResponse.ok) return groupsResponse;
-  const groupsPayload = (await groupsResponse
-    .json()
-    .catch(() => null)) as unknown;
-  const groups = new Set(
-    extractArray(groupsPayload, ['groups', 'data'])
-      .map((row) => asRecord(row)?.id)
-      .filter((id): id is string => typeof id === 'string')
-  );
-  const ownerJid = await getEvolutionOwnerJid(
-    baseUrl,
-    apiKey,
-    instance,
-    signal
-  );
   const results: Array<{
     group_id: string;
     status: 'sent' | 'failed';
@@ -729,7 +709,22 @@ async function sendEvolutionGroupMessages(
 
   for (const [index, groupId] of groupIds.entries()) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1250));
-    if (!/^[^\s@]{1,80}@g\.us$/.test(groupId) || !groups.has(groupId)) {
+    if (!/^[^\s@]{1,80}@g\.us$/.test(groupId)) {
+      results.push({
+        group_id: groupId,
+        status: 'failed',
+        error: 'group_not_available',
+      });
+      continue;
+    }
+    const groupSubject = await getEvolutionGroupSubject(
+      baseUrl,
+      apiKey,
+      instance,
+      groupId,
+      signal
+    );
+    if (!groupSubject) {
       results.push({
         group_id: groupId,
         status: 'failed',
@@ -739,9 +734,15 @@ async function sendEvolutionGroupMessages(
     }
     const personalText = renderEvolutionGroupText(
       mentionAll ? text.replace('{{todos}}', '@todos') : text,
-      await getEvolutionGroupSubject(baseUrl, apiKey, instance, groupId, signal)
+      groupSubject
     );
     if (mentionAll) {
+      const ownerJid = await getEvolutionOwnerJid(
+        baseUrl,
+        apiKey,
+        instance,
+        signal
+      );
       const participantsResponse = await evolutionRequest(
         baseUrl,
         apiKey,
@@ -876,21 +877,21 @@ async function getEvolutionGroupSubject(
   instance: string,
   groupId: string,
   signal: AbortSignal
-): Promise<string> {
+): Promise<string | null> {
   const response = await evolutionRequest(
     baseUrl,
     apiKey,
-    `group/findGroupInfoByJid/${instance}?groupJid=${encodeURIComponent(groupId)}`,
+    `group/findGroupInfos/${instance}?groupJid=${encodeURIComponent(groupId)}`,
     { signal }
   );
-  if (!response.ok) return 'grupo';
+  if (!response.ok) return null;
   const payload = (await response.json().catch(() => null)) as Record<
     string,
     unknown
   > | null;
   return typeof payload?.subject === 'string' && payload.subject.trim()
     ? payload.subject.trim()
-    : 'grupo';
+    : null;
 }
 
 function normalizeEvolutionParticipant(
