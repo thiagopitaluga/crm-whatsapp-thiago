@@ -22,6 +22,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  filterInboxChannel,
+  type InboxChannelFilter,
+} from '@/lib/inbox/instagram';
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -35,6 +39,9 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  additionalConversations?: Conversation[];
+  channelFilter?: InboxChannelFilter;
+  onChannelFilterChange?: (filter: InboxChannelFilter) => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -51,6 +58,9 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  additionalConversations = [],
+  channelFilter = 'all',
+  onChannelFilterChange,
 }: ConversationListProps) {
   const t = useTranslations('Inbox.conversationList');
 
@@ -147,12 +157,12 @@ export function ConversationList({
   // are worth offering as an inbox filter.
   const companies = useMemo(() => {
     const set = new Set<string>();
-    for (const c of conversations) {
+    for (const c of [...conversations, ...additionalConversations]) {
       const co = c.contact?.company?.trim();
       if (co) set.add(co);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [conversations]);
+  }, [conversations, additionalConversations]);
 
   const tagsById = useMemo(() => {
     const m = new Map<string, Tag>();
@@ -161,7 +171,10 @@ export function ConversationList({
   }, [tags]);
 
   const filtered = useMemo(() => {
-    let result = conversations;
+    let result = filterInboxChannel(
+      [...conversations, ...additionalConversations],
+      channelFilter
+    );
 
     if (filter === 'unread') {
       result = result.filter((c) => c.unread_count > 0);
@@ -172,10 +185,17 @@ export function ConversationList({
     // Contact-based filters (tags via OR logic, exact company match).
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
       result = result.filter((c) =>
-        matchesContactFilters(c, {
-          tagIds: selectedTagIds,
-          company: selectedCompany,
-        })
+        c.inbox_channel === 'instagram'
+          ? (!selectedTagIds.length ||
+              selectedTagIds.some((id) =>
+                c.inbox_tag_names?.includes(tagsById.get(id)?.name ?? '')
+              )) &&
+            (selectedCompany === null ||
+              c.contact?.company?.trim() === selectedCompany)
+          : matchesContactFilters(c, {
+              tagIds: selectedTagIds,
+              company: selectedCompany,
+            })
       );
     }
 
@@ -190,7 +210,16 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [
+    conversations,
+    additionalConversations,
+    channelFilter,
+    filter,
+    search,
+    selectedTagIds,
+    selectedCompany,
+    tagsById,
+  ]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -229,6 +258,36 @@ export function ConversationList({
     <div className="border-border bg-card flex h-full w-full flex-col border-r lg:w-80">
       {/* Search + Filter */}
       <div className="border-border space-y-2 border-b p-3">
+        {onChannelFilterChange && (
+          <div
+            role="group"
+            aria-label="Canais da caixa de entrada"
+            className="bg-muted grid grid-cols-3 gap-1 rounded-lg p-1"
+          >
+            {(
+              [
+                ['all', 'Todos'],
+                ['whatsapp', 'WhatsApp'],
+                ['instagram', 'Instagram'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={channelFilter === value}
+                onClick={() => onChannelFilterChange(value)}
+                className={cn(
+                  'rounded-md px-2 py-1.5 text-xs transition-colors',
+                  channelFilter === value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-background'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="relative">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
@@ -469,7 +528,20 @@ function ConversationItem({
         isActive && 'border-primary bg-muted/70 border-l-2'
       )}
     >
-      {contact ? (
+      {conversation.inbox_channel === 'instagram' ? (
+        <div className="bg-muted flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full">
+          {contact?.avatar_url ? (
+            <img
+              src={contact.avatar_url}
+              alt=""
+              className="size-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            initials
+          )}
+        </div>
+      ) : contact ? (
         <ContactAvatar
           id={contact.id}
           name={displayName}
@@ -511,6 +583,18 @@ function ConversationItem({
             />
           </div>
         </div>
+        <span
+          className={cn(
+            'mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px]',
+            conversation.inbox_channel === 'instagram'
+              ? 'bg-pink-500/10 text-pink-500'
+              : 'bg-emerald-500/10 text-emerald-500'
+          )}
+        >
+          {conversation.inbox_channel === 'instagram'
+            ? 'Instagram'
+            : 'WhatsApp'}
+        </span>
       </div>
     </button>
   );

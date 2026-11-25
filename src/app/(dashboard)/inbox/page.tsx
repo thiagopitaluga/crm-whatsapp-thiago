@@ -18,6 +18,12 @@ import { useAuth } from '@/hooks/use-auth';
 import { ConversationList } from '@/components/inbox/conversation-list';
 import { MessageThread } from '@/components/inbox/message-thread';
 import { ContactSidebar } from '@/components/inbox/contact-sidebar';
+import { InstagramConversations } from '../instagram/instagram-conversations';
+import {
+  instagramInboxItem,
+  type InstagramInboxConversation,
+  type InboxChannelFilter,
+} from '@/lib/inbox/instagram';
 import { WifiOff, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -51,7 +57,18 @@ function InboxPageInner() {
    * dashboard's recent-conversations list so the right thread opens
    * automatically instead of showing the empty center panel.
    */
-  const deepLinkConvId = searchParams.get('c');
+  const deepLinkConvId =
+    searchParams.get('source') === 'instagram' ? null : searchParams.get('c');
+  const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>(() => {
+    const value = searchParams.get('channel');
+    return value === 'whatsapp' || value === 'instagram' ? value : 'all';
+  });
+  const [instagramConversations, setInstagramConversations] = useState<
+    InstagramInboxConversation[]
+  >([]);
+  const [activeInstagramId, setActiveInstagramId] = useState('');
+  const [instagramError, setInstagramError] = useState('');
+  const instagramDeepLink = useRef<string | null>(null);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] =
@@ -72,6 +89,62 @@ function InboxPageInner() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+  useEffect(() => {
+    if (!accountId || (isAgent && inboxAllowed !== true)) return;
+    const controller = new AbortController();
+    let inFlight = false;
+    const load = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const r = await fetch('/api/instagram/conversations?cached=1', {
+          signal: controller.signal,
+        });
+        const d = await r.json();
+        if (!r.ok)
+          throw Error(
+            d.error || 'Não foi possível carregar as conversas do Instagram.'
+          );
+        if (controller.signal.aborted) return;
+        const items = (d.conversations ?? []) as InstagramInboxConversation[];
+        setInstagramConversations(items);
+        setInstagramError('');
+        const linked =
+          searchParams.get('source') === 'instagram'
+            ? searchParams.get('c')
+            : null;
+        if (
+          linked &&
+          instagramDeepLink.current !== linked &&
+          items.some((c) => c.id === linked)
+        ) {
+          instagramDeepLink.current = linked;
+          setActiveInstagramId(linked);
+          setActiveConversation(null);
+          setActiveContact(null);
+          setMessages([]);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted)
+          setInstagramError(
+            error instanceof Error
+              ? error.message
+              : 'Falha ao carregar Instagram.'
+          );
+      } finally {
+        inFlight = false;
+      }
+    };
+    void load();
+    const interval = setInterval(() => void load(), 15000);
+    const onFocus = () => void load();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [accountId, isAgent, inboxAllowed, resyncToken, searchParams]);
 
   // RLS is the authoritative gate. This check also clears an already-open
   // thread when an administrator turns access off during the agent's session.
@@ -528,6 +601,22 @@ function InboxPageInner() {
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
+      if (conv.inbox_channel === 'instagram') {
+        instagramDeepLink.current = conv.id;
+        setActiveInstagramId(conv.id);
+        setActiveConversation(null);
+        setActiveContact(null);
+        setMessages([]);
+        setInstagramConversations((items) =>
+          items.map((c) => (c.id === conv.id ? { ...c, unread_count: 0 } : c))
+        );
+        router.replace(
+          `/inbox?source=instagram&c=${conv.id}&channel=${channelFilter}`,
+          { scroll: false }
+        );
+        return;
+      }
+      setActiveInstagramId('');
       // Re-clicking the already-active conversation would clear the
       // messages array, but the fetch effect in MessageThread only re-runs
       // when conversationId changes — so messages would stay empty until
@@ -561,23 +650,27 @@ function InboxPageInner() {
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work. Use
       // replace() to avoid polluting browser history with every click.
-      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      router.replace(`/inbox?c=${conv.id}&channel=${channelFilter}`, {
+        scroll: false,
+      });
     },
-    [activeConversation?.id, router]
+    [activeConversation?.id, router, channelFilter]
   );
 
   // Mobile "back" — deselect the conversation so the list pane comes
   // back. Also clears the ?c= param so a refresh lands on the list
   // instead of re-opening the thread the user just backed out of.
   const handleCloseConversation = useCallback(() => {
+    setActiveInstagramId('');
+    instagramDeepLink.current = null;
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace('/inbox', { scroll: false });
-  }, [router]);
+    router.replace(`/inbox?channel=${channelFilter}`, { scroll: false });
+  }, [router, channelFilter]);
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
@@ -636,7 +729,26 @@ function InboxPageInner() {
   // conversation slides the thread in; the thread's back button pops
   // it back to the list. On lg+ both panes render side-by-side as
   // before, unchanged.
-  const hasActiveConv = !!activeConversation;
+  const activeInstagram = instagramConversations.find(
+    (c) =>
+      c.id === activeInstagramId &&
+      (!c.account_id || c.account_id === accountId)
+  );
+  const hasActiveConv = !!activeConversation || !!activeInstagram;
+  function changeChannel(value: InboxChannelFilter) {
+    setChannelFilter(value);
+    if (
+      (value === 'whatsapp' && activeInstagramId) ||
+      (value === 'instagram' && activeConversation)
+    ) {
+      handleCloseConversation();
+      router.replace(`/inbox?channel=${value}`, { scroll: false });
+    } else {
+      const params = new URLSearchParams(searchParams);
+      params.set('channel', value);
+      router.replace('/inbox?' + params, { scroll: false });
+    }
+  }
 
   if (isAgent && inboxAllowed !== true) {
     return (
@@ -654,14 +766,24 @@ function InboxPageInner() {
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
-      {whatsappConnected === false && (
-        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
-          <WifiOff className="h-4 w-4 text-amber-400" />
-          <p className="text-xs text-amber-400">
-            O WhatsApp desta conta está desconectado. Abra Conexões para
-            reconectar seu número.
-          </p>
-        </div>
+      {whatsappConnected === false &&
+        channelFilter !== 'instagram' &&
+        !activeInstagram && (
+          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
+            <WifiOff className="h-4 w-4 text-amber-400" />
+            <p className="text-xs text-amber-400">
+              O WhatsApp desta conta está desconectado. Abra Conexões para
+              reconectar seu número.
+            </p>
+          </div>
+        )}
+      {instagramError && channelFilter !== 'whatsapp' && (
+        <p
+          role="alert"
+          className="text-destructive shrink-0 border-b px-4 py-2 text-xs"
+        >
+          {instagramError}
+        </p>
       )}
 
       <div className="flex flex-1 overflow-hidden">
@@ -675,11 +797,18 @@ function InboxPageInner() {
           )}
         >
           <ConversationList
-            activeConversationId={activeConversation?.id ?? null}
+            activeConversationId={
+              activeInstagram?.id ?? activeConversation?.id ?? null
+            }
             onSelect={handleSelectConversation}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            additionalConversations={instagramConversations
+              .filter((c) => !c.account_id || c.account_id === accountId)
+              .map(instagramInboxItem)}
+            channelFilter={channelFilter}
+            onChannelFilterChange={changeChannel}
           />
         </div>
 
@@ -699,77 +828,88 @@ function InboxPageInner() {
             hasActiveConv ? 'flex' : 'hidden lg:flex'
           )}
         >
-          <MessageThread
-            conversation={activeConversation}
-            contact={activeContact}
-            messages={messages}
-            onMessagesLoaded={handleMessagesLoaded}
-            onNewMessage={handleNewMessage}
-            onUpdateMessage={handleUpdateMessage}
-            onStatusChange={handleStatusChange}
-            onAssignChange={handleAssignChange}
-            onBack={handleCloseConversation}
-            resyncToken={resyncToken}
-            onRefresh={handleManualRefresh}
-            contactPanelOpen={contactPanelOpen}
-            onToggleContactPanel={handleToggleContactPanel}
-            onOpenContactMobile={() => setMobileContactOpen(true)}
-          />
+          {activeInstagram ? (
+            <InstagramConversations
+              key={accountId + ':' + activeInstagram.id}
+              initialConversation={activeInstagram}
+              hideList
+              onBack={handleCloseConversation}
+            />
+          ) : (
+            <MessageThread
+              conversation={activeConversation}
+              contact={activeContact}
+              messages={messages}
+              onMessagesLoaded={handleMessagesLoaded}
+              onNewMessage={handleNewMessage}
+              onUpdateMessage={handleUpdateMessage}
+              onStatusChange={handleStatusChange}
+              onAssignChange={handleAssignChange}
+              onBack={handleCloseConversation}
+              resyncToken={resyncToken}
+              onRefresh={handleManualRefresh}
+              contactPanelOpen={contactPanelOpen}
+              onToggleContactPanel={handleToggleContactPanel}
+              onOpenContactMobile={() => setMobileContactOpen(true)}
+            />
+          )}
         </div>
 
         {/* Right panel: Contact sidebar — desktop only, and only when the
             agent hasn't collapsed it via the thread-header toggle (#258).
             On mobile it's always hidden (the `lg:block` below), so the
             toggle — which is itself desktop-only — never affects it. */}
-        <div className="relative hidden shrink-0 lg:block">
-          <button
-            type="button"
-            aria-label={
-              contactPanelOpen
-                ? 'Recolher ficha do contato'
-                : 'Expandir ficha do contato'
-            }
-            title={
-              contactPanelOpen
-                ? 'Recolher ficha do contato'
-                : 'Expandir ficha do contato'
-            }
-            aria-expanded={contactPanelOpen}
-            onClick={handleToggleContactPanel}
-            className={cn(
-              'border-background bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-primary absolute top-16 z-20 flex size-6 items-center justify-center rounded-full border-2 shadow-md focus-visible:outline-2',
-              contactPanelOpen ? '-left-3' : 'right-1'
+        {!activeInstagram && (
+          <div className="relative hidden shrink-0 lg:block">
+            <button
+              type="button"
+              aria-label={
+                contactPanelOpen
+                  ? 'Recolher ficha do contato'
+                  : 'Expandir ficha do contato'
+              }
+              title={
+                contactPanelOpen
+                  ? 'Recolher ficha do contato'
+                  : 'Expandir ficha do contato'
+              }
+              aria-expanded={contactPanelOpen}
+              onClick={handleToggleContactPanel}
+              className={cn(
+                'border-background bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-primary absolute top-16 z-20 flex size-6 items-center justify-center rounded-full border-2 shadow-md focus-visible:outline-2',
+                contactPanelOpen ? '-left-3' : 'right-1'
+              )}
+            >
+              {contactPanelOpen ? (
+                <ChevronsRight className="size-3.5" />
+              ) : (
+                <ChevronsLeft className="size-3.5" />
+              )}
+            </button>
+            {contactPanelOpen && (
+              <ContactSidebar
+                key={activeContact?.id}
+                conversation={activeConversation}
+                contact={activeContact}
+                onContactUpdated={() => {
+                  if (!activeContact) return;
+                  const id = activeContact.id;
+                  void createClient()
+                    .from('contacts')
+                    .select('*')
+                    .eq('id', id)
+                    .maybeSingle()
+                    .then(({ data }) => {
+                      if (data)
+                        setActiveContact((previous) =>
+                          previous?.id === id ? (data as Contact) : previous
+                        );
+                    });
+                }}
+              />
             )}
-          >
-            {contactPanelOpen ? (
-              <ChevronsRight className="size-3.5" />
-            ) : (
-              <ChevronsLeft className="size-3.5" />
-            )}
-          </button>
-          {contactPanelOpen && (
-            <ContactSidebar
-              key={activeContact?.id}
-              conversation={activeConversation}
-              contact={activeContact}
-              onContactUpdated={() => {
-                if (!activeContact) return;
-                const id = activeContact.id;
-                void createClient()
-                  .from('contacts')
-                  .select('*')
-                  .eq('id', id)
-                  .maybeSingle()
-                  .then(({ data }) => {
-                    if (data)
-                      setActiveContact((previous) =>
-                        previous?.id === id ? (data as Contact) : previous
-                      );
-                  });
-              }}
-            />
-          )}
-        </div>
+          </div>
+        )}
         <Sheet open={mobileContactOpen} onOpenChange={setMobileContactOpen}>
           <SheetContent side="right" className="w-80 max-w-full gap-0 p-0">
             <SheetHeader className="sr-only">

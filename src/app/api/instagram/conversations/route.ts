@@ -12,8 +12,9 @@ export async function GET(request: Request) {
     const ctx = await requireRole('viewer');
     const db = supabaseAdmin();
     const id = new URL(request.url).searchParams.get('conversation');
+    const cached = new URL(request.url).searchParams.get('cached') === '1';
     let syncWarning: string | null = null;
-    if (!id || /^[0-9a-f-]{36}$/i.test(id)) {
+    if (!cached && (!id || /^[0-9a-f-]{36}$/i.test(id))) {
       const channels = await readInstagramChannels(db, ctx.accountId);
       await Promise.all(
         channels.map(async (channel) => {

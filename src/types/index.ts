@@ -163,6 +163,9 @@ export interface ContactNote {
 export type ConversationStatus = 'open' | 'pending' | 'closed';
 
 export interface Conversation {
+  /** Presentation metadata for the unified inbox; never used to route WhatsApp sends. */
+  inbox_channel?: 'whatsapp' | 'instagram';
+  inbox_tag_names?: string[];
   id: string;
   user_id: string;
   contact_id: string;

@@ -26,6 +26,7 @@ import {
 import { useAuth } from '@/hooks/use-auth';
 import type { Contact, Message as InboxMessage } from '@/types';
 import { cn } from '@/lib/utils';
+import type { InstagramInboxConversation } from '@/lib/inbox/instagram';
 
 type Conversation = {
   id: string;
@@ -77,10 +78,20 @@ function Photo({ conversation }: { conversation: Conversation }) {
   );
 }
 
-export function InstagramConversations() {
+export function InstagramConversations({
+  initialConversation,
+  onBack,
+  hideList = false,
+}: {
+  initialConversation?: InstagramInboxConversation;
+  onBack?: () => void;
+  hideList?: boolean;
+} = {}) {
   const { canSendMessages, user } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]),
-    [selected, setSelected] = useState(''),
+  const [conversations, setConversations] = useState<Conversation[]>(
+      initialConversation ? [initialConversation] : []
+    ),
+    [selected, setSelected] = useState(initialConversation?.id ?? ''),
     [messages, setMessages] = useState<Message[]>([]),
     [text, setText] = useState(''),
     [error, setError] = useState(''),
@@ -90,7 +101,9 @@ export function InstagramConversations() {
     [filter, setFilter] = useState('all'),
     [tagFilter, setTagFilter] = useState(''),
     [profile, setProfile] = useState(''),
-    [contact, setContact] = useState<Contact | null>(null),
+    [contact, setContact] = useState<Contact | null>(
+      initialConversation?.contact ?? null
+    ),
     [panel, setPanel] = useState(true),
     [mobilePanel, setMobilePanel] = useState(false),
     [quick, setQuick] = useState(false),
@@ -105,21 +118,27 @@ export function InstagramConversations() {
   useEffect(() => {
     activeId.current = selected;
   }, [selected]);
-  const loadList = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const r = await fetch('/api/instagram/conversations', { signal });
-      const d = await r.json();
-      if (!r.ok)
-        throw Error(d.error || 'Não foi possível carregar as conversas.');
-      setConversations(d.conversations ?? []);
-      if (d.syncWarning) setError(d.syncWarning);
-    } catch (e) {
-      if (!signal?.aborted)
-        setError(e instanceof Error ? e.message : 'Falha ao carregar.');
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, []);
+  const loadList = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const r = await fetch(
+          '/api/instagram/conversations' + (hideList ? '?cached=1' : ''),
+          { signal }
+        );
+        const d = await r.json();
+        if (!r.ok)
+          throw Error(d.error || 'Não foi possível carregar as conversas.');
+        setConversations(d.conversations ?? []);
+        if (d.syncWarning) setError(d.syncWarning);
+      } catch (e) {
+        if (!signal?.aborted)
+          setError(e instanceof Error ? e.message : 'Falha ao carregar.');
+      } finally {
+        if (!signal?.aborted) setLoading(false);
+      }
+    },
+    [hideList]
+  );
   const loadMessages = useCallback(async (id: string, signal?: AbortSignal) => {
     try {
       const r = await fetch('/api/instagram/conversations?conversation=' + id, {
@@ -370,131 +389,138 @@ export function InstagramConversations() {
     </div>
   );
   return (
-    <section className="bg-card border-border relative flex min-h-0 flex-1 overflow-hidden rounded-xl border">
-      <aside
-        aria-label="Conversas do Instagram"
-        className={cn(
-          'border-border flex min-h-0 w-full shrink-0 flex-col border-r md:w-72',
-          selected && 'hidden md:flex'
-        )}
-      >
-        <div className="shrink-0 space-y-3 border-b p-3">
-          <div className="relative">
-            <Search className="text-muted-foreground absolute top-2.5 left-3 size-4" />
-            <input
-              aria-label="Pesquisar conversas"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Pesquisar conversas…"
-              className="bg-muted w-full rounded-lg border py-2 pr-3 pl-9 text-sm"
-            />
-          </div>
-          <div className="flex gap-2">
-            <select
-              aria-label="Filtrar conversas"
-              className="bg-card min-w-0 flex-1 rounded-lg border p-2 text-xs"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              <option value="all">Todas</option>
-              <option value="unread">Não lidas</option>
-              <option value="mine">Minhas conversas</option>
-              <option value="open">Abertas</option>
-              <option value="human">Atendimento humano</option>
-              <option value="closed">Encerradas</option>
-            </select>
-            {profiles.length > 1 && (
+    <section
+      className={cn(
+        'bg-card border-border relative flex min-h-0 min-w-0 flex-1 overflow-hidden',
+        !hideList && 'rounded-xl border'
+      )}
+    >
+      {!hideList && (
+        <aside
+          aria-label="Conversas do Instagram"
+          className={cn(
+            'border-border flex min-h-0 w-full shrink-0 flex-col border-r md:w-72',
+            selected && 'hidden md:flex'
+          )}
+        >
+          <div className="shrink-0 space-y-3 border-b p-3">
+            <div className="relative">
+              <Search className="text-muted-foreground absolute top-2.5 left-3 size-4" />
+              <input
+                aria-label="Pesquisar conversas"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Pesquisar conversas…"
+                className="bg-muted w-full rounded-lg border py-2 pr-3 pl-9 text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
               <select
-                aria-label="Filtrar perfil"
-                value={profile}
-                onChange={(e) => setProfile(e.target.value)}
+                aria-label="Filtrar conversas"
                 className="bg-card min-w-0 flex-1 rounded-lg border p-2 text-xs"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
               >
-                <option value="">Todos os perfis</option>
-                {profiles.map((p) => (
-                  <option key={p} value={p}>
-                    @{p}
+                <option value="all">Todas</option>
+                <option value="unread">Não lidas</option>
+                <option value="mine">Minhas conversas</option>
+                <option value="open">Abertas</option>
+                <option value="human">Atendimento humano</option>
+                <option value="closed">Encerradas</option>
+              </select>
+              {profiles.length > 1 && (
+                <select
+                  aria-label="Filtrar perfil"
+                  value={profile}
+                  onChange={(e) => setProfile(e.target.value)}
+                  className="bg-card min-w-0 flex-1 rounded-lg border p-2 text-xs"
+                >
+                  <option value="">Todos os perfis</option>
+                  {profiles.map((p) => (
+                    <option key={p} value={p}>
+                      @{p}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                title="Atualizar conversas"
+                aria-label="Atualizar conversas"
+                onClick={() => void loadList()}
+                className="hover:bg-muted rounded-lg p-2"
+              >
+                <RefreshCw className="size-4" />
+              </button>
+            </div>
+            {allTags.length > 0 && (
+              <select
+                aria-label="Filtrar por etiqueta"
+                className="bg-card w-full rounded-lg border p-2 text-xs"
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+              >
+                <option value="">Todas as etiquetas</option>
+                {allTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
                   </option>
                 ))}
               </select>
             )}
-            <button
-              title="Atualizar conversas"
-              aria-label="Atualizar conversas"
-              onClick={() => void loadList()}
-              className="hover:bg-muted rounded-lg p-2"
-            >
-              <RefreshCw className="size-4" />
-            </button>
           </div>
-          {allTags.length > 0 && (
-            <select
-              aria-label="Filtrar por etiqueta"
-              className="bg-card w-full rounded-lg border p-2 text-xs"
-              value={tagFilter}
-              onChange={(e) => setTagFilter(e.target.value)}
-            >
-              <option value="">Todas as etiquetas</option>
-              {allTags.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {filtered.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => {
-                activeId.current = c.id;
-                setSelected(c.id);
-                setMessages([]);
-                setContact(c.contact);
-                setError('');
-              }}
-              className={cn(
-                'hover:bg-muted/50 flex w-full items-center gap-3 border-l-2 border-transparent px-3 py-4 text-left',
-                selected === c.id && 'border-primary bg-primary/5'
-              )}
-            >
-              <Photo conversation={c} />
-              <div className="min-w-0 flex-1">
-                <div className="flex justify-between gap-2">
-                  <span className="truncate text-sm font-semibold">
-                    {nameOf(c)}
-                  </span>
-                  <time className="text-muted-foreground shrink-0 text-[10px]">
-                    {new Date(c.last_message_at).toLocaleDateString('pt-BR', {
-                      day: '2-digit',
-                      month: '2-digit',
-                    })}
-                  </time>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {filtered.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  activeId.current = c.id;
+                  setSelected(c.id);
+                  setMessages([]);
+                  setContact(c.contact);
+                  setError('');
+                }}
+                className={cn(
+                  'hover:bg-muted/50 flex w-full items-center gap-3 border-l-2 border-transparent px-3 py-4 text-left',
+                  selected === c.id && 'border-primary bg-primary/5'
+                )}
+              >
+                <Photo conversation={c} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex justify-between gap-2">
+                    <span className="truncate text-sm font-semibold">
+                      {nameOf(c)}
+                    </span>
+                    <time className="text-muted-foreground shrink-0 text-[10px]">
+                      {new Date(c.last_message_at).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                      })}
+                    </time>
+                  </div>
+                  <p className="text-muted-foreground truncate text-xs">
+                    {c.last_message_text || 'Conversa do Instagram'}
+                  </p>
+                  <p className="text-muted-foreground mt-1 text-[10px]">
+                    @{c.channel_username}
+                  </p>
                 </div>
-                <p className="text-muted-foreground truncate text-xs">
-                  {c.last_message_text || 'Conversa do Instagram'}
-                </p>
-                <p className="text-muted-foreground mt-1 text-[10px]">
-                  @{c.channel_username}
-                </p>
-              </div>
-              {c.unread_count > 0 && (
-                <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-[10px]">
-                  {c.unread_count}
-                </span>
-              )}
-            </button>
-          ))}
-          {!filtered.length && (
-            <p className="text-muted-foreground p-5 text-sm">
-              {loading
-                ? 'Carregando conversas…'
-                : 'Nenhuma conversa encontrada.'}
-            </p>
-          )}
-        </div>
-      </aside>
+                {c.unread_count > 0 && (
+                  <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-[10px]">
+                    {c.unread_count}
+                  </span>
+                )}
+              </button>
+            ))}
+            {!filtered.length && (
+              <p className="text-muted-foreground p-5 text-sm">
+                {loading
+                  ? 'Carregando conversas…'
+                  : 'Nenhuma conversa encontrada.'}
+              </p>
+            )}
+          </div>
+        </aside>
+      )}
       <div
         className={cn(
           'flex min-h-0 min-w-0 flex-1 flex-col',
@@ -506,8 +532,11 @@ export function InstagramConversations() {
             <header className="flex shrink-0 flex-wrap items-center gap-2 border-b p-3">
               <button
                 aria-label="Voltar para conversas"
-                className="p-1 md:hidden"
-                onClick={() => setSelected('')}
+                className={cn('p-1', hideList ? 'lg:hidden' : 'md:hidden')}
+                onClick={() => {
+                  setSelected('');
+                  onBack?.();
+                }}
               >
                 <ArrowLeft className="size-4" />
               </button>
