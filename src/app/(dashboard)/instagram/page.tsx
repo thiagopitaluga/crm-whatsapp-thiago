@@ -36,12 +36,6 @@ export default function InstagramPage() {
           : 'space-y-6'
       }
     >
-      <header className="shrink-0">
-        <h1 className="text-2xl font-bold">Instagram</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Atendimento e automações para seus perfis profissionais.
-        </p>
-      </header>
       <nav
         aria-label="Seções do Instagram"
         className="border-border flex shrink-0 flex-wrap gap-2 border-b pb-3"
