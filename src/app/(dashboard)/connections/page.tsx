@@ -11,6 +11,7 @@ import { QrWhatsAppConnector } from '@/components/settings/qr-whatsapp-connector
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import { StageIntegrations } from '@/components/pipelines/stage-integrations';
+import { InstagramIntegration } from '../instagram/instagram-integration';
 
 type Channel = {
   id: string;
@@ -20,14 +21,14 @@ type Channel = {
   connected: boolean;
   provider: string;
 };
-type Section = 'whatsapp' | 'integrations' | 'pixel' | 'api';
+type Section = 'whatsapp' | 'instagram' | 'integrations' | 'pixel' | 'api';
 
 export default function ConnectionsPage() {
   const { accountId, canEditSettings } = useAuth();
   const [section, setSection] = useState<Section>('whatsapp');
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('tab') === 'pixel')
-      setSection('pixel');
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'pixel' || tab === 'instagram') setSection(tab);
   }, []);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selected, setSelected] = useState('');
@@ -139,6 +140,7 @@ export default function ConnectionsPage() {
         {(
           [
             ['whatsapp', 'WhatsApp'],
+            ['instagram', 'Instagram'],
             ['integrations', 'Integrações'],
             ['pixel', 'Pixel do Meta'],
             ['api', 'Chaves de API'],
@@ -307,6 +309,9 @@ export default function ConnectionsPage() {
             </Link>
           </div>
         </div>
+      )}
+      {section === 'instagram' && (
+        <InstagramIntegration key={accountId} returnTo="connections" />
       )}
       {section === 'pixel' && <StageIntegrations editable={canEditSettings} />}
       {section === 'api' && <ApiKeysSettings />}

@@ -255,14 +255,14 @@ export function ConversationList({
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="border-border bg-card flex h-full w-full flex-col border-r lg:w-80">
+    <div className="border-border bg-card flex h-full w-full max-w-full min-w-0 flex-col overflow-hidden border-r lg:w-80">
       {/* Search + Filter */}
-      <div className="border-border space-y-2 border-b p-3">
+      <div className="border-border min-w-0 shrink-0 space-y-2 border-b p-3">
         {onChannelFilterChange && (
           <div
             role="group"
             aria-label="Canais da caixa de entrada"
-            className="bg-muted grid grid-cols-3 gap-1 rounded-lg p-1"
+            className="bg-muted flex w-full min-w-0 gap-1 rounded-lg p-1"
           >
             {(
               [
@@ -277,7 +277,7 @@ export function ConversationList({
                 aria-pressed={channelFilter === value}
                 onClick={() => onChannelFilterChange(value)}
                 className={cn(
-                  'rounded-md px-2 py-1.5 text-xs transition-colors',
+                  'focus-visible:outline-primary flex min-w-0 flex-1 basis-0 items-center justify-center overflow-hidden rounded-md px-1 py-2 text-center text-xs whitespace-nowrap transition-colors focus-visible:outline-2',
                   channelFilter === value
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-background'

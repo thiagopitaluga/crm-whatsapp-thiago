@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/hooks/use-auth';
 type Channel = {
   id: string;
   username: string;
@@ -8,7 +9,12 @@ type Channel = {
   lead_pipeline_id: string | null;
   lead_stage_id: string | null;
 };
-export function InstagramIntegration() {
+export function InstagramIntegration({
+  returnTo = 'instagram',
+}: { returnTo?: 'instagram' | 'connections' } = {}) {
+  const { accountId } = useAuth();
+  const dirty = useRef(new Set<string>());
+  const updates = useRef<BroadcastChannel | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [pipelines, setPipelines] = useState<
     {
@@ -26,34 +32,82 @@ export function InstagramIntegration() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const result = params.get('connection');
-    if (result === 'connected') setStatus('Perfil conectado.');
-    if (result === 'cancelled') setStatus('Autorização cancelada.');
-    if (result === 'error')
-      setError(
-        'A conexão não foi concluída. Verifique a configuração e tente novamente.'
-      );
-    if (result === 'not-configured')
-      setError(
-        'O aplicativo do Instagram ainda precisa ser configurado no servidor.'
-      );
+    if (!accountId) return;
+    dirty.current.clear();
     const controller = new AbortController();
-    fetch('/api/instagram/channels', { signal: controller.signal })
-      .then(async (r) => {
-        if (!r.ok) throw new Error('Não foi possível carregar os perfis.');
-        return r.json();
+    let inFlight = false;
+    const load = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      return fetch('/api/instagram/channels', {
+        signal: controller.signal,
+        cache: 'no-store',
       })
-      .then((data) => {
-        setChannels(data.channels);
-        setPipelines(data.pipelines ?? []);
-        setConfigured(data.configured);
-        setCanManage(data.canManage);
-        setAutomationEnabled(data.automationEnabled);
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted) setError(e.message);
-      });
-    return () => controller.abort();
-  }, []);
+        .then(async (r) => {
+          if (!r.ok) throw new Error('Não foi possível carregar os perfis.');
+          return r.json();
+        })
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          setChannels((previous) =>
+            (data.channels as Channel[]).map((channel) =>
+              dirty.current.has(channel.id)
+                ? (previous.find((c) => c.id === channel.id) ?? channel)
+                : channel
+            )
+          );
+          setPipelines(data.pipelines ?? []);
+          setConfigured(data.configured);
+          setCanManage(data.canManage);
+          setAutomationEnabled(data.automationEnabled);
+        })
+        .catch((e) => {
+          if (!controller.signal.aborted) setError(e.message);
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    void load().then(() => {
+      if (controller.signal.aborted) return;
+      if (result === 'connected') {
+        setStatus('Perfil conectado.');
+        updates.current?.postMessage('changed');
+      }
+      if (result === 'cancelled') setStatus('Autorização cancelada.');
+      if (result === 'error')
+        setError(
+          'A conexão não foi concluída. Verifique a configuração e tente novamente.'
+        );
+      if (result === 'not-configured')
+        setError(
+          'O aplicativo do Instagram ainda precisa ser configurado no servidor.'
+        );
+    });
+    const onFocus = () => void load();
+    const visibility = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', visibility);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 30000);
+    if (typeof BroadcastChannel !== 'undefined') {
+      updates.current = new BroadcastChannel(
+        'organizap-instagram-' + accountId
+      );
+      updates.current.onmessage = onFocus;
+    }
+    return () => {
+      controller.abort();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', visibility);
+      clearInterval(timer);
+      updates.current?.close();
+      updates.current = null;
+    };
+  }, [accountId]);
   async function save(channel: Channel) {
     setSaving(channel.id);
     setError('');
@@ -70,6 +124,8 @@ export function InstagramIntegration() {
       });
       const data = await r.json();
       if (!r.ok) throw Error(data.error);
+      dirty.current.delete(channel.id);
+      updates.current?.postMessage('changed');
       setStatus('Destino dos novos leads salvo.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao salvar.');
@@ -90,7 +146,7 @@ export function InstagramIntegration() {
       {canManage && configured ? (
         <a
           className="bg-primary text-primary-foreground inline-block rounded-lg px-4 py-2 text-sm"
-          href="/api/instagram/connect"
+          href={'/api/instagram/connect?from=' + returnTo}
         >
           {channels.length ? 'Conectar outro perfil' : 'Conectar perfil'}
         </a>
@@ -136,7 +192,8 @@ export function InstagramIntegration() {
                     disabled={!canManage || !!saving}
                     value={channel.lead_pipeline_id ?? ''}
                     className="bg-background w-full rounded-lg border p-2"
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      dirty.current.add(channel.id);
                       setChannels((items) =>
                         items.map((c) =>
                           c.id === channel.id
@@ -147,8 +204,8 @@ export function InstagramIntegration() {
                               }
                             : c
                         )
-                      )
-                    }
+                      );
+                    }}
                   >
                     <option value="">Não criar negócio automaticamente</option>
                     {pipelines.map((p) => (
@@ -167,15 +224,16 @@ export function InstagramIntegration() {
                     }
                     value={channel.lead_stage_id ?? ''}
                     className="bg-background w-full rounded-lg border p-2"
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      dirty.current.add(channel.id);
                       setChannels((items) =>
                         items.map((c) =>
                           c.id === channel.id
                             ? { ...c, lead_stage_id: e.target.value || null }
                             : c
                         )
-                      )
-                    }
+                      );
+                    }}
                   >
                     <option value="">Selecione uma etapa</option>
                     {[

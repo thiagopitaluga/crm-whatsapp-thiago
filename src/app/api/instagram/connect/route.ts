@@ -4,9 +4,11 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { encrypt } from '@/lib/whatsapp/encryption';
 import { exchangeInstagramToken } from '@/lib/instagram/access-token';
+import { instagramConnectionReturnPath } from '@/lib/instagram/connection-navigation';
 
 export const runtime = 'nodejs';
 const cookieName = '__Host-instagram-oauth';
+const returnCookieName = '__Host-instagram-oauth-return';
 const hash = (v: string) => createHash('sha256').update(v).digest('hex');
 const options = {
   secure: true,
@@ -18,12 +20,23 @@ const options = {
 
 export async function GET(request: NextRequest) {
   const callback = request.nextUrl.searchParams.has('state');
+  const returnTo = callback
+    ? request.cookies.get(returnCookieName)?.value
+    : request.nextUrl.searchParams.get('from');
+  const returnPath = instagramConnectionReturnPath(returnTo);
   const back = (status: string) => {
     const response = NextResponse.redirect(
-      new URL('/instagram?connection=' + status, request.url),
+      new URL(
+        returnPath +
+          (returnPath.includes('?') ? '&' : '?') +
+          'connection=' +
+          status,
+        request.url
+      ),
       303
     );
     response.cookies.set(cookieName, '', { ...options, maxAge: 0 });
+    response.cookies.set(returnCookieName, '', { ...options, maxAge: 0 });
     response.headers.set('Cache-Control', 'no-store');
     response.headers.set('Referrer-Policy', 'no-referrer');
     return response;
@@ -65,6 +78,11 @@ export async function GET(request: NextRequest) {
         url.searchParams.set(key, value);
       const response = NextResponse.redirect(url);
       response.cookies.set(cookieName, state, options);
+      response.cookies.set(
+        returnCookieName,
+        returnTo === 'connections' ? 'connections' : 'instagram',
+        options
+      );
       response.headers.set('Cache-Control', 'no-store');
       response.headers.set('Referrer-Policy', 'no-referrer');
       return response;
