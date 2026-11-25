@@ -108,40 +108,45 @@ export function InstagramConversations() {
     }
   }
   return (
-    <section className="border-border bg-card grid min-h-96 overflow-hidden rounded-xl border md:grid-cols-[240px_1fr]">
-      <div className="border-border space-y-1 border-r p-3">
-        <h2 className="p-2 font-semibold">Conversas</h2>
-        {conversations.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => {
-              setSelected(c.id);
-              setMessages([]);
-            }}
-            className={`w-full rounded-lg p-3 text-left text-sm ${selected === c.id ? 'bg-muted' : 'hover:bg-muted/50'}`}
-          >
-            <span className="block truncate font-medium">
-              {c.profile_data?.name ||
-                c.profile_data?.username ||
-                `Contato ${c.instagram_user_id}`}
-            </span>
-            {c.profile_data?.username && (
-              <small className="text-muted-foreground">
-                @{c.profile_data.username}
+    <section className="border-border bg-card grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,2fr)] overflow-hidden rounded-xl border md:grid-cols-[240px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]">
+      <div className="border-border flex min-h-0 min-w-0 flex-col overflow-hidden border-b p-3 md:border-r md:border-b-0">
+        <h2 className="shrink-0 p-2 font-semibold">Conversas</h2>
+        <div
+          aria-label="Lista de contatos do Instagram"
+          className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain"
+        >
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => {
+                setSelected(c.id);
+                setMessages([]);
+              }}
+              className={`w-full rounded-lg p-3 text-left text-sm ${selected === c.id ? 'bg-muted' : 'hover:bg-muted/50'}`}
+            >
+              <span className="block truncate font-medium">
+                {c.profile_data?.name ||
+                  c.profile_data?.username ||
+                  `Contato ${c.instagram_user_id}`}
+              </span>
+              {c.profile_data?.username && (
+                <small className="text-muted-foreground">
+                  @{c.profile_data.username}
+                </small>
+              )}
+              <small className="text-muted-foreground block">
+                {new Date(c.last_message_at).toLocaleString('pt-BR')}
               </small>
-            )}
-            <small className="text-muted-foreground block">
-              {new Date(c.last_message_at).toLocaleString('pt-BR')}
-            </small>
-          </button>
-        ))}
-        {!conversations.length && (
-          <p className="text-muted-foreground p-2 text-sm">
-            Nenhuma conversa recebida.
-          </p>
-        )}
+            </button>
+          ))}
+          {!conversations.length && (
+            <p className="text-muted-foreground p-2 text-sm">
+              Nenhuma conversa recebida.
+            </p>
+          )}
+        </div>
       </div>
-      <div className="flex min-h-96 flex-col p-4">
+      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden p-4">
         {selected ? (
           <>
             <h3 className="mb-3 font-semibold">
@@ -177,7 +182,7 @@ export function InstagramConversations() {
                 )
               }
             />
-            <div className="max-h-[60vh] flex-1 space-y-2 overflow-y-auto py-3">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain py-3">
               {messages.map((m) => (
                 <div
                   key={m.id}
@@ -217,7 +222,7 @@ export function InstagramConversations() {
                 </div>
               ))}
             </div>
-            <form onSubmit={send} className="mt-4 flex gap-2">
+            <form onSubmit={send} className="mt-4 flex shrink-0 gap-2">
               <input
                 className="border-border bg-background min-w-0 flex-1 rounded-lg border p-2"
                 value={text}
@@ -239,7 +244,7 @@ export function InstagramConversations() {
           </p>
         )}
         {error && (
-          <p role="alert" className="text-destructive mt-2 text-sm">
+          <p role="alert" className="text-destructive mt-2 shrink-0 text-sm">
             {error}
           </p>
         )}

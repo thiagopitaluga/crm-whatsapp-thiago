@@ -29,8 +29,14 @@ export default function InstagramPage() {
       setTab('integration');
   }, []);
   return (
-    <div className="space-y-6">
-      <header>
+    <div
+      className={
+        tab === 'conversations'
+          ? 'flex h-full min-h-0 flex-col gap-6 overflow-hidden'
+          : 'space-y-6'
+      }
+    >
+      <header className="shrink-0">
         <h1 className="text-2xl font-bold">Instagram</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Atendimento e automações para seus perfis profissionais.
@@ -38,7 +44,7 @@ export default function InstagramPage() {
       </header>
       <nav
         aria-label="Seções do Instagram"
-        className="border-border flex flex-wrap gap-2 border-b pb-3"
+        className="border-border flex shrink-0 flex-wrap gap-2 border-b pb-3"
       >
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
