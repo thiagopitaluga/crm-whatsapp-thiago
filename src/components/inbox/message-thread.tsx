@@ -482,8 +482,8 @@ export function MessageThread({
   }, [messages]);
 
   const handleSend = useCallback(
-    async (text: string, replyToId?: string) => {
-      if (!conversation) return;
+    async (text: string, replyToId?: string): Promise<'keep-draft' | void> => {
+      if (!conversation) return 'keep-draft';
 
       if (textDeliveryMode === 'wa_me') {
         const phone = sanitizePhoneForMeta(contact?.phone ?? '');
@@ -491,7 +491,7 @@ export function MessageThread({
           toast.error(
             'Este contato não possui um número válido para abrir o WhatsApp.'
           );
-          return;
+          return 'keep-draft';
         }
 
         const target = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
@@ -514,7 +514,6 @@ export function MessageThread({
         reply_to_message_id: replyToId,
       };
       onNewMessage(optimisticMsg);
-      setReplyTo(null);
 
       try {
         const res = await fetch('/api/whatsapp/send', {
@@ -533,9 +532,11 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error('Failed to send message:', reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(`Falha no envio. ${reason}`);
           // Mark the optimistic bubble as failed so the user sees what happened
           onUpdateMessage(tempId, { status: 'failed' });
+          if (res.status >= 400 && res.status < 500) return 'keep-draft';
+          setReplyTo(null);
           return;
         }
 
@@ -543,11 +544,12 @@ export function MessageThread({
         // with the real DB row. If realtime hasn't arrived yet, at least
         // flip status to 'sent' so the UI stops showing "sending".
         onUpdateMessage(tempId, { status: 'sent' });
+        setReplyTo(null);
       } catch (err) {
         console.error('Failed to send message:', err);
-        const reason = err instanceof Error ? err.message : 'network error';
-        toast.error(`Failed to send: ${reason}`);
+        toast.error('Não foi possível confirmar o envio. Confira o histórico antes de tentar novamente.');
         onUpdateMessage(tempId, { status: 'failed' });
+        setReplyTo(null);
       }
     },
     [

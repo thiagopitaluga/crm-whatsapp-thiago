@@ -514,7 +514,17 @@ function InfrastructurePanel({ overview }: { overview: Overview }) {
   const vps = infrastructure.vps;
   const ageMinutes = vps ? Math.floor((new Date(overview.generatedAt).getTime() - new Date(vps.collected_at).getTime()) / 60000) : null;
   const fresh = ageMinutes !== null && ageMinutes <= 15;
+  const capacityAlerts = [
+    { label: 'Banco de dados', used: metrics.database_bytes, total: infrastructure.supabase.databaseCapacityBytes },
+    { label: 'Armazenamento de arquivos', used: metrics.storage_bytes, total: infrastructure.supabase.storageCapacityBytes },
+  ].filter(({ used, total }) => total > 0 && used / total >= 0.85);
   return <div className="space-y-4">
+    {capacityAlerts.map(({ label, used, total }) => (
+      <p key={label} role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+        <strong>{label}</strong> está em {(used / total).toLocaleString('pt-BR', { style: 'percent', maximumFractionDigits: 1 })} da capacidade configurada.
+        {' '}{formatBytes(Math.max(0, total - used))} disponíveis.
+      </p>
+    ))}
     <div className="grid gap-4 xl:grid-cols-3">
       <Card><CardHeader><div className="flex items-center justify-between"><div><CardTitle>Supabase</CardTitle><CardDescription>Banco, autenticação e arquivos</CardDescription></div><Database className="text-primary size-5" /></div></CardHeader><CardContent className="space-y-5"><div className="flex items-center justify-between"><span className="text-sm">Plano de referência</span><Badge variant="secondary">{infrastructure.supabase.plan}</Badge></div><UsageBar label="Banco de dados" used={metrics.database_bytes} total={infrastructure.supabase.databaseCapacityBytes} detail={`${formatBytes(Math.max(0, infrastructure.supabase.databaseCapacityBytes - metrics.database_bytes))} disponíveis`} /><UsageBar label="Armazenamento de arquivos" used={metrics.storage_bytes} total={infrastructure.supabase.storageCapacityBytes} detail={`${formatBytes(Math.max(0, infrastructure.supabase.storageCapacityBytes - metrics.storage_bytes))} disponíveis`} /></CardContent></Card>
       <Card><CardHeader><div className="flex items-center justify-between"><div><CardTitle>VPS InterServer</CardTitle><CardDescription>{vps?.hostname ?? 'Aguardando primeira leitura'}</CardDescription></div><Server className="text-primary size-5" /></div></CardHeader><CardContent className="space-y-5">{vps ? <><div className="flex items-center justify-between"><span className="text-sm">Monitoramento</span><Badge variant={fresh ? 'secondary' : 'destructive'}>{fresh ? 'Online' : 'Desatualizado'}</Badge></div><UsageBar label="Memória RAM" used={vps.payload.memory.used} total={vps.payload.memory.total} /><UsageBar label="Disco" used={vps.payload.disk.used} total={vps.payload.disk.total} /><UsageBar label="Swap" used={vps.payload.memory.swap_used} total={vps.payload.memory.swap_total} /><div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-lg border p-3"><div className="text-muted-foreground text-xs">Carga / núcleos</div><div className="mt-1 font-semibold">{vps.payload.load1.toFixed(2)} / {vps.payload.cpuCores}</div></div><div className="rounded-lg border p-3"><div className="text-muted-foreground text-xs">Uptime</div><div className="mt-1 font-semibold">{uptime(vps.payload.uptimeSeconds)}</div></div></div><p className="text-muted-foreground text-xs">Última coleta há {ageMinutes} min.</p></> : <p className="text-muted-foreground text-sm">O agente da VPS ainda não enviou dados.</p>}</CardContent></Card>

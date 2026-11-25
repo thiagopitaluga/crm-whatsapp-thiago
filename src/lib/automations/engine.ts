@@ -265,7 +265,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
   }
   if (!steps || steps.length === 0) {
     if (args.parentStepId === null && args.logId) {
-      await finalizeLog(args.logId, 'success', null)
+      await appendResults(args.logId, [], 'success', null)
     }
     return
   }
@@ -280,7 +280,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
     if (step.step_type === 'wait') {
       const cfg = step.step_config as WaitStepConfig
       const ms = waitMs(cfg)
-      await db.from('automation_pending_executions').insert({
+      const { error: waitError } = await db.from('automation_pending_executions').insert({
         automation_id: args.automation.id,
         // Tenancy: account_id required NOT NULL post-017.
         account_id: args.automation.account_id,
@@ -297,11 +297,11 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       results.push({
         step_id: step.id,
         step_type: step.step_type,
-        status: 'success',
-        detail: `waiting ${cfg.amount} ${cfg.unit}`,
+        status: waitError ? 'failed' : 'success',
+        detail: waitError ? 'Falha ao agendar a próxima etapa' : `waiting ${cfg.amount} ${cfg.unit}`,
       })
-      status = 'partial'
-      await appendResults(args.logId, results, status, errorMessage)
+      status = waitError ? 'failed' : 'partial'
+      await appendResults(args.logId, results, status, waitError?.message ?? errorMessage)
       return
     }
 
@@ -313,8 +313,9 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
           step_id: step.id,
           step_type: 'condition',
           status: 'success',
-          detail: `branch=${taken ? 'yes' : 'no'}`,
+          detail: `${conditionLabels[cfg.subject]} · ${taken ? 'atendida' : 'não atendida'} · caminho ${taken ? 'Sim' : 'Não'}`,
         })
+        await appendResults(args.logId, results.splice(0), null, null)
         // Recurse into the chosen branch at position 0 (children use their
         // own ordering within the branch scope).
         await executeStepsFrom({
@@ -756,6 +757,13 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
   return true
 }
 
+const conditionLabels: Record<ConditionStepConfig['subject'], string> = {
+  tag_presence: 'Presença de etiqueta',
+  contact_field: 'Campo do contato',
+  message_content: 'Conteúdo da mensagem',
+  time_of_day: 'Faixa de horário',
+}
+
 async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): Promise<boolean> {
   const db = supabaseAdmin()
   switch (cfg.subject) {
@@ -764,23 +772,25 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       // contact_tags has no account_id column (its RLS keys off the parent
       // contact), so tenant scoping here relies on the contact-ownership
       // guard in runAutomationsForTrigger.
-      const { count } = await db
+      const { count, error } = await db
         .from('contact_tags')
         .select('id', { count: 'exact', head: true })
         .eq('contact_id', args.contactId)
         .eq('tag_id', cfg.operand)
+      if (error) throw new Error('Falha ao avaliar a etiqueta do contato')
       return (count ?? 0) > 0
     }
     case 'contact_field': {
       if (!args.contactId || !cfg.operand) return false
       // Scope to the account so the condition can't be turned into a
       // cross-tenant read oracle via the service-role client.
-      const { data } = await db
+      const { data, error } = await db
         .from('contacts')
         .select(cfg.operand)
         .eq('id', args.contactId)
         .eq('account_id', args.automation.account_id)
         .maybeSingle()
+      if (error) throw new Error('Falha ao avaliar o campo do contato')
       const v = (data as Record<string, unknown> | null)?.[cfg.operand]
       return v != null && String(v) === String(cfg.value ?? '')
     }
@@ -842,7 +852,7 @@ async function appendResults(
   const update: Record<string, unknown> = { steps_executed: merged }
   // Only overwrite status on the outermost scope — nested branches pass null.
   if (status !== null) {
-    update.status = status
+    update.status = merged.some((item) => item.status === 'failed') ? 'failed' : status
   }
   if (errorMessage) update.error_message = errorMessage
   await db.from('automation_logs').update(update).eq('id', logId)

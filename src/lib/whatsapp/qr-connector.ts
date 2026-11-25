@@ -592,7 +592,7 @@ async function createEvolutionInstance(
         headers: { 'x-evolution-webhook-secret': webhookSecret },
         byEvents: false,
         base64: false,
-        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+        events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'],
       },
       rejectCall: true,
       groupsIgnore: false,

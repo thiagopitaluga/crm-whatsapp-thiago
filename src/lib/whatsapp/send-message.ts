@@ -563,7 +563,7 @@ export async function sendMessageToConversation(
           )
         : (contentText ?? null);
 
-  const { data: messageRecord, error: msgError } = await db
+  let { data: messageRecord, error: msgError } = await db
     .from('messages')
     .insert({
       conversation_id: conversationId,
@@ -581,11 +581,19 @@ export async function sendMessageToConversation(
     .select()
     .single();
 
-  if (msgError) {
+  // Evolution can echo the same outgoing message before the send API returns.
+  // Reuse the persisted row and preserve any delivery receipt already applied.
+  if (useEvolution && msgError?.code === '23505') {
+    const existing = await db.from('messages').select('*')
+      .eq('conversation_id', conversationId).eq('message_id', waMessageId).single();
+    messageRecord = existing.data;
+    msgError = existing.error;
+  }
+  if (msgError || !messageRecord) {
     console.error('[send-message] error inserting sent message:', msgError);
     throw new SendMessageError(
       'db_error',
-      `Message sent to Meta but failed to save to DB: ${msgError.message}`,
+      'O provedor aceitou o envio, mas o CRM não conseguiu salvar a mensagem. Confira o histórico antes de reenviar.',
       500
     );
   }

@@ -13,6 +13,10 @@ import { normalizeEvolutionReferral } from '@/lib/whatsapp/evolution-referral';
 import { resolveInboundAttribution } from '@/lib/attribution/click-tracking';
 import { recordEvolutionCtwaAttribution } from '@/lib/attribution/ctwa-inbound';
 import {
+  parseEvolutionReceipt,
+  receiptPreviousStatuses,
+} from '@/lib/whatsapp/evolution-receipts';
+import {
   fetchEvolutionMediaBase64,
   getEvolutionInstanceName,
   isValidEvolutionWebhookSecret,
@@ -61,6 +65,41 @@ export async function POST(request: Request) {
       { error: 'Invalid Evolution instance' },
       { status: 400 }
     );
+  }
+  if (event === 'messages.update') {
+    const db = supabaseAdmin();
+    const rows = Array.isArray(body?.data) ? body.data : [body?.data];
+    for (const value of rows) {
+      const receipt = parseEvolutionReceipt(value);
+      if (!receipt) continue;
+      const { data: matches, error } = await db
+        .from('messages')
+        .select('id, conversations!inner(id)')
+        .eq('message_id', receipt.id)
+        .in('sender_type', ['agent', 'bot'])
+        .eq('conversations.account_id', accountId)
+        .eq('conversations.whatsapp_channel_key', channelKey);
+      if (error)
+        return NextResponse.json(
+          { error: 'Falha ao localizar a mensagem.' },
+          { status: 503 }
+        );
+      if (!matches?.length) continue;
+      const { error: updateError } = await db
+        .from('messages')
+        .update({ status: receipt.status })
+        .in(
+          'id',
+          matches.map(({ id }) => id)
+        )
+        .in('status', receiptPreviousStatuses[receipt.status]);
+      if (updateError)
+        return NextResponse.json(
+          { error: 'Falha ao salvar a confirmação.' },
+          { status: 503 }
+        );
+    }
+    return NextResponse.json({ accepted: true });
   }
   if (event !== 'messages.upsert')
     return NextResponse.json({

@@ -3,6 +3,7 @@ import { ContactAvatar } from '@/components/contacts/contact-avatar';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
 import {
   CONVERSATION_SELECT,
   matchesContactFilters,
@@ -42,6 +43,8 @@ interface ConversationListProps {
   additionalConversations?: Conversation[];
   channelFilter?: InboxChannelFilter;
   onChannelFilterChange?: (filter: InboxChannelFilter) => void;
+  initialUnreadOnly?: boolean;
+  initialMineOnly?: boolean;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -61,6 +64,8 @@ export function ConversationList({
   additionalConversations = [],
   channelFilter = 'all',
   onChannelFilterChange,
+  initialUnreadOnly,
+  initialMineOnly,
 }: ConversationListProps) {
   const t = useTranslations('Inbox.conversationList');
 
@@ -76,7 +81,72 @@ export function ConversationList({
   );
 
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<InboxFilter>('all');
+  const [filter, setFilter] = useState<InboxFilter>(
+    initialUnreadOnly ? 'unread' : 'all'
+  );
+  const { accountId, user } = useAuth();
+  const [assignee, setAssignee] = useState(initialMineOnly ? 'mine' : '');
+  const [connection, setConnection] = useState('');
+  const [members, setMembers] = useState<
+    { user_id: string; full_name: string | null }[]
+  >([]);
+  const [connectionNames, setConnectionNames] = useState<
+    Record<string, string>
+  >({});
+
+  useEffect(() => {
+    if (!accountId) return;
+    const db = createClient();
+    let active = true;
+    void Promise.all([
+      db
+        .from('profiles')
+        .select('user_id,full_name')
+        .eq('account_id', accountId)
+        .order('full_name'),
+      db
+        .from('whatsapp_channels')
+        .select('channel_key,label')
+        .eq('account_id', accountId),
+    ]).then(([people, channels]) => {
+      if (!active) return;
+      setMembers(people.data ?? []);
+      setConnectionNames(
+        Object.fromEntries(
+          (channels.data ?? []).map((row) => [row.channel_key, row.label])
+        )
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [accountId]);
+
+  const connectionOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const item of [...conversations, ...additionalConversations]) {
+      if (item.inbox_channel === 'instagram') {
+        if (channelFilter !== 'whatsapp' && item.inbox_channel_label)
+          options.set(
+            'ig:' + item.inbox_channel_label,
+            '@' + item.inbox_channel_label
+          );
+      } else if (channelFilter !== 'instagram') {
+        const key = item.whatsapp_channel_key ?? 'unassigned';
+        options.set(
+          'wa:' + key,
+          connectionNames[key] ??
+            (key === 'unassigned'
+              ? 'WhatsApp · sem número identificado'
+              : key === 'whatsapp_evolution'
+                ? 'WhatsApp principal'
+                : 'WhatsApp · ' + key.split(':').at(-1))
+        );
+      }
+    }
+    return options;
+  }, [conversations, additionalConversations, channelFilter, connectionNames]);
+  const activeConnection = connectionOptions.has(connection) ? connection : '';
   const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
@@ -181,6 +251,22 @@ export function ConversationList({
     } else if (filter !== 'all') {
       result = result.filter((c) => c.status === filter);
     }
+    if (assignee) {
+      result = result.filter((c) =>
+        assignee === 'unassigned'
+          ? !c.assigned_agent_id
+          : c.assigned_agent_id === (assignee === 'mine' ? user?.id : assignee)
+      );
+    }
+    if (activeConnection) {
+      result = result.filter(
+        (c) =>
+          activeConnection ===
+          (c.inbox_channel === 'instagram'
+            ? 'ig:' + c.inbox_channel_label
+            : 'wa:' + (c.whatsapp_channel_key ?? 'unassigned'))
+      );
+    }
 
     // Contact-based filters (tags via OR logic, exact company match).
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
@@ -215,6 +301,9 @@ export function ConversationList({
     additionalConversations,
     channelFilter,
     filter,
+    assignee,
+    activeConnection,
+    user?.id,
     search,
     selectedTagIds,
     selectedCompany,
@@ -324,6 +413,41 @@ export function ConversationList({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <select
+            aria-label="Responsável pela conversa"
+            className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
+            value={assignee}
+            onChange={(event) => setAssignee(event.target.value)}
+          >
+            <option value="">Responsável</option>
+            {user && <option value="mine">Minhas conversas</option>}
+            <option value="unassigned">Sem responsável</option>
+            {members
+              .filter(
+                (member) => member.user_id !== user?.id && member.full_name
+              )
+              .map((member) => (
+                <option key={member.user_id} value={member.user_id}>
+                  {member.full_name}
+                </option>
+              ))}
+          </select>
+          {!!connectionOptions.size && (
+            <select
+              aria-label="Número ou perfil da conversa"
+              className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
+              value={activeConnection}
+              onChange={(event) => setConnection(event.target.value)}
+            >
+              <option value="">Número ou perfil</option>
+              {Array.from(connectionOptions, ([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          )}
 
           {tags.length > 0 && (
             <DropdownMenu>

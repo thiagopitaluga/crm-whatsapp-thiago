@@ -166,6 +166,8 @@ export interface Conversation {
   /** Presentation metadata for the unified inbox; never used to route WhatsApp sends. */
   inbox_channel?: 'whatsapp' | 'instagram';
   inbox_tag_names?: string[];
+  inbox_channel_label?: string;
+  whatsapp_channel_key?: string | null;
   id: string;
   user_id: string;
   contact_id: string;

@@ -35,6 +35,8 @@ export default function AutomationLogsPage({
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [openLogId, setOpenLogId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<AutomationLog["status"] | "all">("all")
+  const [revision, setRevision] = useState(0)
 
   useEffect(() => {
     async function load() {
@@ -55,14 +57,16 @@ export default function AutomationLogsPage({
         ])
         if (autRes.error) throw autRes.error
         if (logRes.error) throw logRes.error
-        setAutomation(autRes.data as Automation | null)
+        if (!autRes.data) throw new Error(t("loadError"))
+        setAutomation(autRes.data as Automation)
         setLogs((logRes.data ?? []) as AutomationLog[])
+        setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : t("loadError"))
       }
     }
     load()
-  }, [id])
+  }, [id, revision, t])
 
   if (error) {
     return (
@@ -83,6 +87,8 @@ export default function AutomationLogsPage({
     )
   }
 
+  const visibleLogs = (statusFilter === "all" ? logs : logs.filter((log) => log.status === statusFilter))
+  const timestamp = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" })
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -100,16 +106,32 @@ export default function AutomationLogsPage({
         </div>
       </div>
 
-      {logs.length === 0 ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label="Filtrar execuções por status"
+          className="bg-card rounded-md border px-3 py-2 text-sm"
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+        >
+          <option value="all">Todos os resultados</option>
+          <option value="success">Concluídas</option>
+          <option value="partial">Parciais ou aguardando</option>
+          <option value="failed">Com falha</option>
+        </select>
+        <Button type="button" variant="outline" onClick={() => setRevision((value) => value + 1)}>Atualizar histórico</Button>
+        <span className="text-muted-foreground text-xs">Últimas {logs.length} execuções</span>
+      </div>
+
+      {visibleLogs.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40">
-          <p className="text-sm text-foreground">{t("emptyTitle")}</p>
+          <p className="text-sm text-foreground">{logs.length ? "Nenhuma execução neste filtro." : t("emptyTitle")}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {t("emptyDesc")}
+            {!logs.length && t("emptyDesc")}
           </p>
         </div>
       ) : (
         <ul className="space-y-2">
-          {logs.map((log) => {
+          {visibleLogs.map((log) => {
             const isOpen = openLogId === log.id
             return (
               <li
@@ -118,6 +140,7 @@ export default function AutomationLogsPage({
               >
                 <button
                   type="button"
+                  aria-expanded={isOpen}
                   onClick={() => setOpenLogId(isOpen ? null : log.id)}
                   className="flex w-full items-center gap-3 px-4 py-3 text-left"
                 >
@@ -137,7 +160,9 @@ export default function AutomationLogsPage({
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {formatRelative(log.created_at)}
+                    <time dateTime={log.created_at} title={formatRelative(log.created_at)}>
+                      {timestamp.format(new Date(log.created_at))}
+                    </time>
                   </div>
                 </button>
                 {isOpen && (

@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { formatCurrency } from '@/lib/currency';
 import { ContactAttribution } from './contact-attribution';
+import { meetingCalendarFile } from '@/lib/calendar/meeting-file';
 import { EditableValue, type ExtendedContact } from './contact-data-panel';
 import { ContactSidebarSections } from './contact-sidebar-sections';
 import type {
@@ -596,7 +597,14 @@ export function ContactOverview({
             </p>
             {m.location && <p className="mt-1 break-words">{m.location}</p>}
             {m.status === 'scheduled' && (
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a
+                  className="text-primary"
+                  href={`data:text/calendar;charset=utf-8,${encodeURIComponent(meetingCalendarFile(m))}`}
+                  download="reuniao-organizap.ics"
+                >
+                  Adicionar à agenda
+                </a>
                 {[
                   ['completed', 'Concluir'],
                   ['cancelled', 'Cancelar'],

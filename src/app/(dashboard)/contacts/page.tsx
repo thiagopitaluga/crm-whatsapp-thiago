@@ -78,6 +78,7 @@ import {
   type ContactDetailTab,
 } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
+import { DuplicateReview } from '@/components/contacts/duplicate-review';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { TaskForm } from '@/components/tasks/task-form';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
@@ -1032,6 +1033,8 @@ export default function ContactsPage() {
           </GatedButton>
         </div>
       </div>
+
+      {accountId && <DuplicateReview key={accountId} accountId={accountId} onOpen={openDetail} />}
 
       {/* Same filter layout and criteria as the Kanban. */}
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center">

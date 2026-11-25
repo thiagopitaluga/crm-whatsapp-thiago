@@ -8,6 +8,7 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const range = parseMetaDateRange(params);
     const adAccountId = params.get('ad_account_id') ?? '';
+    const source = params.get('source');
     if (!range || !/^\d{5,32}$/.test(adAccountId)) return NextResponse.json({ error: 'Conta ou período inválido.' }, { status: 400 });
     const { supabase, accountId } = await requireRole('viewer');
     const { data: integration, error: integrationError } = await supabase.from('meta_ad_account_integrations').select('id').eq('account_id', accountId).eq('provider', 'meta').eq('meta_ad_account_id', adAccountId).maybeSingle();
@@ -51,6 +52,9 @@ export async function GET(request: Request) {
     const currency = account?.default_currency ?? null;
     const recognizedAds = new Set(entities.filter((e) => e.entity_type === 'ad').map((e) => e.meta_entity_id));
     const unidentified = new Set(touches.filter((t) => !t.ad_account_id && (!t.ad_id || !recognizedAds.has(t.ad_id))).map((t) => t.contact_id)).size;
-    return NextResponse.json({ range, currency, unidentified, report: aggregateTrafficSales(touches, deals, entities, adAccountId, currency) }, { headers: { 'cache-control': 'no-store' } });
+    const selectedTouches = source === 'lead_form' || source === 'ctwa_referral' || source === 'tracking_link'
+      ? touches.filter((touch) => touch.method === source)
+      : touches;
+    return NextResponse.json({ range, currency, unidentified, report: aggregateTrafficSales(selectedTouches, deals, entities, adAccountId, currency) }, { headers: { 'cache-control': 'no-store' } });
   } catch (error) { return toErrorResponse(error); }
 }

@@ -797,6 +797,9 @@ function InboxPageInner() {
           )}
         >
           <ConversationList
+            key={accountId}
+            initialUnreadOnly={searchParams.get('status') === 'unread'}
+            initialMineOnly={searchParams.get('assignee') === 'mine'}
             activeConversationId={
               activeInstagram?.id ?? activeConversation?.id ?? null
             }

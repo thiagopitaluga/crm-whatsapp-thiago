@@ -26,6 +26,7 @@ export function instagramInboxItem(
     user_id: '',
     contact_id: c.contact_id ?? '',
     inbox_channel: 'instagram',
+    inbox_channel_label: c.channel_username,
     inbox_tag_names: c.tags ?? [],
     status:
       c.status === 'closed'

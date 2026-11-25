@@ -29,6 +29,8 @@ import type {
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
+import { MyDay } from '@/components/dashboard/my-day'
+import { SellerPerformance } from '@/components/dashboard/seller-performance'
 import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
@@ -40,7 +42,7 @@ type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
-  const { defaultCurrency } = useAuth()
+  const { defaultCurrency, accountId } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
 
@@ -131,6 +133,8 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      <MyDay key={accountId} />
+
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {metricsLoading || !metrics ? (
@@ -189,6 +193,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick actions */}
+      <SellerPerformance key={accountId} />
       <QuickActions />
 
       {/* Charts row */}

@@ -167,6 +167,17 @@ export function ContactAttribution({ contactId }: { contactId: string }) {
                         : touchpoint.source_platform || 'Origem registrada';
                 const campaign =
                   touchpoint.campaign_name || touchpoint.utm_campaign;
+                const evidence =
+                  touchpoint.method === 'ctwa_referral'
+                    ? 'Referência recebida pelo WhatsApp'
+                    : touchpoint.method === 'tracking_link'
+                      ? 'Vinculado por link rastreado'
+                      : touchpoint.method === 'manual' ||
+                          touchpoint.confidence === 'manual'
+                        ? 'Origem informada'
+                        : touchpoint.confidence === 'modeled'
+                          ? 'Origem estimada'
+                          : 'Origem registrada';
                 const hasTechnicalData = Boolean(
                   touchpoint.utm_source ||
                   touchpoint.utm_medium ||
@@ -192,6 +203,9 @@ export function ContactAttribution({ contactId }: { contactId: string }) {
                         ? ` · ${touchpoint.source_channel}`
                         : ''}
                     </div>
+                    <p className="text-muted-foreground mt-1 text-[11px]">
+                      {evidence}
+                    </p>
                     <div className="mt-2 space-y-2">
                       <MetaAttributionDetail
                         label="Campanha"

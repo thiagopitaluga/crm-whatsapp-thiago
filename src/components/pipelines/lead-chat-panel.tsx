@@ -26,7 +26,7 @@ import type { Contact, Conversation, Deal, Message } from '@/types';
 import { mergeChatMessage } from '@/lib/contacts/chat-messages';
 
 type Channel = { key: string; label: string; connected: boolean };
-type Chat = Conversation & { whatsapp_channel_key?: string };
+type Chat = Conversation;
 export function LeadChatPanel({
   deal,
   onClose,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Bot, UserRound, Brain, Clock3, Shield, GraduationCap, Zap,
-  Package, Radio, Lightbulb, BarChart3, Plus, Trash2, Loader2,
+  Package, Radio, Lightbulb, BarChart3, Plus, Copy, Trash2, Loader2,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -53,20 +53,24 @@ export default function AgentsPage() {
 
   useEffect(() => { void refreshAgents(); }, [refreshAgents]);
 
-  const createAgent = async () => {
+  const createAgent = async (sourceId?: string) => {
+    const source = agents.find((agent) => agent.id === sourceId);
     setAgentBusy(true);
     try {
       const response = await fetch('/api/ai/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `Agente ${agents.length + 1}` }),
+        body: JSON.stringify({
+          name: source ? `${source.name.slice(0, 58)} (cópia de teste)` : `Agente ${agents.length + 1}`,
+          source_agent_id: source?.id,
+        }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? 'Não foi possível criar o agente.');
       await refreshAgents();
       if (payload.agent?.id) setSelectedAgentId(payload.agent.id);
-      setTab('agents');
-      toast.success('Agente criado. Configure o perfil e conecte um WhatsApp.');
+      setTab(source ? 'suggestions' : 'agents');
+      toast.success(source ? 'Cópia desativada criada. Teste a persona no simulador.' : 'Agente criado. Configure o perfil e conecte um WhatsApp.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível criar o agente.');
     } finally { setAgentBusy(false); }
@@ -109,9 +113,12 @@ export default function AgentsPage() {
             {agents.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}{agent.is_default ? ' · padrão' : ''}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button variant="outline" onClick={createAgent} disabled={agentBusy}>
+        <Button variant="outline" onClick={() => void createAgent()} disabled={agentBusy || !canViewUsage}>
           {agentBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
           Novo agente
+        </Button>
+        <Button variant="outline" onClick={() => void createAgent(selectedAgentId)} disabled={agentBusy || !canViewUsage || !selectedAgentId}>
+          <Copy className="mr-2 h-4 w-4" /> Criar cópia de teste
         </Button>
         <Button variant="ghost" onClick={deleteAgent} disabled={agentBusy || agents.length <= 1} aria-label="Excluir agente selecionado">
           <Trash2 className="h-4 w-4" />

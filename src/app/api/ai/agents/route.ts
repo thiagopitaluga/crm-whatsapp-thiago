@@ -27,12 +27,16 @@ export async function POST(request: Request) {
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
     if (!name) return NextResponse.json({ error: 'Informe o nome do agente.' }, { status: 400 });
 
-    const { data: source } = await supabase
+    const sourceId = typeof body.source_agent_id === 'string' ? body.source_agent_id : null;
+    const sourceQuery = supabase
       .from('ai_agents')
       .select('settings, system_prompt, auto_reply_max_per_conversation')
-      .eq('account_id', accountId)
-      .eq('is_default', true)
-      .maybeSingle();
+      .eq('account_id', accountId);
+    const { data: source, error: sourceError } = await (sourceId
+      ? sourceQuery.eq('id', sourceId)
+      : sourceQuery.eq('is_default', true)).maybeSingle();
+    if (sourceError) throw sourceError;
+    if (sourceId && !source) return NextResponse.json({ error: 'Agente de origem não encontrado.' }, { status: 404 });
     const { count, error: countError } = await supabase
       .from('ai_agents')
       .select('id', { count: 'exact', head: true })
