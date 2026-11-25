@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { PlatformAdminDashboard } from './platform-admin-dashboard';
 import { requirePlatformAdmin } from '@/lib/platform-admin';
 
@@ -10,6 +11,13 @@ export default async function PlatformAdminPage() {
   } catch {
     redirect('/dashboard');
   }
-  return <PlatformAdminDashboard />;
+  return (
+    <div className="space-y-4">
+      <Link href="/thiago/assinaturas" className="hover:bg-muted inline-flex rounded-md border px-3 py-2 text-sm font-medium">
+        Gerenciar assinaturas
+      </Link>
+      <PlatformAdminDashboard />
+    </div>
+  );
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useMemo, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
@@ -44,7 +45,7 @@ export default function SettingsPage() {
 function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency } = useAuth();
+  const { defaultCurrency, canEditSettings } = useAuth();
   const { mode } = useTheme();
   const t = useTranslations('Settings');
 
@@ -73,7 +74,16 @@ function SettingsPageInner() {
 
   const panel: Record<SettingsSection, ReactNode> = {
     overview: <SettingsOverview onSelect={go} />,
-    company: <CompanySettings />,
+    company: (
+      <div className="space-y-3">
+        {canEditSettings && (
+          <Link href="/assinatura" className="hover:bg-muted inline-flex rounded-md border px-3 py-2 text-sm font-medium">
+            Ver assinatura da empresa
+          </Link>
+        )}
+        <CompanySettings />
+      </div>
+    ),
     profile: <ProfileForm />,
     security: <SecurityPanel />,
     appearance: <AppearancePanel />,

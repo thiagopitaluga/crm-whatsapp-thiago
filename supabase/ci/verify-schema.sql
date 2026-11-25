@@ -42,6 +42,13 @@ BEGIN
     RAISE EXCEPTION 'public.accounts is missing — migration 017 did not apply';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class
+    WHERE oid = 'public.billing_subscriptions'::regclass AND relrowsecurity
+  ) OR has_function_privilege('authenticated', 'public.billing_set_subscription(uuid,text,uuid,uuid,text,date)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Billing subscriptions must enforce RLS and restrict writes to service_role';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;
