@@ -24,6 +24,7 @@ import { ContactOverview } from './contact-overview';
 import type { Contact, Conversation, Deal } from '@/types';
 import { cn } from '@/lib/utils';
 import { ContactAvatar } from '@/components/contacts/contact-avatar';
+import type { ReactNode } from 'react';
 const tabs = [
   ['overview', 'Informações', Info],
   ['data', 'Dados', SlidersHorizontal],
@@ -37,11 +38,19 @@ export function ContactSidebar({
   conversation = null,
   onContactUpdated,
   initialDealId,
+  channelLabel = 'WhatsApp',
+  channelIdentifier,
+  conversationStatusLabel,
+  filesContent,
 }: {
   contact: Contact | null;
   conversation?: Conversation | null;
   onContactUpdated?: () => void;
   initialDealId?: string;
+  channelLabel?: string;
+  channelIdentifier?: string;
+  conversationStatusLabel?: string;
+  filesContent?: ReactNode;
 }) {
   const { accountId } = useAuth();
   const [tab, setTab] = useState<SidebarTab>('overview'),
@@ -87,12 +96,12 @@ export function ContactSidebar({
             ? 'Formulário Meta'
             : 'Formulário'
         );
-      else setSource('WhatsApp');
+      else setSource(channelLabel);
     });
     return () => {
       cancelled = true;
     };
-  }, [accountId, contactId, refresh]);
+  }, [accountId, contactId, refresh, channelLabel]);
   function updated() {
     setRefresh((v) => v + 1);
     onContactUpdated?.();
@@ -119,15 +128,19 @@ export function ContactSidebar({
         />
         <h3 className="mt-2 text-sm font-semibold break-words">{name}</h3>
         <button
-          title="Copiar telefone"
+          title={channelIdentifier ? 'Copiar identificação' : 'Copiar telefone'}
           className="text-muted-foreground mt-1 text-xs"
-          onClick={() => void navigator.clipboard.writeText(current.phone)}
+          onClick={() =>
+            void navigator.clipboard.writeText(
+              channelIdentifier || current.phone
+            )
+          }
         >
-          {current.phone}
+          {channelIdentifier || current.phone || 'Telefone não informado'}
         </button>
         <p className="mt-2">
           <span className="text-primary bg-primary/10 border-primary/20 rounded-full border px-2 py-0.5 text-[10px]">
-            {source}
+            {channelLabel === 'Instagram' ? 'Instagram' : source}
           </span>
         </p>
       </header>
@@ -179,6 +192,8 @@ export function ContactSidebar({
                 selectedDeal={selected}
                 onSelectDeal={setDealId}
                 onUpdated={updated}
+                channelLabel={channelLabel}
+                conversationStatusLabel={conversationStatusLabel}
               />
             ) : (
               <ContactDataPanel
@@ -189,6 +204,8 @@ export function ContactSidebar({
               />
             )}
           </ScrollArea>
+        ) : tab === 'files' && filesContent ? (
+          <ScrollArea className="min-h-0 flex-1">{filesContent}</ScrollArea>
         ) : (
           <ContactSidebarSections
             key={current.id + '-' + tab}

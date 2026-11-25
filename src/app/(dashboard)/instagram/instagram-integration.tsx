@@ -5,9 +5,19 @@ type Channel = {
   username: string;
   instagram_id: string;
   token_expires_at: string | null;
+  lead_pipeline_id: string | null;
+  lead_stage_id: string | null;
 };
 export function InstagramIntegration() {
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [pipelines, setPipelines] = useState<
+    {
+      id: string;
+      name: string;
+      pipeline_stages: { id: string; name: string; position: number }[];
+    }[]
+  >([]);
+  const [saving, setSaving] = useState('');
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [configured, setConfigured] = useState(false);
@@ -34,6 +44,7 @@ export function InstagramIntegration() {
       })
       .then((data) => {
         setChannels(data.channels);
+        setPipelines(data.pipelines ?? []);
         setConfigured(data.configured);
         setCanManage(data.canManage);
         setAutomationEnabled(data.automationEnabled);
@@ -43,6 +54,29 @@ export function InstagramIntegration() {
       });
     return () => controller.abort();
   }, []);
+  async function save(channel: Channel) {
+    setSaving(channel.id);
+    setError('');
+    setStatus('');
+    try {
+      const r = await fetch('/api/instagram/channels', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: channel.id,
+          pipelineId: channel.lead_pipeline_id,
+          stageId: channel.lead_stage_id,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw Error(data.error);
+      setStatus('Destino dos novos leads salvo.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao salvar.');
+    } finally {
+      setSaving('');
+    }
+  }
   return (
     <section className="border-border bg-card space-y-4 rounded-xl border p-5">
       <div>
@@ -88,6 +122,91 @@ export function InstagramIntegration() {
                 {new Date(channel.token_expires_at).toLocaleDateString('pt-BR')}
               </p>
             )}
+            <div className="mt-4 space-y-3 border-t pt-4">
+              <h3 className="font-medium">Entrada de leads no Kanban</h3>
+              <p className="text-muted-foreground text-xs">
+                Escolha onde os novos leads que enviarem um Direct entrarão.
+                Negócios já existentes mantêm a etapa atual.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1">
+                  <span>Funil</span>
+                  <select
+                    aria-label={'Funil de @' + channel.username}
+                    disabled={!canManage || !!saving}
+                    value={channel.lead_pipeline_id ?? ''}
+                    className="bg-background w-full rounded-lg border p-2"
+                    onChange={(e) =>
+                      setChannels((items) =>
+                        items.map((c) =>
+                          c.id === channel.id
+                            ? {
+                                ...c,
+                                lead_pipeline_id: e.target.value || null,
+                                lead_stage_id: null,
+                              }
+                            : c
+                        )
+                      )
+                    }
+                  >
+                    <option value="">Não criar negócio automaticamente</option>
+                    {pipelines.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span>Etapa de entrada</span>
+                  <select
+                    aria-label={'Etapa de @' + channel.username}
+                    disabled={
+                      !canManage || !channel.lead_pipeline_id || !!saving
+                    }
+                    value={channel.lead_stage_id ?? ''}
+                    className="bg-background w-full rounded-lg border p-2"
+                    onChange={(e) =>
+                      setChannels((items) =>
+                        items.map((c) =>
+                          c.id === channel.id
+                            ? { ...c, lead_stage_id: e.target.value || null }
+                            : c
+                        )
+                      )
+                    }
+                  >
+                    <option value="">Selecione uma etapa</option>
+                    {[
+                      ...(pipelines.find(
+                        (p) => p.id === channel.lead_pipeline_id
+                      )?.pipeline_stages ?? []),
+                    ]
+                      .sort((a, b) => a.position - b.position)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+              {canManage && (
+                <button
+                  disabled={
+                    !!saving ||
+                    (!!channel.lead_pipeline_id && !channel.lead_stage_id)
+                  }
+                  onClick={() => void save(channel)}
+                  className="bg-primary text-primary-foreground rounded-lg px-4 py-2 disabled:opacity-50"
+                >
+                  {saving === channel.id
+                    ? 'Salvando…'
+                    : 'Salvar destino dos leads'}
+                </button>
+              )}
+            </div>
           </div>
         ))
       ) : (

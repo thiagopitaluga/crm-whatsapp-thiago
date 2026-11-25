@@ -52,6 +52,8 @@ export function ContactOverview({
   selectedDeal,
   onSelectDeal,
   onUpdated,
+  channelLabel = 'WhatsApp',
+  conversationStatusLabel,
 }: {
   contact: ExtendedContact;
   conversation: Conversation | null;
@@ -59,6 +61,8 @@ export function ContactOverview({
   selectedDeal?: Deal;
   onSelectDeal: (id: string) => void;
   onUpdated: () => void;
+  channelLabel?: string;
+  conversationStatusLabel?: string;
 }) {
   const { accountId, user, canSendMessages, defaultCurrency } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]),
@@ -300,9 +304,11 @@ export function ContactOverview({
       </section>
       <section className="space-y-1 text-xs">
         <h4 className={`${heading} mb-2`}>Contato</h4>
-        <p className="break-all">☎ {contact.phone}</p>
+        <p className="break-all">
+          ☎ {contact.phone || 'Telefone não informado'}
+        </p>
         {contact.email && <p className="break-all">✉ {contact.email}</p>}
-        <p>Canal: WhatsApp</p>
+        <p>Canal: {channelLabel}</p>
         <p>Desde: {new Date(contact.created_at).toLocaleDateString('pt-BR')}</p>
       </section>
       <section className="space-y-2">
@@ -549,21 +555,26 @@ export function ContactOverview({
       <section className="space-y-2">
         <h4 className={heading}>Conversa</h4>
         <p className="text-xs">
-          {conversation
-            ? { open: '● Aberta', pending: '● Pendente', closed: '● Fechada' }[
-                conversation.status
-              ]
-            : 'Nenhuma conversa'}
+          {conversationStatusLabel ||
+            (conversation
+              ? {
+                  open: '● Aberta',
+                  pending: '● Pendente',
+                  closed: '● Fechada',
+                }[conversation.status]
+              : 'Nenhuma conversa')}
         </p>
-        <Button
-          className="w-full"
-          size="sm"
-          variant="outline"
-          disabled={!conversation || busy || !canSendMessages}
-          onClick={() => void startAi()}
-        >
-          ✦ Iniciar conversa com IA
-        </Button>
+        {channelLabel !== 'Instagram' && (
+          <Button
+            className="w-full"
+            size="sm"
+            variant="outline"
+            disabled={!conversation || busy || !canSendMessages}
+            onClick={() => void startAi()}
+          >
+            ✦ Iniciar conversa com IA
+          </Button>
+        )}
         <Button
           className="w-full"
           size="sm"

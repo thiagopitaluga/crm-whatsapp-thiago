@@ -161,9 +161,28 @@ export async function syncInstagramInbox(
         created_at: m.created_time,
       }));
     if (rows.length) {
-      const { error } = await db
+      const previous = await db
         .from('instagram_messages')
-        .upsert(rows, { onConflict: 'external_id' });
+        .select('external_id,metadata')
+        .eq('account_id', channel.account_id)
+        .in(
+          'external_id',
+          rows.map((row) => row.external_id)
+        );
+      if (previous.error) throw previous.error;
+      const metadata = new Map(
+        (previous.data ?? []).map((row) => [row.external_id, row.metadata])
+      );
+      const { error } = await db.from('instagram_messages').upsert(
+        rows.map((row) => ({
+          ...row,
+          metadata: {
+            ...(metadata.get(row.external_id) ?? {}),
+            ...row.metadata,
+          },
+        })),
+        { onConflict: 'external_id' }
+      );
       if (error) throw error;
     }
   }

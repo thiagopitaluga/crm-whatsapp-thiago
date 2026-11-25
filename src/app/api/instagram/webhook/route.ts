@@ -195,6 +195,15 @@ export async function POST(request: Request) {
       if (update.error)
         return new Response('Erro ao atualizar conversa', { status: 500 });
       if (outbound) continue;
+      const lead = await db.rpc('instagram_ensure_lead', {
+        p_account: channel.account_id,
+        p_conversation: id,
+        p_route: true,
+      });
+      if (lead.error)
+        return new Response('Erro ao registrar lead do Instagram', {
+          status: 500,
+        });
       try {
         await queueInstagramAutomation(db, {
           accountId: channel.account_id,

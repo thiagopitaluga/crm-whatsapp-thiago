@@ -34,6 +34,21 @@ export async function GET(request: Request) {
           { error: 'Conversa inválida.' },
           { status: 400 }
         );
+      const ensured = await db.rpc('instagram_ensure_lead', {
+        p_account: ctx.accountId,
+        p_conversation: id,
+        p_route: false,
+      });
+      if (ensured.error) throw ensured.error;
+      const contact = ensured.data
+        ? await db
+            .from('contacts')
+            .select('*')
+            .eq('account_id', ctx.accountId)
+            .eq('id', ensured.data)
+            .maybeSingle()
+        : { data: null, error: null };
+      if (contact.error) throw contact.error;
       const { data, error } = await db
         .from('instagram_messages')
         .select('id,direction,body,created_at,metadata')
@@ -52,16 +67,12 @@ export async function GET(request: Request) {
         messages: (data ?? []).reverse(),
         syncWarning,
         profile: profile.data?.profile_data ?? null,
+        contact: contact.data,
       });
     }
-    const { data, error } = await db
-      .from('instagram_conversations')
-      .select(
-        'id,instagram_user_id,last_message_at,channel_id,contact_id,tags,status,profile_data'
-      )
-      .eq('account_id', ctx.accountId)
-      .order('last_message_at', { ascending: false })
-      .limit(200);
+    const { data, error } = await db.rpc('instagram_inbox_rows', {
+      p_account: ctx.accountId,
+    });
     if (error) throw error;
     return NextResponse.json({ conversations: data ?? [], syncWarning });
   } catch (error) {
@@ -77,6 +88,53 @@ export async function PATCH(request: Request) {
     const body = await request.json().catch(() => null);
     const id =
       typeof body?.conversationId === 'string' ? body.conversationId : '';
+    if (
+      /^[0-9a-f-]{36}$/i.test(id) &&
+      ('assignedAgentId' in body || body.markRead === true)
+    ) {
+      const db = supabaseAdmin();
+      const updates: Record<string, unknown> = {};
+      if (body.markRead === true) updates.read_at = new Date().toISOString();
+      if ('assignedAgentId' in body) {
+        if (body.assignedAgentId !== null) {
+          if (
+            typeof body.assignedAgentId !== 'string' ||
+            !/^[0-9a-f-]{36}$/i.test(body.assignedAgentId)
+          )
+            return NextResponse.json(
+              { error: 'Responsável inválido.' },
+              { status: 400 }
+            );
+          const member = await db
+            .from('account_memberships')
+            .select('user_id')
+            .eq('account_id', ctx.accountId)
+            .eq('user_id', body.assignedAgentId)
+            .maybeSingle();
+          if (member.error) throw member.error;
+          if (!member.data)
+            return NextResponse.json(
+              { error: 'Responsável fora desta empresa.' },
+              { status: 400 }
+            );
+        }
+        updates.assigned_agent_id = body.assignedAgentId;
+      }
+      const changed = await db
+        .from('instagram_conversations')
+        .update(updates)
+        .eq('account_id', ctx.accountId)
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+      if (changed.error) throw changed.error;
+      if (!changed.data)
+        return NextResponse.json(
+          { error: 'Conversa não encontrada.' },
+          { status: 404 }
+        );
+      return NextResponse.json({ saved: true });
+    }
     if (
       body &&
       ['open', 'closed', 'human'].includes(body.status) &&
@@ -151,7 +209,18 @@ export async function POST(request: Request) {
     const id =
       typeof body?.conversationId === 'string' ? body.conversationId : '';
     const text = typeof body?.text === 'string' ? body.text.trim() : '';
-    if (!/^[0-9a-f-]{36}$/i.test(id) || !text || text.length > 1000)
+    const media = body?.media as { type?: string; url?: string } | undefined;
+    if (media) {
+      const prefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/instagram-flow-media/${ctx.accountId}/`;
+      if (
+        !['image', 'pdf'].includes(media.type ?? '') ||
+        typeof media.url !== 'string' ||
+        !media.url.startsWith(prefix) ||
+        media.url.includes('..')
+      )
+        return NextResponse.json({ error: 'Anexo inválido.' }, { status: 400 });
+    }
+    if (!/^[0-9a-f-]{36}$/i.test(id) || (!text && !media) || text.length > 1000)
       return NextResponse.json(
         { error: 'Informe uma mensagem válida de até 1000 caracteres.' },
         { status: 400 }
@@ -196,7 +265,14 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           recipient: { id: conversation.instagram_user_id },
-          message: { text },
+          message: media
+            ? {
+                attachment: {
+                  type: media.type === 'image' ? 'image' : 'file',
+                  payload: { url: media.url, is_reusable: true },
+                },
+              }
+            : { text },
         }),
         cache: 'no-store',
         signal: AbortSignal.timeout(20000),
@@ -213,13 +289,28 @@ export async function POST(request: Request) {
         },
         { status: 502 }
       );
-    const { error: saveError } = await db.from('instagram_messages').insert({
-      account_id: ctx.accountId,
-      conversation_id: id,
-      external_id: result.message_id,
-      direction: 'outbound',
-      body: text,
-    });
+    const { error: saveError } = await db.from('instagram_messages').upsert(
+      {
+        account_id: ctx.accountId,
+        conversation_id: id,
+        external_id: result.message_id,
+        direction: 'outbound',
+        body: media
+          ? media.type === 'image'
+            ? '[Imagem]'
+            : '[Documento PDF]'
+          : text,
+        metadata: media
+          ? {
+              attachments:
+                media.type === 'image'
+                  ? [{ image_data: { url: media.url } }]
+                  : [{ file_url: media.url }],
+            }
+          : {},
+      },
+      { onConflict: 'external_id', ignoreDuplicates: true }
+    );
     if (saveError)
       return NextResponse.json(
         {
@@ -228,6 +319,11 @@ export async function POST(request: Request) {
         },
         { status: 500 }
       );
+    await db
+      .from('instagram_conversations')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('account_id', ctx.accountId)
+      .eq('id', id);
     return NextResponse.json({ sent: true });
   } catch (error) {
     return toErrorResponse(error);
