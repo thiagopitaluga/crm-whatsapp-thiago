@@ -8,12 +8,20 @@ type Conversation = {
   last_message_at: string;
   contact_id: string | null;
   status?: string;
+  profile_data?: { name?: string; username?: string; profile_pic?: string };
 };
 type Message = {
   id: string;
   direction: string;
   body: string;
   created_at: string;
+  metadata?: {
+    attachments?: {
+      image_data?: { url?: string };
+      video_data?: { url?: string };
+      file_url?: string;
+    }[];
+  };
 };
 export function InstagramConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -29,7 +37,10 @@ export function InstagramConversations() {
         if (!r.ok) throw new Error('Não foi possível carregar as conversas.');
         return r.json();
       })
-      .then((d) => setConversations(d.conversations))
+      .then((d) => {
+        setConversations(d.conversations);
+        setError(d.syncWarning ?? '');
+      })
       .catch((e) => {
         if (!controller.signal.aborted) setError(e.message);
       });
@@ -38,20 +49,35 @@ export function InstagramConversations() {
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
-    fetch(
-      '/api/instagram/conversations?conversation=' +
-        encodeURIComponent(selected),
-      { signal: controller.signal }
-    )
-      .then(async (r) => {
-        if (!r.ok) throw new Error('Não foi possível carregar as mensagens.');
-        return r.json();
-      })
-      .then((d) => setMessages(d.messages))
-      .catch((e) => {
-        if (!controller.signal.aborted) setError(e.message);
-      });
-    return () => controller.abort();
+    const load = () =>
+      fetch(
+        '/api/instagram/conversations?conversation=' +
+          encodeURIComponent(selected),
+        { signal: controller.signal }
+      )
+        .then(async (r) => {
+          if (!r.ok) throw new Error('Não foi possível carregar as mensagens.');
+          return r.json();
+        })
+        .then((d) => {
+          setMessages(d.messages);
+          setError(d.syncWarning ?? '');
+          if (d.profile)
+            setConversations((previous) =>
+              previous.map((c) =>
+                c.id === selected ? { ...c, profile_data: d.profile } : c
+              )
+            );
+        })
+        .catch((e) => {
+          if (!controller.signal.aborted) setError(e.message);
+        });
+    void load();
+    const timer = setInterval(load, 30000);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
   }, [selected]);
   async function send(event: React.FormEvent) {
     event.preventDefault();
@@ -94,7 +120,16 @@ export function InstagramConversations() {
             }}
             className={`w-full rounded-lg p-3 text-left text-sm ${selected === c.id ? 'bg-muted' : 'hover:bg-muted/50'}`}
           >
-            <span>Contato {c.instagram_user_id}</span>
+            <span className="block truncate font-medium">
+              {c.profile_data?.name ||
+                c.profile_data?.username ||
+                `Contato ${c.instagram_user_id}`}
+            </span>
+            {c.profile_data?.username && (
+              <small className="text-muted-foreground">
+                @{c.profile_data.username}
+              </small>
+            )}
             <small className="text-muted-foreground block">
               {new Date(c.last_message_at).toLocaleString('pt-BR')}
             </small>
@@ -109,6 +144,13 @@ export function InstagramConversations() {
       <div className="flex min-h-96 flex-col p-4">
         {selected ? (
           <>
+            <h3 className="mb-3 font-semibold">
+              {conversations.find((c) => c.id === selected)?.profile_data
+                ?.name ||
+                conversations.find((c) => c.id === selected)?.profile_data
+                  ?.username ||
+                'Conversa do Instagram'}
+            </h3>
             <InstagramConversationStatus
               conversationId={selected}
               status={
@@ -135,13 +177,40 @@ export function InstagramConversations() {
                 )
               }
             />
-            <div className="flex-1 space-y-2">
+            <div className="max-h-[60vh] flex-1 space-y-2 overflow-y-auto py-3">
               {messages.map((m) => (
                 <div
                   key={m.id}
                   className={`max-w-[80%] rounded-lg p-3 text-sm ${m.direction === 'outbound' ? 'bg-primary text-primary-foreground ml-auto' : 'bg-muted'}`}
                 >
                   <p className="whitespace-pre-wrap">{m.body}</p>
+                  {m.metadata?.attachments?.map((attachment, index) =>
+                    attachment.image_data?.url ? (
+                      <img
+                        key={index}
+                        src={attachment.image_data.url}
+                        alt="Imagem do Direct"
+                        className="mt-2 max-h-72 rounded-lg"
+                      />
+                    ) : attachment.video_data?.url ? (
+                      <video
+                        key={index}
+                        src={attachment.video_data.url}
+                        controls
+                        className="mt-2 max-h-72 rounded-lg"
+                      />
+                    ) : attachment.file_url ? (
+                      <a
+                        key={index}
+                        href={attachment.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block underline"
+                      >
+                        Abrir anexo
+                      </a>
+                    ) : null
+                  )}
                   <small>
                     {new Date(m.created_at).toLocaleString('pt-BR')}
                   </small>

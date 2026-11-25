@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       id?: string;
       messaging?: Array<{
         sender?: { id?: string };
+        recipient?: { id?: string };
         timestamp?: number;
         postback?: { mid?: string; title?: string; payload?: string };
         referral?: { source?: string; ref?: string; ad_id?: string };
@@ -111,7 +112,9 @@ export async function POST(request: Request) {
     }
     for (const event of Array.isArray(entry.messaging) ? entry.messaging : []) {
       if (!event || typeof event !== 'object') continue;
-      const sender = event.sender?.id;
+      const outbound =
+        event.message?.is_echo === true || event.sender?.id === entry.id;
+      const sender = outbound ? event.recipient?.id : event.sender?.id;
       const msg =
         event.message ||
         (event.postback
@@ -127,13 +130,7 @@ export async function POST(request: Request) {
           : undefined);
       const messageText =
         msg?.text || (msg?.attachments?.length ? '[Mídia recebida]' : '');
-      if (
-        !sender ||
-        !/^\d+$/.test(sender) ||
-        !msg?.mid ||
-        !messageText ||
-        msg.is_echo
-      )
+      if (!sender || !/^\d+$/.test(sender) || !msg?.mid || !messageText)
         continue;
       const created = new Date(
         typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
@@ -175,7 +172,7 @@ export async function POST(request: Request) {
           account_id: channel.account_id,
           conversation_id: id,
           external_id: msg.mid,
-          direction: 'inbound',
+          direction: outbound ? 'outbound' : 'inbound',
           body: messageText,
           metadata: { postback: event.postback?.payload || null },
           created_at: created.toISOString(),
@@ -197,6 +194,7 @@ export async function POST(request: Request) {
         .lt('last_message_at', created.toISOString());
       if (update.error)
         return new Response('Erro ao atualizar conversa', { status: 500 });
+      if (outbound) continue;
       try {
         await queueInstagramAutomation(db, {
           accountId: channel.account_id,

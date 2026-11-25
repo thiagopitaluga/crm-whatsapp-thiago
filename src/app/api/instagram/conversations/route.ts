@@ -2,12 +2,32 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import {
+  readInstagramChannels,
+  syncInstagramInbox,
+} from '@/lib/instagram/read-api';
 
 export async function GET(request: Request) {
   try {
     const ctx = await requireRole('viewer');
     const db = supabaseAdmin();
     const id = new URL(request.url).searchParams.get('conversation');
+    let syncWarning: string | null = null;
+    if (!id || /^[0-9a-f-]{36}$/i.test(id)) {
+      const channels = await readInstagramChannels(db, ctx.accountId);
+      await Promise.all(
+        channels.map(async (channel) => {
+          try {
+            await syncInstagramInbox(db, channel, id ?? undefined);
+          } catch (error) {
+            syncWarning =
+              error instanceof Error
+                ? error.message
+                : 'Não foi possível sincronizar o Direct.';
+          }
+        })
+      );
+    }
     if (id) {
       if (!/^[0-9a-f-]{36}$/i.test(id))
         return NextResponse.json(
@@ -16,13 +36,23 @@ export async function GET(request: Request) {
         );
       const { data, error } = await db
         .from('instagram_messages')
-        .select('id,direction,body,created_at')
+        .select('id,direction,body,created_at,metadata')
         .eq('account_id', ctx.accountId)
         .eq('conversation_id', id)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(500);
       if (error) throw error;
-      return NextResponse.json({ messages: data ?? [] });
+      const profile = await db
+        .from('instagram_conversations')
+        .select('profile_data')
+        .eq('account_id', ctx.accountId)
+        .eq('id', id)
+        .maybeSingle();
+      return NextResponse.json({
+        messages: (data ?? []).reverse(),
+        syncWarning,
+        profile: profile.data?.profile_data ?? null,
+      });
     }
     const { data, error } = await db
       .from('instagram_conversations')
@@ -33,7 +63,7 @@ export async function GET(request: Request) {
       .order('last_message_at', { ascending: false })
       .limit(200);
     if (error) throw error;
-    return NextResponse.json({ conversations: data ?? [] });
+    return NextResponse.json({ conversations: data ?? [], syncWarning });
   } catch (error) {
     return toErrorResponse(error);
   }

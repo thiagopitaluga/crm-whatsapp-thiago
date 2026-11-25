@@ -1,11 +1,35 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
+import {
+  readInstagramChannels,
+  readInstagramInsights,
+} from '@/lib/instagram/read-api';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const ctx = await requireRole('viewer');
     const db = supabaseAdmin();
+    const days = Number(new URL(request.url).searchParams.get('days') ?? 7);
+    if (![7, 14, 28].includes(days))
+      return NextResponse.json({ error: 'Período inválido.' }, { status: 400 });
+    const channels = await readInstagramChannels(db, ctx.accountId);
+    const insights = await Promise.all(
+      channels.map(async (channel) => {
+        try {
+          return await readInstagramInsights(channel, days);
+        } catch (error) {
+          return {
+            channelId: channel.id,
+            profile: { username: channel.username },
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Não foi possível consultar o Instagram.',
+          };
+        }
+      })
+    );
     const queries = [
       db
         .from('instagram_channels')
@@ -45,6 +69,8 @@ export async function GET() {
         received: results[2].count ?? 0,
         sent: results[3].count ?? 0,
         runs: runs.data ?? [],
+        insights,
+        days,
       },
       { headers: { 'Cache-Control': 'no-store' } }
     );
