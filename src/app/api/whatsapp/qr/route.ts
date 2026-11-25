@@ -21,13 +21,20 @@ export async function GET(request: Request) {
     const { accountId, supabase } = await requireRole('admin');
     const params = new URL(request.url).searchParams;
     const view = params.get('view');
-    const target = await getTarget(supabase, accountId, params.get('channel_id'));
+    const target = await getTarget(
+      supabase,
+      accountId,
+      params.get('channel_id')
+    );
 
     if (view === 'qr') {
       const upstream = await fetchQrConnector(accountId, 'qr.svg', {}, target);
       if (!upstream.ok) {
         return NextResponse.json(
-          { error: 'QR code is not available yet' },
+          {
+            error:
+              'A Evolution ainda não retornou o QR Code. Aguarde ou tente gerar novamente.',
+          },
           { status: upstream.status === 404 ? 404 : 502 }
         );
       }
@@ -70,7 +77,11 @@ export async function POST(request: Request) {
     const { accountId, supabase } = await requireRole('admin');
     const params = new URL(request.url).searchParams;
     const operation = params.get('operation');
-    const target = await getTarget(supabase, accountId, params.get('channel_id'));
+    const target = await getTarget(
+      supabase,
+      accountId,
+      params.get('channel_id')
+    );
     if (operation === 'import_history') {
       return NextResponse.json(
         { error: 'A importação de conversas antigas está desativada.' },
@@ -93,12 +104,17 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    const upstream = await fetchQrConnector(accountId, 'connect', {
-      method: 'POST',
-      body: JSON.stringify(
-        method === 'pairing_code' ? { pairing_number: phone } : {}
-      ),
-    }, target);
+    const upstream = await fetchQrConnector(
+      accountId,
+      'connect',
+      {
+        method: 'POST',
+        body: JSON.stringify(
+          method === 'pairing_code' ? { pairing_number: phone } : {}
+        ),
+      },
+      target
+    );
     const data = await upstream.json().catch(() => null);
     if (!upstream.ok) {
       const detail =
@@ -127,10 +143,19 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { accountId, supabase } = await requireRole('admin');
-    const target = await getTarget(supabase, accountId, new URL(request.url).searchParams.get('channel_id'));
-    const upstream = await fetchQrConnector(accountId, '', {
-      method: 'DELETE',
-    }, target);
+    const target = await getTarget(
+      supabase,
+      accountId,
+      new URL(request.url).searchParams.get('channel_id')
+    );
+    const upstream = await fetchQrConnector(
+      accountId,
+      '',
+      {
+        method: 'DELETE',
+      },
+      target
+    );
     if (!upstream.ok) return connectorUnavailable();
     return NextResponse.json(await upstream.json());
   } catch (error) {
@@ -138,15 +163,25 @@ export async function DELETE(request: Request) {
   }
 }
 
-async function getTarget(supabase: SupabaseClient, accountId: string, channelId: string | null) {
+async function getTarget(
+  supabase: SupabaseClient,
+  accountId: string,
+  channelId: string | null
+) {
   if (!channelId) return {};
-  const { data, error } = await supabase.from('whatsapp_channels')
+  const { data, error } = await supabase
+    .from('whatsapp_channels')
     .select('provider, channel_key, evolution_instance_name')
-    .eq('account_id', accountId).eq('id', channelId).maybeSingle();
+    .eq('account_id', accountId)
+    .eq('id', channelId)
+    .maybeSingle();
   if (error) throw error;
   if (!data || data.provider !== 'evolution' || !data.evolution_instance_name)
     throw new Error('Conexão Evolution não encontrada.');
-  return { instanceName: data.evolution_instance_name, channelKey: data.channel_key };
+  return {
+    instanceName: data.evolution_instance_name,
+    channelKey: data.channel_key,
+  };
 }
 
 function normalizeStatus(value: unknown): string {
@@ -166,7 +201,10 @@ function normalizeStatus(value: unknown): string {
 
 function connectorUnavailable() {
   return NextResponse.json(
-    { error: 'O conector QR não respondeu. Tente novamente em instantes.' },
+    {
+      error:
+        'O serviço de conexão do WhatsApp não respondeu. Verifique se a Evolution está em execução na VPS e tente novamente.',
+    },
     { status: 502 }
   );
 }
@@ -179,6 +217,9 @@ function handleError(error: unknown) {
     );
   }
   if (error instanceof DOMException && error.name === 'TimeoutError') {
+    return connectorUnavailable();
+  }
+  if (error instanceof TypeError && error.message === 'fetch failed') {
     return connectorUnavailable();
   }
   return toErrorResponse(error);

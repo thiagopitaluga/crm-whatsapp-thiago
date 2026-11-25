@@ -205,8 +205,6 @@ async function fetchEvolutionQrConnector(
         > | null;
         const qrData = asRecord(qrPayload?.qrcode);
         const qrCode =
-          (typeof qrPayload?.code === 'string' && qrPayload.code) ||
-          (typeof qrData?.code === 'string' && qrData.code) ||
           (typeof qrPayload?.base64 === 'string' && qrPayload.base64) ||
           (typeof qrData?.base64 === 'string' && qrData.base64) ||
           '';
@@ -228,7 +226,7 @@ async function fetchEvolutionQrConnector(
             : state === 'close' || state === 'closed'
               ? 'disconnected'
               : 'unknown',
-      qr_available: state !== 'open' && state !== 'close',
+      qr_available: state === 'connecting' && qrVersion !== null,
       qr_version: qrVersion,
       last_error: null,
     });
@@ -349,7 +347,13 @@ async function fetchEvolutionQrConnector(
       string,
       unknown
     > | null;
-    const encoded = typeof payload?.base64 === 'string' ? payload.base64 : '';
+    const nested = asRecord(payload?.qrcode);
+    const encoded =
+      typeof payload?.base64 === 'string'
+        ? payload.base64
+        : typeof nested?.base64 === 'string'
+          ? nested.base64
+          : '';
     const match = encoded.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
     const rawBase64 = match?.[2] ?? encoded;
     if (!rawBase64) return new Response(null, { status: 404 });

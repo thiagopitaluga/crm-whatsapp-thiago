@@ -47,9 +47,17 @@ type StatusPayload = {
   error?: string;
 };
 
-export function QrWhatsAppConnector({ disabled, channelId }: { disabled: boolean; channelId?: string }) {
+export function QrWhatsAppConnector({
+  disabled,
+  channelId,
+}: {
+  disabled: boolean;
+  channelId?: string;
+}) {
   const t = useTranslations('Settings.whatsapp.qr');
-  const endpoint = channelId ? `/api/whatsapp/qr?channel_id=${encodeURIComponent(channelId)}` : '/api/whatsapp/qr';
+  const endpoint = channelId
+    ? `/api/whatsapp/qr?channel_id=${encodeURIComponent(channelId)}`
+    : '/api/whatsapp/qr';
   const [status, setStatus] = useState<QrStatus>('loading');
   const [qrAvailable, setQrAvailable] = useState(false);
   const [qrVersion, setQrVersion] = useState('');
@@ -339,6 +347,17 @@ export function QrWhatsAppConnector({ disabled, channelId }: { disabled: boolean
                   <AlertTitle>{t('connectionProblem')}</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
+              )}
+              {isBusy && status !== 'loading' && !actionPending && (
+                <Button
+                  className="mt-6"
+                  variant="outline"
+                  onClick={() => void connect('qr')}
+                  disabled={disabled}
+                >
+                  <RefreshCw className="size-4" />
+                  {t('refreshQr')}
+                </Button>
               )}
               {!isBusy &&
               !actionPending &&

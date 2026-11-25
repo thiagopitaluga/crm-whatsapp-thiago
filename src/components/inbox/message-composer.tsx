@@ -120,7 +120,7 @@ interface MessageComposerProps {
   externalDelivery?: boolean;
   conversationId: string;
   sessionExpired: boolean;
-  onSend: (text: string, replyToId?: string) => void;
+  onSend: (text: string, replyToId?: string) => void | Promise<void>;
   onSendMedia: (payload: SendMediaPayload) => void;
   onSendInteractive: (
     payload: InteractiveMessagePayload,
@@ -241,7 +241,7 @@ export function MessageComposer({
 
     setSending(true);
     try {
-      onSend(trimmed, replyTo?.id);
+      await onSend(trimmed, replyTo?.id);
       setText('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';

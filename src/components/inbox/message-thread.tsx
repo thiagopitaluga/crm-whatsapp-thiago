@@ -56,12 +56,8 @@ import { buildReplyPreview } from './reply-quote';
 import { renderTemplateBody } from '@/lib/whatsapp/template-body';
 import { toast } from 'sonner';
 
-/**
- * Free-form replies currently open the user's own WhatsApp via wa.me.
- * Keep the existing API implementation below dormant so this can later be
- * changed back to "api" without reintroducing the send flow from scratch.
- */
-const INBOX_TEXT_DELIVERY_MODE: 'wa_me' | 'api' = 'wa_me';
+/** Send through the WhatsApp channel associated with the conversation. */
+const INBOX_TEXT_DELIVERY_MODE: 'wa_me' | 'api' = 'api';
 const SESSION_TIMER_VISIBLE = false;
 
 interface ReplyDraft {

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { fetchQrConnector } from './qr-connector';
+
+vi.mock('./qr-connector', () => ({ fetchQrConnector: vi.fn() }));
 
 import {
   sendMessageToConversation,
@@ -206,10 +209,12 @@ interface CapturedWrites {
  */
 function sendPathDb(
   templateRows: unknown[],
-  captured: CapturedWrites
+  captured: CapturedWrites,
+  channelKey?: string
 ): SupabaseClient {
   const conversation = {
     id: 'cv-1',
+    whatsapp_channel_key: channelKey,
     contact: { id: 'ct-1', phone: '+15551234567' },
   };
   const config = {
@@ -223,6 +228,8 @@ function sendPathDb(
       const builder: Record<string, unknown> = {
         select: () => builder,
         eq: () => builder,
+        order: () => builder,
+        limit: () => builder,
         insert: (row: Record<string, unknown>) => {
           if (table === 'messages') captured.message = row;
           return builder;
@@ -231,7 +238,18 @@ function sendPathDb(
           if (table === 'conversations') captured.conversation = row;
           return builder;
         },
-        maybeSingle: async () => ({ data: null, error: null }),
+        maybeSingle: async () => ({
+          data:
+            table === 'whatsapp_config'
+              ? config
+              : table === 'whatsapp_channels'
+                ? {
+                    evolution_instance_name: 'named-instance',
+                    channel_key: channelKey,
+                  }
+                : null,
+          error: null,
+        }),
         single: async () => {
           if (table === 'conversations') {
             return { data: conversation, error: null };
@@ -264,6 +282,37 @@ const TEMPLATE_ROW = {
   created_at: '2026-01-01T00:00:00Z',
 };
 
+it('sends and persists Evolution text without accessing a Cloud API token', async () => {
+  const captured: CapturedWrites = {};
+  vi.mocked(fetchQrConnector).mockResolvedValueOnce(
+    Response.json({ messageId: 'evo-1' })
+  );
+  const result = await sendMessageToConversation(
+    sendPathDb([], captured, 'whatsapp_evolution:second'),
+    'acct-1',
+    {
+      conversationId: 'cv-1',
+      messageType: 'text',
+      contentText: 'Olá!',
+    }
+  );
+  expect(fetchQrConnector).toHaveBeenCalledWith(
+    'acct-1',
+    'messages/send',
+    expect.objectContaining({ method: 'POST' }),
+    {
+      instanceName: 'named-instance',
+      channelKey: 'whatsapp_evolution:second',
+    }
+  );
+  expect(result.whatsappMessageId).toBe('evo-1');
+  expect(captured.message).toMatchObject({
+    content_text: 'Olá!',
+    message_id: 'evo-1',
+    status: 'sent',
+  });
+});
+
 describe('sendMessageToConversation — template persistence (#483)', () => {
   it('stores the substituted body when the caller sends no text', async () => {
     const captured: CapturedWrites = {};
@@ -292,12 +341,16 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
 
   it('reads body values out of the structured params shape too', async () => {
     const captured: CapturedWrites = {};
-    await sendMessageToConversation(sendPathDb([TEMPLATE_ROW], captured), 'acct-1', {
-      conversationId: 'cv-1',
-      messageType: 'template',
-      templateName: 'order_update',
-      templateMessageParams: { body: ['B456', 'Monday'] },
-    });
+    await sendMessageToConversation(
+      sendPathDb([TEMPLATE_ROW], captured),
+      'acct-1',
+      {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'order_update',
+        templateMessageParams: { body: ['B456', 'Monday'] },
+      }
+    );
     expect(captured.message?.content_text).toBe(
       'Your order B456 ships on Monday'
     );
@@ -305,30 +358,39 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
 
   it("does not override the composer's pre-rendered text", async () => {
     const captured: CapturedWrites = {};
-    await sendMessageToConversation(sendPathDb([TEMPLATE_ROW], captured), 'acct-1', {
-      conversationId: 'cv-1',
-      messageType: 'template',
-      templateName: 'order_update',
-      templateParams: ['A123', 'Friday'],
-      contentText: 'rendered by the composer',
-    });
+    await sendMessageToConversation(
+      sendPathDb([TEMPLATE_ROW], captured),
+      'acct-1',
+      {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'order_update',
+        templateParams: ['A123', 'Friday'],
+        contentText: 'rendered by the composer',
+      }
+    );
     expect(captured.message?.content_text).toBe('rendered by the composer');
   });
 
   it("sends the local row's language when the caller names none", async () => {
     sendTemplateMessage.mockClear();
     const captured: CapturedWrites = {};
-    await sendMessageToConversation(sendPathDb([TEMPLATE_ROW], captured), 'acct-1', {
-      conversationId: 'cv-1',
-      messageType: 'template',
-      templateName: 'order_update',
-      templateParams: ['A123', 'Friday'],
-    });
+    await sendMessageToConversation(
+      sendPathDb([TEMPLATE_ROW], captured),
+      'acct-1',
+      {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'order_update',
+        templateParams: ['A123', 'Friday'],
+      }
+    );
     // Previously pinned to 'en_US', which matched no row and made Meta
     // reject the send as a missing translation.
     expect(
-      (sendTemplateMessage.mock.calls[0] as unknown as [{ language: string }])[0]
-        .language
+      (
+        sendTemplateMessage.mock.calls[0] as unknown as [{ language: string }]
+      )[0].language
     ).toBe('en');
   });
 

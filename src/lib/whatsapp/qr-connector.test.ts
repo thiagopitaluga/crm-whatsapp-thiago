@@ -55,3 +55,67 @@ describe('QR connector bridge', () => {
     );
   });
 });
+
+describe('Evolution QR images', () => {
+  beforeEach(() => {
+    vi.stubEnv('WHATSAPP_QR_PROVIDER', 'evolution');
+    vi.stubEnv('EVOLUTION_API_URL', 'https://evolution.example.com');
+    vi.stubEnv('EVOLUTION_API_KEY', 'test-key');
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it.each([false, true])(
+    'returns the QR image for nested=%s',
+    async (nested) => {
+      const image = { base64: 'data:image/png;base64,aW1hZ2U=' };
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(Response.json(nested ? { qrcode: image } : image))
+      );
+      const response = await fetchQrConnector(ACCOUNT_ID, 'qr.svg');
+      expect(response.headers.get('content-type')).toBe('image/png');
+      expect(await response.text()).toBe('image');
+    }
+  );
+
+  it('does not announce a QR image when Evolution has not generated one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({ instance: { state: 'connecting' } })
+        )
+        .mockResolvedValueOnce(Response.json({ count: 0 }))
+    );
+    const response = await fetchQrConnector(ACCOUNT_ID, 'status');
+    expect(await response.json()).toMatchObject({
+      qr_available: false,
+      qr_version: null,
+    });
+  });
+
+  it('announces and fingerprints the nested QR returned while connecting', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({ instance: { state: 'connecting' } })
+        )
+        .mockResolvedValueOnce(
+          Response.json({ qrcode: { base64: 'aW1hZ2U=' } })
+        )
+    );
+    const response = await fetchQrConnector(ACCOUNT_ID, 'status');
+    expect(await response.json()).toMatchObject({
+      qr_available: true,
+      qr_version: expect.any(String),
+    });
+  });
+});

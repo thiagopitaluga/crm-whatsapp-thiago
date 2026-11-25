@@ -259,23 +259,41 @@ export async function sendMessageToConversation(
   }
 
   // WhatsApp config, account-scoped.
-  const channelKey = typeof conversation.whatsapp_channel_key === 'string' ? conversation.whatsapp_channel_key : '';
-  const useEvolution = channelKey.startsWith('whatsapp_evolution') || (!channelKey && process.env.WHATSAPP_QR_PROVIDER === 'evolution');
+  const channelKey =
+    typeof conversation.whatsapp_channel_key === 'string'
+      ? conversation.whatsapp_channel_key
+      : '';
+  const useEvolution =
+    channelKey.startsWith('whatsapp_evolution') ||
+    (!channelKey && process.env.WHATSAPP_QR_PROVIDER === 'evolution');
   let config: Record<string, any> | null = null;
   let accessToken = '';
   if (!useEvolution) {
-    let configQuery = db.from('whatsapp_config').select('*').eq('account_id', accountId);
-    const phoneId = channelKey.startsWith('whatsapp_cloud:') ? channelKey.slice('whatsapp_cloud:'.length) : '';
+    let configQuery = db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', accountId);
+    const phoneId = channelKey.startsWith('whatsapp_cloud:')
+      ? channelKey.slice('whatsapp_cloud:'.length)
+      : '';
     if (phoneId) configQuery = configQuery.eq('phone_number_id', phoneId);
-    else configQuery = configQuery.order('created_at', { ascending: true }).limit(1);
+    else
+      configQuery = configQuery
+        .order('created_at', { ascending: true })
+        .limit(1);
     const { data, error } = await configQuery.maybeSingle();
     config = data as Record<string, any> | null;
-    if (error || !config) throw new SendMessageError('whatsapp_not_configured', 'WhatsApp not configured. Please set up your WhatsApp integration first.', 400);
+    if (error || !config)
+      throw new SendMessageError(
+        'whatsapp_not_configured',
+        'WhatsApp not configured. Please set up your WhatsApp integration first.',
+        400
+      );
     accessToken = decrypt(config!.access_token);
   }
 
   // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config!.access_token)) {
+  if (config && isLegacyFormat(config.access_token)) {
     void db
       .from('whatsapp_config')
       .update({ access_token: encrypt(accessToken) })
@@ -351,18 +369,60 @@ export async function sendMessageToConversation(
         requestBody = { phone, text: contentText };
       } else if (isMediaKind && mediaUrl) {
         suffix = 'messages/media';
-        requestBody = { phone, kind: messageType, url: mediaUrl, caption: contentText ?? '' };
+        requestBody = {
+          phone,
+          kind: messageType,
+          url: mediaUrl,
+          caption: contentText ?? '',
+        };
       } else {
-        throw new SendMessageError('bad_request', 'Evolution não oferece suporte a modelos e mensagens interativas por esta conexão.', 400);
+        throw new SendMessageError(
+          'bad_request',
+          'Evolution não oferece suporte a modelos e mensagens interativas por esta conexão.',
+          400
+        );
       }
       const target: { instanceName?: string; channelKey?: string } = {};
       if (channelKey) {
-        const { data: instance } = await db.from('whatsapp_channels').select('evolution_instance_name, channel_key').eq('account_id', accountId).eq('channel_key', channelKey).maybeSingle();
-        if (instance?.evolution_instance_name) Object.assign(target, { instanceName: instance.evolution_instance_name, channelKey: instance.channel_key });
+        const { data: instance, error: instanceError } = await db
+          .from('whatsapp_channels')
+          .select('evolution_instance_name, channel_key')
+          .eq('account_id', accountId)
+          .eq('channel_key', channelKey)
+          .maybeSingle();
+        if (
+          instanceError ||
+          (!instance?.evolution_instance_name &&
+            channelKey !== 'whatsapp_evolution')
+        ) {
+          throw new SendMessageError(
+            'whatsapp_not_configured',
+            'O número de WhatsApp desta conversa não foi encontrado em Conexões.',
+            400
+          );
+        }
+        if (instance?.evolution_instance_name)
+          Object.assign(target, {
+            instanceName: instance.evolution_instance_name,
+            channelKey: instance.channel_key,
+          });
       }
-      const response = await fetchQrConnector(accountId, suffix, { method: 'POST', body: JSON.stringify(requestBody) }, target);
-      const payload = await response.json().catch(() => null) as { messageId?: unknown; error?: unknown } | null;
-      if (!response.ok || typeof payload?.messageId !== 'string') throw new Error(typeof payload?.error === 'string' ? payload.error : 'Evolution não conseguiu enviar a mensagem.');
+      const response = await fetchQrConnector(
+        accountId,
+        suffix,
+        { method: 'POST', body: JSON.stringify(requestBody) },
+        target
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        messageId?: unknown;
+        error?: unknown;
+      } | null;
+      if (!response.ok || typeof payload?.messageId !== 'string')
+        throw new Error(
+          typeof payload?.error === 'string'
+            ? payload.error
+            : 'Evolution não conseguiu enviar a mensagem.'
+        );
       return payload.messageId;
     }
     if (messageType === 'template') {
@@ -436,7 +496,9 @@ export async function sendMessageToConversation(
   let waMessageId = '';
   let workingPhone = sanitizedPhone;
   try {
-    const variants = useEvolution ? [sanitizedPhone] : phoneVariants(sanitizedPhone);
+    const variants = useEvolution
+      ? [sanitizedPhone]
+      : phoneVariants(sanitizedPhone);
     let lastError: unknown = null;
 
     for (const variant of variants) {
@@ -459,10 +521,15 @@ export async function sendMessageToConversation(
 
     if (lastError) throw lastError;
   } catch (err) {
+    if (err instanceof SendMessageError) throw err;
     const message =
       err instanceof Error ? err.message : 'Unknown Meta API error';
     console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+    throw new SendMessageError(
+      useEvolution ? 'evolution_error' : 'meta_error',
+      `${useEvolution ? 'Evolution' : 'Meta API'}: ${message}`,
+      502
+    );
   }
 
   if (workingPhone !== sanitizedPhone) {
