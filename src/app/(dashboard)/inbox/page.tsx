@@ -133,7 +133,7 @@ function InboxPageInner() {
     const controller = new AbortController();
     let inFlight = false;
     const load = async () => {
-      if (inFlight) return;
+      if (inFlight || refreshController.current) return;
       inFlight = true;
       try {
         const r = await fetch('/api/instagram/conversations?cached=1', {
