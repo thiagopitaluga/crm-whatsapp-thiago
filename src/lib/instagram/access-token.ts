@@ -1,3 +1,14 @@
+/** Supports the current Instagram Login response and earlier flat responses. */
+export function instagramAuthorizationToken(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const body = payload as Record<string, unknown>;
+  if (body.error || body.error_type) return null;
+  const entry = Array.isArray(body.data) ? body.data[0] : body;
+  if (!entry || typeof entry !== 'object') return null;
+  const token = (entry as Record<string, unknown>).access_token;
+  return typeof token === 'string' && token.trim() ? token : null;
+}
+
 /** Exchange on the server only: the request contains the Instagram app secret. */
 export async function exchangeInstagramToken(
   shortToken: string,

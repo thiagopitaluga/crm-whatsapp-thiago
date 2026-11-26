@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { encrypt } from '@/lib/whatsapp/encryption';
-import { exchangeInstagramToken } from '@/lib/instagram/access-token';
+import {
+  exchangeInstagramToken,
+  instagramAuthorizationToken,
+} from '@/lib/instagram/access-token';
 import { instagramConnectionReturnPath } from '@/lib/instagram/connection-navigation';
 
 export const runtime = 'nodejs';
@@ -41,6 +44,7 @@ export async function GET(request: NextRequest) {
     response.headers.set('Referrer-Policy', 'no-referrer');
     return response;
   };
+  let stage = 'session';
   try {
     const ctx = await requireRole('admin');
     const appId = process.env.INSTAGRAM_APP_ID;
@@ -107,6 +111,7 @@ export async function GET(request: NextRequest) {
     if (sessionError || !session) throw new Error('Sessão expirada.');
     const code = request.nextUrl.searchParams.get('code');
     if (!code) return back('cancelled');
+    stage = 'authorization';
     const tokenResponse = await fetch(
       'https://api.instagram.com/oauth/access_token',
       {
@@ -121,13 +126,12 @@ export async function GET(request: NextRequest) {
         cache: 'no-store',
       }
     );
-    const token = (await tokenResponse.json()) as { access_token?: string };
-    if (!tokenResponse.ok || !token.access_token)
+    const token = instagramAuthorizationToken(await tokenResponse.json());
+    if (!tokenResponse.ok || !token)
       throw new Error('Falha ao autorizar Instagram.');
-    const authorization = await exchangeInstagramToken(
-      token.access_token,
-      secret
-    );
+    stage = 'token-exchange';
+    const authorization = await exchangeInstagramToken(token, secret);
+    stage = 'profile';
     const profileResponse = await fetch(
       'https://graph.instagram.com/v25.0/me?fields=user_id,username',
       {
@@ -145,6 +149,7 @@ export async function GET(request: NextRequest) {
       !/^\d+$/.test(profile.user_id)
     )
       throw new Error('Perfil inválido.');
+    stage = 'account-link';
     const existing = await db
       .from('instagram_channels')
       .select('account_id')
@@ -155,6 +160,7 @@ export async function GET(request: NextRequest) {
       (existing.data && existing.data.account_id !== ctx.accountId)
     )
       throw new Error('Perfil já vinculado.');
+    stage = 'webhook';
     const subscription = await fetch(
       `https://graph.instagram.com/v25.0/${profile.user_id}/subscribed_apps`,
       {
@@ -178,6 +184,7 @@ export async function GET(request: NextRequest) {
       token_expires_at: authorization.expiresAt,
       updated_at: new Date().toISOString(),
     };
+    stage = 'save';
     const { error } = existing.data
       ? await db
           .from('instagram_channels')
@@ -192,7 +199,10 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
     return back('connected');
   } catch (error) {
-    if (callback) return back('error');
+    if (callback) {
+      console.warn('[instagram-connect] callback failed', { stage });
+      return back('error');
+    }
     return toErrorResponse(error);
   }
 }

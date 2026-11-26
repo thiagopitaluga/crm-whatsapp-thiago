@@ -1,7 +1,39 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { exchangeInstagramToken } from './access-token';
+import {
+  exchangeInstagramToken,
+  instagramAuthorizationToken,
+} from './access-token';
 
 afterEach(() => vi.unstubAllGlobals());
+describe('Instagram Login token response', () => {
+  it('accepts the data array documented by Meta and the older flat format', () => {
+    expect(
+      instagramAuthorizationToken({
+        data: [
+          {
+            access_token: 'short-token',
+            user_id: '123',
+            permissions: 'instagram_business_basic',
+          },
+        ],
+      })
+    ).toBe('short-token');
+    expect(instagramAuthorizationToken({ access_token: 'legacy-token' })).toBe(
+      'legacy-token'
+    );
+  });
+  it.each([
+    null,
+    {},
+    { data: [] },
+    { data: [null] },
+    { data: [{ access_token: 42 }] },
+    { access_token: '' },
+    { error_type: 'OAuthException', access_token: 'invalid' },
+  ])('rejects incomplete or rejected authorization %j', (payload) => {
+    expect(instagramAuthorizationToken(payload)).toBeNull();
+  });
+});
 describe('Instagram long-lived authorization', () => {
   it('exchanges the temporary token and records the returned expiration', async () => {
     const fetcher = vi
