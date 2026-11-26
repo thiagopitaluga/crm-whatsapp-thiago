@@ -1,3 +1,4 @@
+import { PlanComparison } from '@/components/settings/plan-comparison';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/account';
@@ -45,7 +46,7 @@ export default async function SubscriptionPage({
     BillingStatus | 'expired' | undefined;
   const returned = (await searchParams).checkout === 'retorno';
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4">
       <Link href="/settings" className="text-primary text-sm hover:underline">
         Voltar às configurações
       </Link>
@@ -81,6 +82,7 @@ export default async function SubscriptionPage({
           </p>
         )}
       </section>
+      <PlanComparison />
       {pilot && (
         <section
           className="bg-card space-y-3 rounded-xl border p-5"

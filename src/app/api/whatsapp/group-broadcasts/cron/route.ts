@@ -1,3 +1,4 @@
+import { serviceEnabled } from '@/lib/billing/server-access'
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
@@ -41,6 +42,10 @@ export async function GET(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const campaign = (campaigns ?? [])[0] as Broadcast | undefined
   if (!campaign) return NextResponse.json({ processed: 0 })
+  if (!await serviceEnabled(admin, campaign.account_id, 'groupAutomation')) {
+    await admin.from('group_broadcasts').update({ status: 'draft', last_error: 'Automação de grupos desabilitada pelo plano ou administrador.' }).eq('id', campaign.id)
+    return NextResponse.json({ processed: 0, disabled: true })
+  }
   const { data: claimed } = await admin.from('group_broadcasts').update({
     status: 'sending', delivery_locked_at: new Date().toISOString(),
   }).eq('id', campaign.id).eq('status', campaign.status).is('delivery_locked_at', null).select('id').maybeSingle()

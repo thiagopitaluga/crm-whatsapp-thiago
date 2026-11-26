@@ -1,3 +1,6 @@
+vi.mock('@/lib/billing/server-access', () => ({
+  serviceEnabled: vi.fn(async () => true),
+}));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({

@@ -1,3 +1,4 @@
+import { serviceEnabled } from '@/lib/billing/server-access';
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
   let processed = 0;
   for (const job of jobs || []) {
     if (Date.now() > deadline) break;
+    if (!(await serviceEnabled(db, job.account_id, 'instagram'))) continue;
     const claim = await db
       .from('instagram_automation_runs')
       .update({ status: 'sending', updated_at: new Date().toISOString() })

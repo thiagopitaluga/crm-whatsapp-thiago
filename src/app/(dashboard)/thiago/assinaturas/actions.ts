@@ -1,5 +1,6 @@
 'use server';
 
+import { parseAccessForm } from '@/lib/billing/access';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { requirePlatformAdmin } from '@/lib/platform-admin';
@@ -102,5 +103,39 @@ export async function saveSubscription(
   } catch (error) {
     console.error('[billing] save subscription failed', error);
     return { ok: false, message: 'Não foi possível registrar a assinatura.' };
+  }
+}
+
+export async function saveAccess(
+  accountId: string,
+  _previous: FormResult | null,
+  data: FormData
+): Promise<FormResult> {
+  try {
+    const actor = await requirePlatformAdmin();
+    if (!uuid.test(accountId))
+      return { ok: false, message: 'Empresa inválida.' };
+    const access = parseAccessForm(data);
+    const { error } = await supabaseAdmin().rpc('billing_save_access', {
+      p_actor_user_id: actor.userId,
+      p_actor_email: actor.email,
+      p_account_id: accountId,
+      p_complimentary: access.complimentary,
+      p_features: access.features,
+      p_limits: access.limits,
+    });
+    if (error) throw error;
+    revalidatePath('/thiago/assinaturas');
+    revalidatePath('/assinatura');
+    return { ok: true, message: 'Acesso personalizado atualizado.' };
+  } catch (error) {
+    console.error('[billing] access update failed', error);
+    return {
+      ok: false,
+      message:
+        error instanceof Error && error.message.startsWith('Limite inválido')
+          ? error.message
+          : 'Não foi possível salvar o acesso.',
+    };
   }
 }

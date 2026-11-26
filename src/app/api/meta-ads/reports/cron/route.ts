@@ -1,3 +1,4 @@
+import { serviceEnabled } from '@/lib/billing/server-access';
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/ai/admin-client';
@@ -174,6 +175,11 @@ async function syncReportRange(schedule: Schedule, period: MetaReportPeriod) {
 
 async function processSchedule(schedule: Schedule) {
   const db = supabaseAdmin();
+  if (
+    !(await serviceEnabled(db, schedule.account_id, 'metaAds')) ||
+    !(await serviceEnabled(db, schedule.sender_account_id, 'groupAutomation'))
+  )
+    return { scheduleId: schedule.id, disabled: true };
   const period = latestMetaReportPeriod(
     schedule.frequency,
     new Date(),

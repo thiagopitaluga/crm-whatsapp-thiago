@@ -1,3 +1,4 @@
+import { PlanComparison } from '@/components/settings/plan-comparison';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
@@ -10,7 +11,7 @@ import {
   type BillingPlan,
   type BillingSubscription,
 } from '@/lib/billing/subscriptions';
-import { PlanForm, SubscriptionForm } from './forms';
+import { PlanForm, SubscriptionForm, AccessForm } from './forms';
 
 const PAGE_SIZE = 20;
 
@@ -52,6 +53,17 @@ export default async function PlatformBillingPage({
     db.rpc('billing_summary'),
   ]);
   const accounts = companies.data ?? [];
+  const customAccess = await db
+    .from('billing_account_access')
+    .select('account_id,complimentary,features,limits')
+    .in(
+      'account_id',
+      accounts.map((a) => a.id)
+    );
+  const accessByAccount = new Map(
+    (customAccess.data ?? []).map((a) => [a.account_id, a])
+  );
+
   const subscriptions = accounts.length
     ? await db
         .from('billing_subscriptions')
@@ -62,7 +74,11 @@ export default async function PlatformBillingPage({
         )
     : { data: [], error: null };
   const loadError =
-    catalog.error ?? companies.error ?? subscriptions.error ?? summary.error;
+    customAccess.error ??
+    catalog.error ??
+    companies.error ??
+    subscriptions.error ??
+    summary.error;
   const plans = (catalog.data ?? []) as BillingPlan[];
   const byAccount = new Map(
     (subscriptions.data ?? ([] as BillingSubscription[])).map((row) => [
@@ -123,6 +139,7 @@ export default async function PlatformBillingPage({
           </section>
           <section className="bg-card space-y-4 rounded-xl border p-4">
             <h2 className="font-semibold">Catálogo de planos</h2>
+            <PlanComparison />
             <PlanForm />
             {plans.length > 0 && (
               <ul className="divide-y border-t text-sm">
@@ -185,6 +202,10 @@ export default async function PlatformBillingPage({
                             accountId={account.id}
                             subscription={subscription}
                             plans={plans}
+                          />
+                          <AccessForm
+                            accountId={account.id}
+                            access={accessByAccount.get(account.id)}
                           />
                         </div>
                       </details>
