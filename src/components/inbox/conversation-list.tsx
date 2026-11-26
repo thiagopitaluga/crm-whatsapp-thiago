@@ -301,7 +301,11 @@ export function ConversationList({
       });
     }
 
-    return result;
+    return result.sort((a, b) => {
+      const dateA = Date.parse(a.last_message_at ?? '') || 0;
+      const dateB = Date.parse(b.last_message_at ?? '') || 0;
+      return dateB - dateA || a.id.localeCompare(b.id);
+    });
   }, [
     conversations,
     additionalConversations,
@@ -401,7 +405,7 @@ export function ConversationList({
               aria-label="Atualizar todas as conversas"
               aria-busy={refreshing}
               title="Atualizar todas as conversas"
-              className="border-border hover:bg-muted focus-visible:outline-primary inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-xs font-medium focus-visible:outline-2 disabled:cursor-wait disabled:opacity-60"
+              className="border-border hover:bg-muted focus-visible:outline-primary inline-flex size-9 shrink-0 items-center justify-center rounded-md border focus-visible:outline-2 disabled:cursor-wait disabled:opacity-60"
             >
               <RefreshCw
                 aria-hidden="true"
@@ -410,7 +414,6 @@ export function ConversationList({
                   refreshing && 'animate-spin motion-reduce:animate-none'
                 )}
               />
-              <span>{refreshing ? 'Atualizando…' : 'Atualizar'}</span>
             </button>
           )}
         </div>

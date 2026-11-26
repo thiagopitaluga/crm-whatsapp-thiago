@@ -3,9 +3,11 @@
 import { Suspense, useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
+  normalizeConversations,
 } from '@/lib/inbox/conversations';
 import type {
   Conversation,
@@ -102,20 +104,57 @@ function InboxPageInner() {
     const controller = new AbortController();
     refreshController.current = controller;
     setRefreshingAll(true);
-    setResyncToken((value) => value + 1);
     try {
-      const response = await fetch('/api/instagram/conversations', {
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      const data = await response.json();
+      const results = await Promise.allSettled([
+        (async () => {
+          const { data, error } = await createClient()
+            .from('conversations')
+            .select(CONVERSATION_SELECT)
+            .eq('account_id', accountId)
+            .order('last_message_at', { ascending: false })
+            .abortSignal(controller.signal);
+          if (error)
+            throw new Error(
+              'Não foi possível atualizar as conversas do WhatsApp.'
+            );
+          if (!controller.signal.aborted)
+            setConversations(normalizeConversations(data ?? []));
+        })(),
+        (async () => {
+          const response = await fetch('/api/instagram/conversations', {
+            cache: 'no-store',
+            signal: controller.signal,
+          });
+          const data = await response.json();
+          if (controller.signal.aborted) return;
+          if (!response.ok)
+            throw new Error(
+              data.error ||
+                'Não foi possível atualizar as conversas do Instagram.'
+            );
+          setInstagramConversations(data.conversations ?? []);
+          setInstagramError(data.syncWarning ?? '');
+          if (data.syncWarning) throw new Error(data.syncWarning);
+        })(),
+      ]);
       if (controller.signal.aborted) return;
-      if (!response.ok)
-        throw new Error(
-          data.error || 'Não foi possível atualizar as conversas do Instagram.'
+      setResyncToken((value) => value + 1);
+      const failures = results.filter((result) => result.status === 'rejected');
+      if (failures.length) {
+        toast.warning(
+          failures
+            .map((result) =>
+              result.reason instanceof Error
+                ? result.reason.message
+                : 'Falha ao atualizar um dos canais.'
+            )
+            .join(' ')
         );
-      setInstagramConversations(data.conversations ?? []);
-      setInstagramError(data.syncWarning ?? '');
+      } else {
+        toast.success(
+          'Conversas atualizadas. As mais recentes aparecem primeiro.'
+        );
+      }
     } catch (error) {
       if (!controller.signal.aborted)
         setInstagramError(
@@ -124,8 +163,10 @@ function InboxPageInner() {
             : 'Falha ao atualizar o Instagram.'
         );
     } finally {
-      refreshController.current = null;
-      setRefreshingAll(false);
+      if (refreshController.current === controller) {
+        refreshController.current = null;
+        setRefreshingAll(false);
+      }
     }
   }, [accountId, isAgent, inboxAllowed]);
   useEffect(() => {
