@@ -166,8 +166,72 @@ async function fetchEvolutionQrConnector(
   }
 
   const { baseUrl, apiKey } = evolutionConfiguration();
-  const instance = options.instanceName ?? evolutionInstanceName(accountId);
   const timeout = init.signal ?? AbortSignal.timeout(48_000);
+  let instance = options.instanceName ?? evolutionInstanceName(accountId);
+  if (
+    !options.instanceName &&
+    (suffix === 'groups' || suffix.startsWith('groups/'))
+  ) {
+    const { supabaseAdmin } = await import('@/lib/automations/admin-client');
+    const { data: channels, error } = await supabaseAdmin()
+      .from('whatsapp_channels')
+      .select('evolution_instance_name')
+      .eq('account_id', accountId)
+      .eq('provider', 'evolution');
+    if (error)
+      return jsonResponse(
+        { error: 'Não foi possível consultar as conexões de grupos.' },
+        503
+      );
+    if (channels?.length) {
+      const states = await Promise.all(
+        channels.map(async (channel) => {
+          try {
+            const response = await evolutionRequest(
+              baseUrl,
+              apiKey,
+              `instance/connectionState/${encodeURIComponent(channel.evolution_instance_name)}`,
+              { signal: init.signal ?? AbortSignal.timeout(8_000) }
+            );
+            if (response.status === 404)
+              return { name: channel.evolution_instance_name, state: 'close' };
+            if (!response.ok) throw new Error('Connection check failed');
+            const payload = await response.json();
+            return {
+              name: channel.evolution_instance_name,
+              state: payload?.instance?.state,
+            };
+          } catch {
+            return { name: channel.evolution_instance_name, state: 'unknown' };
+          }
+        })
+      );
+      if (
+        states.some((channel) => channel.state === 'unknown' || !channel.state)
+      )
+        return jsonResponse(
+          {
+            error:
+              'Não foi possível confirmar as conexões. Tente atualizar os grupos.',
+          },
+          503
+        );
+      const connected = states.filter((channel) => channel.state === 'open');
+      const selected =
+        connected.find((channel) => channel.name === instance) ??
+        (connected.length === 1 ? connected[0] : undefined);
+      if (!selected)
+        return jsonResponse(
+          {
+            error: connected.length
+              ? 'Há vários WhatsApps conectados. Defina a conexão remetente antes de operar os grupos.'
+              : 'Conecte o WhatsApp em Conexões para visualizar os grupos.',
+          },
+          409
+        );
+      instance = selected.name;
+    }
+  }
 
   if (suffix === 'status') {
     const response = await evolutionRequest(

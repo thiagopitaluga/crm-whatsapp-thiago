@@ -15,8 +15,8 @@ export async function GET() {
       const { data: cached } = await supabase.from('whatsapp_groups')
         .select('group_jid, subject, participant_count, is_admin, folder, labels, last_message_at')
         .eq('account_id', accountId).order('subject')
-      if (cached?.length) return NextResponse.json({ groups: cached, connected: false,
-        warning: 'WhatsApp desconectado. A lista exibida é a última sincronizada.' },
+      if (cached?.length) return NextResponse.json({ groups: cached,
+        warning: 'Não foi possível atualizar os grupos agora. A lista exibida é a última sincronizada.' },
         { headers: { 'cache-control': 'no-store' } })
       return unavailable(response.status)
     }
