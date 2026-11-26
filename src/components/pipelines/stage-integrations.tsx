@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import type { WhatsAppConversion } from '@/lib/pipelines/meta-conversion';
 type Event = {
   id: string;
   created_at: string;
@@ -12,6 +13,13 @@ type Event = {
   stage_id: string;
 };
 export function StageIntegrations({ editable = true }: { editable?: boolean }) {
+  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+  const [whatsappConversion, setWhatsappConversion] =
+    useState<WhatsAppConversion>({ wabaId: '', datasetId: '', channelKey: '' });
+  const [channels, setChannels] = useState<
+    { channel_key: string; label: string; provider: string }[]
+  >([]);
+  const [tracking, setTracking] = useState({ clickIds: 0, adIds: 0 });
   const [pixelId, setPixelId] = useState(''),
     [token, setToken] = useState(''),
     [hint, setHint] = useState(''),
@@ -29,6 +37,12 @@ export function StageIntegrations({ editable = true }: { editable?: boolean }) {
       setPixelId(body.pixelId || '');
       setHint(body.tokenHint || '');
       setHistory(body.history || []);
+      setWhatsappEnabled(Boolean(body.whatsappConversion));
+      setWhatsappConversion(
+        body.whatsappConversion || { wabaId: '', datasetId: '', channelKey: '' }
+      );
+      setChannels(body.channels || []);
+      setTracking(body.tracking || { clickIds: 0, adIds: 0 });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Falha ao carregar pixel.'
@@ -40,14 +54,20 @@ export function StageIntegrations({ editable = true }: { editable?: boolean }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  async function submit(method: 'PUT' | 'POST') {
+  async function submit(method: 'PUT' | 'POST', whatsapp = false) {
     setBusy(true);
     try {
       const response = await fetch('/api/pipelines/stage-integrations', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          method === 'PUT' ? { pixelId, token } : { testCode }
+          method === 'PUT'
+            ? {
+                pixelId,
+                token,
+                whatsappConversion: whatsappEnabled ? whatsappConversion : null,
+              }
+            : { testCode, whatsapp }
         ),
       });
       const body = await response.json();
@@ -109,6 +129,100 @@ export function StageIntegrations({ editable = true }: { editable?: boolean }) {
                 />
               </label>
             </div>
+            <section className="space-y-3 rounded-lg border p-4">
+              <h3 className="font-medium">Anúncios que levam ao WhatsApp</h3>
+              <p className="text-muted-foreground text-sm">
+                {tracking.adIds} conversa(s) com anúncio identificado ·{' '}
+                {tracking.clickIds} com identificador de clique registrado. Veja
+                campanha, conjunto e anúncio em Informações → Origem do contato,
+                na conversa.
+              </p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={whatsappEnabled}
+                  disabled={!editable || busy}
+                  onChange={(e) => setWhatsappEnabled(e.target.checked)}
+                />
+                Enviar conversões do funil com o clique do WhatsApp
+              </label>
+              {whatsappEnabled && (
+                <>
+                  <p className="text-muted-foreground text-xs">
+                    Requer uma conta WhatsApp Business na Meta e token com
+                    whatsapp_business_management e
+                    whatsapp_business_manage_events. O identificador ctwa_clid
+                    precisa chegar na mensagem do anúncio. A conexão por QR
+                    Code, sozinha, não garante esse envio.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm">
+                      WhatsApp
+                      <select
+                        className="bg-background mt-1 w-full rounded-md border p-2"
+                        disabled={!editable || busy}
+                        value={whatsappConversion.channelKey}
+                        onChange={(e) =>
+                          setWhatsappConversion((v) => ({
+                            ...v,
+                            channelKey: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Selecione a conexão</option>
+                        {channels.map((channel) => (
+                          <option
+                            key={channel.channel_key}
+                            value={channel.channel_key}
+                          >
+                            {channel.label} ·{' '}
+                            {channel.provider === 'cloud'
+                              ? 'API oficial'
+                              : 'Evolution'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-sm">
+                      ID da conta WhatsApp Business (WABA)
+                      <input
+                        className="bg-background mt-1 w-full rounded-md border p-2"
+                        inputMode="numeric"
+                        disabled={!editable || busy}
+                        value={whatsappConversion.wabaId}
+                        onChange={(e) =>
+                          setWhatsappConversion((v) => ({
+                            ...v,
+                            wabaId: e.target.value.trim(),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      ID do conjunto de dados da WABA
+                      <input
+                        className="bg-background mt-1 w-full rounded-md border p-2"
+                        inputMode="numeric"
+                        disabled={!editable || busy}
+                        value={whatsappConversion.datasetId}
+                        onChange={(e) =>
+                          setWhatsappConversion((v) => ({
+                            ...v,
+                            datasetId: e.target.value.trim(),
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Usa o token acima. Ao salvar, verificamos se o conjunto de
+                    dados pertence à WABA. Nas etapas do Kanban, escolha o
+                    evento do Meta. Purchase exige valor positivo no negócio.
+                    Sem identificador de clique, a falha aparece no histórico.
+                  </p>
+                </>
+              )}
+            </section>
             <label className="block max-w-md text-sm">
               Código de teste (só para o botão Testar)
               <input
@@ -126,6 +240,21 @@ export function StageIntegrations({ editable = true }: { editable?: boolean }) {
               >
                 Salvar
               </Button>
+              {whatsappEnabled && (
+                <Button
+                  variant="outline"
+                  disabled={
+                    !editable ||
+                    busy ||
+                    !testCode ||
+                    !hint ||
+                    !tracking.clickIds
+                  }
+                  onClick={() => void submit('POST', true)}
+                >
+                  Testar clique do WhatsApp
+                </Button>
+              )}
               <Button
                 variant="outline"
                 disabled={!editable || busy || !testCode || !hint}

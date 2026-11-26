@@ -1,4 +1,8 @@
-import { createHash } from 'node:crypto';
+import {
+  buildWhatsAppConversion,
+  hashedMetaContact,
+  type WhatsAppConversion,
+} from './meta-conversion';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { loadAiConfig } from '@/lib/ai/config';
 import { buildConversationContext } from '@/lib/ai/context';
@@ -31,7 +35,6 @@ interface Job {
   created_at: string;
   payload: Record<string, unknown>;
 }
-const hash = (v: string) => createHash('sha256').update(v).digest('hex');
 
 export async function drainStageJobs() {
   const db = supabaseAdmin();
@@ -130,7 +133,7 @@ async function executeStageJob(job: Job): Promise<'done' | 'skipped'> {
   if (!contact || !pipeline) return 'skipped';
   const { data: conversation } = await db
     .from('conversations')
-    .select('id,ai_autoreply_disabled,assigned_agent_id')
+    .select('id,ai_autoreply_disabled,assigned_agent_id,whatsapp_channel_key')
     .eq('contact_id', deal.contact_id)
     .eq('account_id', job.account_id)
     .order('updated_at', { ascending: false })
@@ -528,19 +531,55 @@ async function executeStageJob(job: Job): Promise<'done' | 'skipped'> {
   } else if (job.kind === 'meta') {
     if (!current?.metaEvent || current.metaEvent !== job.payload.event)
       return 'skipped';
-    const { data: integration } = await db
+    const { data: integration, error: integrationError } = await db
       .from('stage_integrations')
       .select('*')
       .eq('account_id', job.account_id)
       .maybeSingle();
+    if (integrationError) throw integrationError;
     if (!integration)
       throw new Error('Pixel e token da API de Conversões não configurados.');
-    const userData: Record<string, string[]> = {};
-    if (contact.email) userData.em = [hash(contact.email.trim().toLowerCase())];
-    if (contact.phone) userData.ph = [hash(contact.phone.replace(/\D/g, ''))];
+    const userData = hashedMetaContact(contact.email, contact.phone);
     if (!Object.keys(userData).length) return 'skipped';
+    const config = integration.whatsapp_conversion as WhatsAppConversion | null;
+    let messagingEvent = null;
+    if (config && conversation?.whatsapp_channel_key === config.channelKey) {
+      const { data: referral, error: referralError } = await db
+        .from('conversation_attributions')
+        .select('ctwa_clid,received_at')
+        .eq('account_id', job.account_id)
+        .eq('conversation_id', conversation.id)
+        .eq('contact_id', deal.contact_id)
+        .eq('provider', 'meta')
+        .maybeSingle();
+      if (referralError) throw referralError;
+      if (!referral?.ctwa_clid)
+        throw new Error(
+          'Conversão WhatsApp não enviada. Esta conversa não recebeu ctwa_clid do anúncio.'
+        );
+      // The first inbound message creates the deal before saving its referral.
+      if (
+        new Date(referral.received_at).getTime() >
+        new Date(job.created_at).getTime() + 5 * 60_000
+      )
+        return 'skipped';
+      messagingEvent = buildWhatsAppConversion({
+        config,
+        channelKey: conversation.whatsapp_channel_key,
+        clickId: referral.ctwa_clid,
+        eventName: current.metaEvent,
+        eventId:
+          current.metaEvent === 'Purchase'
+            ? `purchase-${job.account_id}-${deal.id}`
+            : job.id,
+        occurredAt: job.created_at,
+        value: Number(deal.value) || 0,
+        currency: deal.currency || 'BRL',
+      });
+      if (!messagingEvent) return 'skipped';
+    }
     const response = await fetch(
-      `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || 'v22.0'}/${integration.pixel_id}/events`,
+      `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || 'v22.0'}/${messagingEvent ? config!.datasetId : integration.pixel_id}/events`,
       {
         method: 'POST',
         signal: AbortSignal.timeout(15000),
@@ -550,7 +589,7 @@ async function executeStageJob(job: Job): Promise<'done' | 'skipped'> {
         },
         body: JSON.stringify({
           data: [
-            {
+            messagingEvent ?? {
               event_name: current.metaEvent,
               event_time: Math.floor(new Date(job.created_at).getTime() / 1000),
               event_id: job.id,
@@ -565,7 +604,11 @@ async function executeStageJob(job: Job): Promise<'done' | 'skipped'> {
         }),
       }
     );
-    if (!response.ok) throw new Error(`Meta retornou ${response.status}.`);
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.events_received)
+      throw new Error(
+        `Meta não confirmou o recebimento do evento (HTTP ${response.status}${result?.error?.code ? `, código ${result.error.code}` : ''}).`
+      );
   }
   return 'done';
 }
