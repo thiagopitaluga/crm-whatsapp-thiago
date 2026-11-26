@@ -11,7 +11,7 @@ import {
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
 import type { Conversation, ConversationStatus, Tag } from '@/types';
-import { Search, ChevronDown, X } from 'lucide-react';
+import { Search, ChevronDown, X, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
@@ -45,6 +45,8 @@ interface ConversationListProps {
   onChannelFilterChange?: (filter: InboxChannelFilter) => void;
   initialUnreadOnly?: boolean;
   initialMineOnly?: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -66,6 +68,8 @@ export function ConversationList({
   onChannelFilterChange,
   initialUnreadOnly,
   initialMineOnly,
+  onRefresh,
+  refreshing = false,
 }: ConversationListProps) {
   const t = useTranslations('Inbox.conversationList');
 
@@ -173,6 +177,7 @@ export function ConversationList({
   });
 
   useEffect(() => {
+    if (!accountId) return;
     const supabase = createClient();
     let cancelled = false;
 
@@ -180,6 +185,7 @@ export function ConversationList({
       const { data, error } = await supabase
         .from('conversations')
         .select(CONVERSATION_SELECT)
+        .eq('account_id', accountId)
         .order('last_message_at', { ascending: false });
 
       if (cancelled) return;
@@ -206,7 +212,7 @@ export function ConversationList({
     // `resyncToken` is included so the parent can force a refetch when
     // the realtime channel reconnects or the tab regains focus — catches
     // up on any events sent while the WS was disconnected or throttled.
-  }, [resyncToken]);
+  }, [accountId, resyncToken]);
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.
@@ -377,14 +383,36 @@ export function ConversationList({
             ))}
           </div>
         )}
-        <div className="relative">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-          <Input
-            value={search}
-            onChange={handleSearchChange}
-            placeholder={t('searchPlaceholder')}
-            className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 pl-9 text-sm"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+            <Input
+              value={search}
+              onChange={handleSearchChange}
+              placeholder={t('searchPlaceholder')}
+              className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 pl-9 text-sm"
+            />
+          </div>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing}
+              aria-label="Atualizar todas as conversas"
+              aria-busy={refreshing}
+              title="Atualizar todas as conversas"
+              className="border-border hover:bg-muted focus-visible:outline-primary inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-xs font-medium focus-visible:outline-2 disabled:cursor-wait disabled:opacity-60"
+            >
+              <RefreshCw
+                aria-hidden="true"
+                className={cn(
+                  'size-4',
+                  refreshing && 'animate-spin motion-reduce:animate-none'
+                )}
+              />
+              <span>{refreshing ? 'Atualizando…' : 'Atualizar'}</span>
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1">

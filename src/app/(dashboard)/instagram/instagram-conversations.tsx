@@ -82,10 +82,12 @@ export function InstagramConversations({
   initialConversation,
   onBack,
   hideList = false,
+  resyncToken = 0,
 }: {
   initialConversation?: InstagramInboxConversation;
   onBack?: () => void;
   hideList?: boolean;
+  resyncToken?: number;
 } = {}) {
   const { canSendMessages, user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>(
@@ -169,6 +171,13 @@ export function InstagramConversations({
         setError(e instanceof Error ? e.message : 'Falha ao carregar.');
     }
   }, []);
+  useEffect(() => {
+    if (!resyncToken) return;
+    const controller = new AbortController();
+    void loadList(controller.signal);
+    if (selected) void loadMessages(selected, controller.signal);
+    return () => controller.abort();
+  }, [resyncToken, loadList, loadMessages, selected]);
   useEffect(() => {
     const c = new AbortController();
     void loadList(c.signal);

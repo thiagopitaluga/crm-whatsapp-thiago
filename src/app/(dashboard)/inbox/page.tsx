@@ -89,6 +89,45 @@ function InboxPageInner() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const refreshController = useRef<AbortController | null>(null);
+  useEffect(() => () => refreshController.current?.abort(), [accountId]);
+  const handleRefreshAll = useCallback(async () => {
+    if (
+      !accountId ||
+      refreshController.current ||
+      (isAgent && inboxAllowed !== true)
+    )
+      return;
+    const controller = new AbortController();
+    refreshController.current = controller;
+    setRefreshingAll(true);
+    setResyncToken((value) => value + 1);
+    try {
+      const response = await fetch('/api/instagram/conversations', {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      const data = await response.json();
+      if (controller.signal.aborted) return;
+      if (!response.ok)
+        throw new Error(
+          data.error || 'Não foi possível atualizar as conversas do Instagram.'
+        );
+      setInstagramConversations(data.conversations ?? []);
+      setInstagramError(data.syncWarning ?? '');
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setInstagramError(
+          error instanceof Error
+            ? error.message
+            : 'Falha ao atualizar o Instagram.'
+        );
+    } finally {
+      refreshController.current = null;
+      setRefreshingAll(false);
+    }
+  }, [accountId, isAgent, inboxAllowed]);
   useEffect(() => {
     if (!accountId || (isAgent && inboxAllowed !== true)) return;
     const controller = new AbortController();
@@ -807,6 +846,8 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            onRefresh={() => void handleRefreshAll()}
+            refreshing={refreshingAll}
             additionalConversations={instagramConversations
               .filter((c) => !c.account_id || c.account_id === accountId)
               .map(instagramInboxItem)}
@@ -836,6 +877,7 @@ function InboxPageInner() {
               key={accountId + ':' + activeInstagram.id}
               initialConversation={activeInstagram}
               hideList
+              resyncToken={resyncToken}
               onBack={handleCloseConversation}
             />
           ) : (
