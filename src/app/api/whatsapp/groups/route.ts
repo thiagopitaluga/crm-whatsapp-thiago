@@ -10,6 +10,17 @@ type ConnectorGroup = { id?: unknown; subject?: unknown; participant_count?: unk
 export async function GET() {
   try {
     const { accountId, supabase } = await requireRole('agent')
+    const { data: claimed, error: claimError } = await supabase.rpc('claim_whatsapp_group_sync', { p_account_id: accountId })
+    if (claimError) throw claimError
+    if (!claimed) {
+      const { data: cached, error } = await supabase.from('whatsapp_groups')
+        .select('group_jid, subject, participant_count, is_admin, folder, labels, last_message_at')
+        .eq('account_id', accountId).order('subject')
+      if (error) throw error
+      return NextResponse.json({ groups: cached ?? [],
+        warning: 'Exibindo a última lista sincronizada. Aguarde alguns minutos para atualizar novamente.' },
+        { headers: { 'cache-control': 'no-store' } })
+    }
     const response = await fetchQrConnector(accountId, 'groups')
     if (!response.ok) {
       const { data: cached } = await supabase.from('whatsapp_groups')
