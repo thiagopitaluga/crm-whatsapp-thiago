@@ -382,6 +382,22 @@ async function fetchEvolutionQrConnector(
         pairing_code: pairingCode,
       });
     }
+    const existing = await evolutionRequest(
+      baseUrl,
+      apiKey,
+      `instance/connectionState/${instance}`,
+      { signal: timeout }
+    );
+    if (existing.ok) {
+      const state = await existing.json().catch(() => null);
+      if (state?.instance?.state === 'open')
+        return jsonResponse({ status: 'connected' });
+      return evolutionRequest(baseUrl, apiKey, `instance/connect/${instance}`, {
+        method: 'GET',
+        signal: timeout,
+      });
+    }
+    if (existing.status !== 404) return existing;
     const created = await createEvolutionInstance(
       baseUrl,
       apiKey,

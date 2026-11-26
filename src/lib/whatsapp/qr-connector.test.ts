@@ -67,6 +67,47 @@ describe('Evolution QR images', () => {
     vi.unstubAllEnvs();
   });
 
+  it('requests a fresh QR from an existing disconnected instance without recreating it', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ instance: { state: 'close' } }))
+      .mockResolvedValueOnce(
+        Response.json({ base64: 'data:image/png;base64,aW1hZ2U=', count: 1 })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await fetchQrConnector(ACCOUNT_ID, 'connect', {
+      method: 'POST',
+      body: '{}',
+    });
+    expect(response.status).toBe(200);
+    expect((await response.json()).count).toBe(1);
+    expect(fetchMock.mock.calls.map(([url]) => (url as URL).pathname)).toEqual([
+      '/instance/connectionState/organizap' + ACCOUNT_ID.replaceAll('-', ''),
+      '/instance/connect/organizap' + ACCOUNT_ID.replaceAll('-', ''),
+    ]);
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        (url as URL).pathname.includes('/create')
+      )
+    ).toBe(false);
+  });
+
+  it('keeps an already connected instance connected when QR generation is requested', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ instance: { state: 'open' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(
+      await (
+        await fetchQrConnector(ACCOUNT_ID, 'connect', {
+          method: 'POST',
+          body: '{}',
+        })
+      ).json()
+    ).toEqual({ status: 'connected' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it.each([false, true])(
     'returns the QR image for nested=%s',
     async (nested) => {
