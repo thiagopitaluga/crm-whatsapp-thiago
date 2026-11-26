@@ -47,8 +47,8 @@ export async function GET(request: NextRequest) {
   let stage = 'session';
   try {
     const ctx = await requireRole('admin');
-    const appId = process.env.INSTAGRAM_APP_ID;
-    const secret = process.env.INSTAGRAM_APP_SECRET;
+    const appId = process.env.INSTAGRAM_APP_ID?.trim();
+    const secret = process.env.INSTAGRAM_APP_SECRET?.trim();
     const origin =
       process.env.NEXT_PUBLIC_SITE_URL || 'https://organizap.tpxdigital.com';
     const redirect = new URL('/api/instagram/connect', origin).toString();

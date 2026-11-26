@@ -35,6 +35,62 @@ describe('Instagram Login token response', () => {
   });
 });
 describe('Instagram long-lived authorization', () => {
+  it.each([
+    { access_token: 'long-token', expires_in: '5184000' },
+    { data: [{ access_token: 'long-token', expires_in: 5184000 }] },
+  ])(
+    'accepts valid expiration and token response variants',
+    async (payload) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(payload))
+      );
+      expect(
+        (await exchangeInstagramToken('short', 'secret')).accessToken
+      ).toBe('long-token');
+    }
+  );
+  it.each([0, -1, 'invalid', '', null, 40000000])(
+    'rejects an invalid lifetime %j',
+    async (expires_in) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json({ access_token: 'token', expires_in }))
+      );
+      await expect(exchangeInstagramToken('short', 'secret')).rejects.toThrow(
+        'autorização válida'
+      );
+    }
+  );
+  it('records error codes without logging tokens or the app secret', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json(
+            {
+              error: {
+                code: 190,
+                error_subcode: 463,
+                message: 'private-token private-secret',
+              },
+            },
+            { status: 400 }
+          )
+        )
+      );
+      await expect(
+        exchangeInstagramToken('private-token', 'private-secret')
+      ).rejects.toThrow();
+      const logs = JSON.stringify(warn.mock.calls);
+      expect(logs).toContain('190');
+      expect(logs).not.toContain('private-token');
+      expect(logs).not.toContain('private-secret');
+    } finally {
+      warn.mockRestore();
+    }
+  });
   it('exchanges the temporary token and records the returned expiration', async () => {
     const fetcher = vi
       .fn()
