@@ -257,13 +257,11 @@ export default function PipelinesPage() {
       const query = supabase
         .from('deals')
         .select(
-          '*, stage_events:deal_stage_events(occurred_at), contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_notes(note_text,created_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
+          '*, contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_notes(note_text,created_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
         )
         .eq('pipeline_id', pipelineId)
         .eq('account_id', accountId)
-        .order('created_at', { ascending: false })
-        .order('occurred_at', { referencedTable: 'stage_events', ascending: false })
-        .limit(1, { referencedTable: 'stage_events' });
+        .order('created_at', { ascending: false });
       const { data, error } = await query;
       if (error) {
         console.error('Failed to load Kanban deals:', error);
@@ -271,6 +269,8 @@ export default function PipelinesPage() {
         return [];
       }
       setDealLoadError(false);
+      const { data: entries } = await supabase.rpc('get_pipeline_stage_entry_times', { p_pipeline_id: pipelineId });
+      const stageEntries = new Map<string, string>((entries ?? []).map((entry: { deal_id: string; occurred_at: string }) => [entry.deal_id, entry.occurred_at]));
       return (data ?? []).map((row) => {
         const contact = row.contact as
           | (Contact & {
@@ -283,7 +283,7 @@ export default function PipelinesPage() {
           | null;
         return {
           ...row,
-          stage_entered_at: row.stage_events?.[0]?.occurred_at ?? row.created_at,
+          stage_entered_at: stageEntries.get(row.id) ?? row.created_at,
           contact: contact
             ? {
                 ...contact,
