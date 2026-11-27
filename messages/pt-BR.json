@@ -634,7 +634,7 @@
       "newPipeline": "Novo funil de vendas",
       "pipelineName": "Nome do funil de vendas",
       "pipelineNamePlaceholder": "por exemplo, vendas empresariais",
-      "defaultStagesDesc": "Os estágios padrão (Novo Lead → Ganho → Perdido) serão criados automaticamente.",
+      "defaultStagesDesc": "As seis etapas padrão serão criadas automaticamente no idioma selecionado.",
       "cancel": "Cancelar",
       "creating": "Criando...",
       "createPipelineBtn": "Criar funil de vendas",
