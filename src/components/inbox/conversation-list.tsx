@@ -1,4 +1,11 @@
 'use client';
+import { InboxChannelTabs } from './inbox-channel-tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ContactAvatar } from '@/components/contacts/contact-avatar';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -11,7 +18,13 @@ import {
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
 import type { Conversation, ConversationStatus, Tag } from '@/types';
-import { Search, ChevronDown, X, RefreshCw } from 'lucide-react';
+import {
+  Search,
+  ChevronDown,
+  X,
+  RefreshCw,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
@@ -72,6 +85,7 @@ export function ConversationList({
   refreshing = false,
 }: ConversationListProps) {
   const t = useTranslations('Inbox.conversationList');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(
     () => [
@@ -358,34 +372,10 @@ export function ConversationList({
       {/* Search + Filter */}
       <div className="border-border min-w-0 shrink-0 space-y-2 border-b p-3">
         {onChannelFilterChange && (
-          <div
-            role="group"
-            aria-label="Canais da caixa de entrada"
-            className="bg-muted flex w-full min-w-0 gap-1 rounded-lg p-1"
-          >
-            {(
-              [
-                ['all', 'Todos'],
-                ['whatsapp', 'WhatsApp'],
-                ['instagram', 'Instagram'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={channelFilter === value}
-                onClick={() => onChannelFilterChange(value)}
-                className={cn(
-                  'focus-visible:outline-primary flex min-w-0 flex-1 basis-0 items-center justify-center overflow-hidden rounded-md px-1 py-2 text-center text-xs whitespace-nowrap transition-colors focus-visible:outline-2',
-                  channelFilter === value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-background'
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <InboxChannelTabs
+            value={channelFilter}
+            onChange={onChannelFilterChange}
+          />
         )}
         <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
@@ -397,6 +387,15 @@ export function ConversationList({
               className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 pl-9 text-sm"
             />
           </div>
+          <button
+            type="button"
+            title="Filtrar conversas"
+            aria-label="Filtrar conversas"
+            onClick={() => setFiltersOpen(true)}
+            className="border-border hover:bg-muted inline-flex size-9 shrink-0 items-center justify-center rounded-md border"
+          >
+            <SlidersHorizontal className="size-4" />
+          </button>
           {onRefresh && (
             <button
               type="button"
@@ -418,159 +417,172 @@ export function ConversationList({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs">
-              {activeFilter?.label ?? t('filterAll')}
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="border-border bg-popover"
-            >
-              {FILTER_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => setFilter(opt.value)}
-                  className={cn(
-                    'text-sm',
-                    filter === opt.value
-                      ? 'text-primary'
-                      : 'text-popover-foreground'
-                  )}
+        <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Filtrar conversas</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-wrap items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs">
+                  {activeFilter?.label ?? t('filterAll')}
+                  <ChevronDown className="h-3 w-3" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="border-border bg-popover"
                 >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  {FILTER_OPTIONS.map((opt) => (
+                    <DropdownMenuItem
+                      key={opt.value}
+                      onClick={() => setFilter(opt.value)}
+                      className={cn(
+                        'text-sm',
+                        filter === opt.value
+                          ? 'text-primary'
+                          : 'text-popover-foreground'
+                      )}
+                    >
+                      {opt.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          <select
-            aria-label="Responsável pela conversa"
-            className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
-            value={assignee}
-            onChange={(event) => setAssignee(event.target.value)}
-          >
-            <option value="">Responsável</option>
-            {user && <option value="mine">Minhas conversas</option>}
-            <option value="unassigned">Sem responsável</option>
-            {members
-              .filter(
-                (member) => member.user_id !== user?.id && member.full_name
-              )
-              .map((member) => (
-                <option key={member.user_id} value={member.user_id}>
-                  {member.full_name}
-                </option>
-              ))}
-          </select>
-          {!!connectionOptions.size && (
-            <select
-              aria-label="Número ou perfil da conversa"
-              className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
-              value={activeConnection}
-              onChange={(event) => setConnection(event.target.value)}
-            >
-              <option value="">Número ou perfil</option>
-              {Array.from(connectionOptions, ([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {tags.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
-                  selectedTagIds.length > 0
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
+              <select
+                aria-label="Responsável pela conversa"
+                className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
+                value={assignee}
+                onChange={(event) => setAssignee(event.target.value)}
               >
-                {t('tags')}
-                {selectedTagIds.length > 0 && (
-                  <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
-                    {selectedTagIds.length}
-                  </span>
-                )}
-                <ChevronDown className="h-3 w-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="border-border bg-popover max-h-64 w-56"
-              >
-                {tags.map((t) => (
-                  <DropdownMenuCheckboxItem
-                    key={t.id}
-                    checked={selectedTagIds.includes(t.id)}
-                    onCheckedChange={() => toggleTag(t.id)}
-                    className="text-popover-foreground text-sm"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: t.color }}
-                      />
-                      <span className="truncate">{t.name}</span>
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {companies.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  'hover:bg-muted inline-flex h-7 max-w-40 items-center justify-center gap-1 rounded-md px-2 text-xs',
-                  selectedCompany
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <span className="truncate">
-                  {selectedCompany ?? t('company')}
-                </span>
-                <ChevronDown className="h-3 w-3 shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="border-border bg-popover max-h-64 w-56"
-              >
-                <DropdownMenuItem
-                  onClick={() => setSelectedCompany(null)}
-                  className={cn(
-                    'text-sm',
-                    selectedCompany === null
-                      ? 'text-primary'
-                      : 'text-popover-foreground'
-                  )}
+                <option value="">Responsável</option>
+                {user && <option value="mine">Minhas conversas</option>}
+                <option value="unassigned">Sem responsável</option>
+                {members
+                  .filter(
+                    (member) => member.user_id !== user?.id && member.full_name
+                  )
+                  .map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {member.full_name}
+                    </option>
+                  ))}
+              </select>
+              {!!connectionOptions.size && (
+                <select
+                  aria-label="Número ou perfil da conversa"
+                  className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
+                  value={activeConnection}
+                  onChange={(event) => setConnection(event.target.value)}
                 >
-                  {t('allCompanies')}
-                </DropdownMenuItem>
-                {companies.map((co) => (
-                  <DropdownMenuItem
-                    key={co}
-                    onClick={() => setSelectedCompany(co)}
+                  <option value="">Número ou perfil</option>
+                  {Array.from(connectionOptions, ([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {tags.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
                     className={cn(
-                      'text-sm',
-                      selectedCompany === co
+                      'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
+                      selectedTagIds.length > 0
                         ? 'text-primary'
-                        : 'text-popover-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
                     )}
                   >
-                    <span className="truncate">{co}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+                    {t('tags')}
+                    {selectedTagIds.length > 0 && (
+                      <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
+                        {selectedTagIds.length}
+                      </span>
+                    )}
+                    <ChevronDown className="h-3 w-3" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="border-border bg-popover max-h-64 w-56"
+                  >
+                    {tags.map((t) => (
+                      <DropdownMenuCheckboxItem
+                        key={t.id}
+                        checked={selectedTagIds.includes(t.id)}
+                        onCheckedChange={() => toggleTag(t.id)}
+                        className="text-popover-foreground text-sm"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: t.color }}
+                          />
+                          <span className="truncate">{t.name}</span>
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
+              {companies.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={cn(
+                      'hover:bg-muted inline-flex h-7 max-w-40 items-center justify-center gap-1 rounded-md px-2 text-xs',
+                      selectedCompany
+                        ? 'text-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <span className="truncate">
+                      {selectedCompany ?? t('company')}
+                    </span>
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="border-border bg-popover max-h-64 w-56"
+                  >
+                    <DropdownMenuItem
+                      onClick={() => setSelectedCompany(null)}
+                      className={cn(
+                        'text-sm',
+                        selectedCompany === null
+                          ? 'text-primary'
+                          : 'text-popover-foreground'
+                      )}
+                    >
+                      {t('allCompanies')}
+                    </DropdownMenuItem>
+                    {companies.map((co) => (
+                      <DropdownMenuItem
+                        key={co}
+                        onClick={() => setSelectedCompany(co)}
+                        className={cn(
+                          'text-sm',
+                          selectedCompany === co
+                            ? 'text-primary'
+                            : 'text-popover-foreground'
+                        )}
+                      >
+                        <span className="truncate">{co}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+
+            <button
+              className="bg-primary text-primary-foreground rounded-md p-2"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Aplicar filtros
+            </button>
+          </DialogContent>
+        </Dialog>
         {hasContactFilters && (
           <div className="flex flex-wrap items-center gap-1">
             {selectedTagIds.map((id) => {

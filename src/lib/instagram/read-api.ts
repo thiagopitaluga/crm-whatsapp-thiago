@@ -190,11 +190,12 @@ export async function syncInstagramInbox(
 
 export async function readInstagramInsights(
   channel: InstagramChannel,
-  days: number
+  days: number,
+  range?: { since: number; until: number }
 ) {
   const api = new InstagramReadApi(decrypt(channel.access_token_encrypted));
-  const until = Math.floor(Date.now() / 1000);
-  const since = until - days * 86400;
+  const until = range?.until ?? Math.floor(Date.now() / 1000);
+  const since = range?.since ?? until - days * 86400;
   const profile = await api.get(channel.instagram_id, {
     fields:
       'id,username,name,profile_picture_url,followers_count,follows_count,media_count',
@@ -257,8 +258,31 @@ export async function readInstagramInsights(
       }
     })
   );
+  let posts: number | null = null;
+  if (range) {
+    try {
+      const media = await api.list(
+        channel.instagram_id + '/media',
+        { fields: 'id,timestamp', limit: '100' },
+        10
+      );
+      const timestamps = media
+        .map((item) => Date.parse(item.timestamp) / 1000)
+        .filter(Number.isFinite);
+      if (
+        media.length < 1000 ||
+        (timestamps.length && Math.min(...timestamps) <= since)
+      )
+        posts = timestamps.filter(
+          (time) => time >= since && time < until
+        ).length;
+    } catch {
+      /* This metric remains unavailable instead of becoming zero. */
+    }
+  }
   return {
     channelId: channel.id,
+    posts,
     profile,
     days,
     metrics,

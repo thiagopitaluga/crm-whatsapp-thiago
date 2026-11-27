@@ -1,3 +1,4 @@
+import type { ServiceMetrics, OrganicReport } from './report-service-metrics';
 import type { MetaInsightRow } from './dashboard';
 
 export type MetaReportFrequency = 'weekly' | 'monthly';
@@ -228,6 +229,9 @@ function periodLabel(from: string, to: string) {
 
 export function renderMetaWhatsAppReport(input: {
   recipientName: string;
+  accountName?: string;
+  service?: ServiceMetrics | null;
+  organic?: OrganicReport;
   frequency: MetaReportFrequency;
   period: MetaReportPeriod;
   current: MetaReportMetrics;
@@ -253,8 +257,12 @@ export function renderMetaWhatsAppReport(input: {
   return [
     heading,
     '',
+    `*${input.frequency === 'weekly' ? 'Resumo da sua semana' : 'Resumo do mês'} — ${input.accountName || input.recipientName}*`,
     `📅 ${periodLabel(input.period.from, input.period.to)}`,
     '',
+    `No período, foram registradas ${integer.format(current.opportunities)} oportunidades com investimento de ${money(current.spend)}.`,
+    '',
+    '*📱 Meta Ads (Instagram/Facebook)*',
     line(
       'Investimento',
       money(current.spend),
@@ -283,6 +291,7 @@ export function renderMetaWhatsAppReport(input: {
       current.ctr,
       previous.ctr
     ),
+    `• Custo por clique: ${money(current.clicks ? current.spend / current.clicks : null)}`,
     line(
       'Leads de formulário',
       integer.format(current.formLeads),
@@ -318,5 +327,70 @@ export function renderMetaWhatsAppReport(input: {
       current.costPerOpportunity,
       previous.costPerOpportunity
     ),
+    ...renderSupplement(input.service, input.organic),
   ].join('\n');
+}
+
+function renderSupplement(
+  service?: ServiceMetrics | null,
+  organic?: OrganicReport
+) {
+  const value = (n: number | null | undefined) =>
+    n === null || n === undefined ? 'Não disponível' : integer.format(n);
+  const lines = ['', '*📸 Instagram (orgânico)*'];
+  if (!organic?.connected) lines.push('Instagram não conectado.');
+  else {
+    for (const profile of organic.profiles)
+      lines.push(
+        '@' + profile.name,
+        '• Total de seguidores (atual): ' + value(profile.followers),
+        '• Seguidores no período: ' +
+          (profile.growth === null
+            ? 'Não disponível'
+            : (profile.growth >= 0 ? '+' : '') + value(profile.growth)),
+        '• Taxa de engajamento (interações/alcance): ' +
+          (profile.engagementRate === null
+            ? 'Não disponível'
+            : decimal.format(profile.engagementRate) + '%'),
+        '• Interações: ' + value(profile.interactions),
+        '• Publicações no período: ' + value(profile.posts),
+        '• Alcance no Instagram: ' + value(profile.reach),
+        '• Visitas ao perfil: ' + value(profile.visits)
+      );
+    if (organic.error || !organic.profiles.length)
+      lines.push(
+        'Não foi possível consultar todas as métricas do Instagram neste período.'
+      );
+  }
+  lines.push('', '*💬 Atendimento no WhatsApp*');
+  if (!service)
+    lines.push('Dados de atendimento indisponíveis para este período.');
+  else
+    lines.push(
+      '• Conversas recebidas: ' + value(service.received),
+      '• Respondidas: ' +
+        value(service.replied) +
+        ' de ' +
+        value(service.received) +
+        (service.received
+          ? ' (' +
+            decimal.format((service.replied / service.received) * 100) +
+            '%)'
+          : ''),
+      '• Tempo médio até a 1ª resposta: ' +
+        (service.averageSeconds === null
+          ? 'Não disponível'
+          : service.averageSeconds < 60
+            ? Math.round(service.averageSeconds) + 's'
+            : service.averageSeconds < 3600
+              ? decimal.format(service.averageSeconds / 60) + 'min'
+              : decimal.format(service.averageSeconds / 3600) + 'h'),
+      '• Respondidas em até 5 minutos: ' + value(service.withinFiveMinutes),
+      '• Respondidas na 1ª hora: ' +
+        value(service.withinHour) +
+        ' de ' +
+        value(service.received),
+      '• Sem resposta até o fim do período: ' + value(service.unanswered)
+    );
+  return lines;
 }

@@ -131,5 +131,43 @@ describe('Meta WhatsApp report', () => {
     expect(report).toContain('• Leads de formulário: 9');
     expect(report).toContain('• Custo por lead de formulário: R$ 16,17');
     expect(report).not.toContain('automaticamente');
+    expect(report).toContain(
+      '*📸 Instagram (orgânico)*\nInstagram não conectado.'
+    );
+    const enriched = renderMetaWhatsAppReport({
+      recipientName: 'Morgana',
+      frequency: 'weekly',
+      period,
+      current: metrics,
+      previous: metrics,
+      service: {
+        received: 10,
+        replied: 9,
+        unanswered: 1,
+        averageSeconds: 90,
+        withinFiveMinutes: 2,
+        withinHour: 4,
+      },
+      organic: {
+        connected: true,
+        profiles: [
+          {
+            name: 'perfil',
+            followers: 1136,
+            growth: 12,
+            engagementRate: 0.7,
+            interactions: 16,
+            posts: 2,
+            reach: 12910,
+            visits: 205,
+          },
+        ],
+      },
+    });
+    expect(enriched).not.toContain('Instagram não conectado');
+    expect(enriched).toContain('• Seguidores no período: +12');
+    expect(enriched).toContain('• Publicações no período: 2');
+    expect(enriched).toContain('• Respondidas: 9 de 10 (90,00%)');
+    expect(enriched).toContain('• Sem resposta até o fim do período: 1');
   });
 });

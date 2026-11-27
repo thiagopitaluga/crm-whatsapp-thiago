@@ -1,5 +1,5 @@
 import type { Contact, Conversation } from '@/types';
-export type InboxChannelFilter = 'all' | 'whatsapp' | 'instagram';
+export type InboxChannelFilter = 'all' | 'whatsapp' | 'instagram' | 'groups';
 export type InstagramInboxConversation = {
   id: string;
   account_id?: string;

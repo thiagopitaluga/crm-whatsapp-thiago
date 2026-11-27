@@ -1,3 +1,4 @@
+import { loadReportContext } from '@/lib/meta-ads/report-context';
 import { serviceEnabled } from '@/lib/billing/server-access';
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
@@ -213,7 +214,9 @@ async function processSchedule(schedule: Schedule) {
       period.comparisonFrom,
       period.comparisonTo
     );
+    const context = await loadReportContext(db, schedule.account_id, period);
     const message = renderMetaWhatsAppReport({
+      ...context,
       recipientName: schedule.recipient_name,
       frequency: schedule.frequency,
       period,

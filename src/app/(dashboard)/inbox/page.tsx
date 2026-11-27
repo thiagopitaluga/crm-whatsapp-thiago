@@ -19,6 +19,7 @@ import { useRealtime } from '@/hooks/use-realtime';
 import { useAuth } from '@/hooks/use-auth';
 import { ConversationList } from '@/components/inbox/conversation-list';
 import { MessageThread } from '@/components/inbox/message-thread';
+import { GroupInbox } from '@/components/inbox/group-inbox';
 import { ContactSidebar } from '@/components/inbox/contact-sidebar';
 import { InstagramConversations } from '../instagram/instagram-conversations';
 import {
@@ -63,7 +64,9 @@ function InboxPageInner() {
     searchParams.get('source') === 'instagram' ? null : searchParams.get('c');
   const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>(() => {
     const value = searchParams.get('channel');
-    return value === 'whatsapp' || value === 'instagram' ? value : 'all';
+    return value === 'whatsapp' || value === 'instagram' || value === 'groups'
+      ? value
+      : 'all';
   });
   const [instagramConversations, setInstagramConversations] = useState<
     InstagramInboxConversation[]
@@ -841,6 +844,9 @@ function InboxPageInner() {
       </div>
     );
   }
+
+  if (channelFilter === 'groups')
+    return <GroupInbox key={accountId} onChannelChange={changeChannel} />;
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
