@@ -17,7 +17,7 @@ export async function GET(_request: Request, context: Context) {
     if (error) throw error;
     if (!campaign) return NextResponse.json({ error: 'Disparo não encontrado.' }, { status: 404 });
     const { data: recipients, error: recipientError } = await db.from('evolution_campaign_recipients')
-      .select('id,phone,contact_name,status,sent_at,replied_at,error_message,sender_channel_id,message_variant_index')
+      .select('id,phone,contact_name,sequence_no,status,sent_at,replied_at,error_message,sender_channel_id,message_variant_index')
       .eq('account_id', accountId).eq('campaign_id', id).order('sequence_no').limit(5000);
     if (recipientError) throw recipientError;
     return NextResponse.json({ campaign, recipients: recipients ?? [] }, { headers: { 'cache-control': 'no-store' } });
