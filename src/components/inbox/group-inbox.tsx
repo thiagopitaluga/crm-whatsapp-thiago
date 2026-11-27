@@ -1,11 +1,13 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw, Users } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Send, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { InboxChannelTabs } from './inbox-channel-tabs';
 import type { InboxChannelFilter } from '@/lib/inbox/instagram';
 import { cn } from '@/lib/utils';
+import { canSendMessages } from '@/lib/auth/roles';
 type Group = {
   group_jid: string;
   subject: string;
@@ -25,13 +27,16 @@ export function GroupInbox({
 }: {
   onChannelChange: (value: InboxChannelFilter) => void;
 }) {
-  const { accountId } = useAuth();
+  const { accountId, accountRole } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]),
     [selected, setSelected] = useState<Group | null>(null),
     [messages, setMessages] = useState<Message[]>([]);
   const [search, setSearch] = useState(''),
     [loading, setLoading] = useState(true),
     [error, setError] = useState('');
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [messageRefresh, setMessageRefresh] = useState(0);
   const load = useCallback(async () => {
     if (!accountId) return;
     const db = createClient();
@@ -48,8 +53,6 @@ export function GroupInbox({
     setLoading(false);
   }, [accountId]);
   useEffect(() => {
-    // Initial account-scoped database fetch, not derived render state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
   useEffect(() => {
@@ -76,7 +79,32 @@ export function GroupInbox({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [accountId, selected, loading]);
+  }, [accountId, selected, messageRefresh]);
+  async function sendMessage() {
+    if (!selected || !draft.trim() || sending) return;
+    setSending(true);
+    try {
+      const response = await fetch('/api/whatsapp/groups/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupJid: selected.group_jid,
+          text: draft.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok)
+        throw new Error(result?.error || 'Não foi possível enviar ao grupo.');
+      setDraft('');
+      setMessageRefresh((value) => value + 1);
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : 'Falha ao enviar mensagem.'
+      );
+    } finally {
+      setSending(false);
+    }
+  }
   return (
     <div className="-m-4 flex h-[calc(100dvh-3.5rem)] min-h-0 overflow-hidden sm:-m-6">
       <aside
@@ -124,6 +152,7 @@ export function GroupInbox({
                 key={group.group_jid}
                 onClick={() => {
                   setMessages([]);
+                  setDraft('');
                   setSelected(group);
                 }}
                 className={cn(
@@ -207,10 +236,39 @@ export function GroupInbox({
                 </p>
               )}
             </div>
-            <p className="text-muted-foreground shrink-0 border-t p-3 text-xs">
-              Histórico disponível a partir da ativação do monitoramento de
-              grupos.
-            </p>
+            {accountRole && canSendMessages(accountRole) && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void sendMessage();
+                }}
+                className="bg-card flex shrink-0 items-end gap-2 border-t p-3"
+              >
+                <textarea
+                  aria-label="Mensagem para o grupo"
+                  placeholder="Digite uma mensagem para o grupo…"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      void sendMessage();
+                    }
+                  }}
+                  rows={2}
+                  maxLength={4096}
+                  className="bg-background min-h-12 min-w-0 flex-1 resize-none rounded-lg border p-2 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={sending || !draft.trim()}
+                  aria-label="Enviar mensagem para o grupo"
+                  className="bg-primary text-primary-foreground flex size-11 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                >
+                  <Send className="size-4" />
+                </button>
+              </form>
+            )}
           </>
         ) : (
           <p className="text-muted-foreground m-auto text-sm">

@@ -204,7 +204,7 @@ export function MediaAudioBubble({
   const { downloading, download } = useMediaDownload(message, t);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex max-w-full min-w-0 items-center gap-2">
       {/* `preload="none"` keeps every thread lightweight: the browser only
           fetches the audio after the agent presses play, while still showing
           the familiar in-context player instead of an opaque attachment. */}
@@ -212,7 +212,7 @@ export function MediaAudioBubble({
         src={message.media_url}
         controls
         preload="none"
-        className="max-w-60"
+        className="w-60 max-w-full min-w-0"
       />
       <MediaActionButton
         icon={Download}
@@ -234,7 +234,7 @@ export function MediaDocumentBubble({
   const { downloading, download } = useMediaDownload(message, t);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex max-w-full min-w-0 items-center gap-2">
       <a
         href={message.media_url}
         target="_blank"
@@ -242,7 +242,7 @@ export function MediaDocumentBubble({
         className="bg-muted/50 hover:bg-muted flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-sm"
       >
         <FileText className="text-muted-foreground h-5 w-5 shrink-0" />
-        <span className="truncate">
+        <span className="min-w-0 break-all whitespace-normal">
           {message.content_text || t('document')}
         </span>
       </a>

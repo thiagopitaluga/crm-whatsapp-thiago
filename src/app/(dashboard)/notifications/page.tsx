@@ -119,7 +119,9 @@ export default function NotificationsPage() {
   const handleClick = useCallback(
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
-      if (n.conversation_id) {
+      if (n.action_url && /^\/(?!\/)/.test(n.action_url)) {
+        router.push(n.action_url);
+      } else if (n.conversation_id) {
         router.push(`/inbox?c=${n.conversation_id}`);
       } else if (n.type === 'group_broadcast') {
         router.push('/groups');

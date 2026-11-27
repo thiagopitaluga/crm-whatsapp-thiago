@@ -164,11 +164,15 @@ export async function dispatchNotifications() {
                     n.type === 'new_message'
                       ? 'Você recebeu uma nova mensagem.'
                       : n.title,
-                  url: n.conversation_id
-                    ? `/inbox?c=${n.conversation_id}`
-                    : n.type === 'task_due'
-                      ? '/tasks'
-                      : '/notifications',
+                  url:
+                    typeof n.action_url === 'string' &&
+                    /^\/(?!\/)/.test(n.action_url)
+                      ? n.action_url
+                      : n.conversation_id
+                        ? `/inbox?c=${n.conversation_id}`
+                        : n.type === 'task_due'
+                          ? '/tasks'
+                          : '/notifications',
                   tag: n.id,
                   badgeCount: unread.error ? undefined : unread.count,
                 }),

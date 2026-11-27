@@ -197,7 +197,13 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned' | 'group_broadcast' | 'new_message' | 'task_due' | 'sale_won' | 'system';
+export type NotificationType =
+  | 'conversation_assigned'
+  | 'group_broadcast'
+  | 'new_message'
+  | 'task_due'
+  | 'sale_won'
+  | 'system';
 
 export interface Notification {
   id: string;
@@ -206,6 +212,7 @@ export interface Notification {
   user_id: string;
   type: NotificationType;
   conversation_id?: string;
+  action_url?: string | null;
   contact_id?: string;
   /** Who triggered it. Null when an automation/system assigned it. */
   actor_user_id?: string;
@@ -421,7 +428,7 @@ export interface Deal {
   updated_at?: string;
   /** Hydrated by the Kanban query to show a contact's latest message. */
   contact?: Contact & {
-    contact_notes?: Pick<ContactNote,'note_text'|'created_at'>[];
+    contact_notes?: Pick<ContactNote, 'note_text' | 'created_at'>[];
     conversations?: Pick<
       Conversation,
       'last_message_text' | 'last_message_at'

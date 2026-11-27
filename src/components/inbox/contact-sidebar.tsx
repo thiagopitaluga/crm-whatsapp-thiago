@@ -117,7 +117,7 @@ export function ContactSidebar({
   return (
     <aside
       aria-label="Ficha do contato"
-      className="bg-card flex h-full w-80 flex-col border-l"
+      className="bg-card flex h-full min-h-0 w-full min-w-0 flex-col border-l lg:w-80"
     >
       <header className="shrink-0 border-b px-4 pt-5 pb-3 text-center">
         <ContactAvatar
