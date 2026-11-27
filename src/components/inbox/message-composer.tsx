@@ -240,13 +240,14 @@ export function MessageComposer({
     if (!trimmed || sending) return;
 
     setSending(true);
+    setText('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    const restoreDraft = () => setText((current) => current ? `${text}\n${current}` : text);
     try {
       const result = await onSend(trimmed, replyTo?.id);
-      if (result === 'keep-draft') return;
-      setText((current) => current === text ? '' : current);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
+      if (result === 'keep-draft') restoreDraft();
+    } catch {
+      restoreDraft();
     } finally {
       setSending(false);
     }
