@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   Deal,
   DealStatus,
@@ -11,6 +11,8 @@ import type {
 } from '@/types';
 import {
   CalendarPlus,
+  CalendarDays,
+  Clock,
   Kanban,
   CheckCircle2,
   CircleX,
@@ -94,7 +96,19 @@ export function DealCard({
 
   const contactName =
     deal.contact?.name?.trim() || deal.title || t('noContact');
-  const phone = deal.contact?.phone || t('noPhone');
+  const rawPhone = deal.contact?.phone || '';
+  const digits = rawPhone.replace(/\D/g, '');
+  const phone = /^55\d{10,11}$/.test(digits)
+    ? digits.replace(/^55(\d{2})(\d{4,5})(\d{4})$/, '+55 ($1) $2-$3')
+    : rawPhone || t('noPhone');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  const enteredAt = deal.stage_entered_at || deal.created_at;
+  const elapsedHours = Math.max(0, Math.floor((now - new Date(enteredAt).getTime()) / 3600000));
+  const stageAge = elapsedHours >= 24 ? Math.floor(elapsedHours / 24) + 'd' : elapsedHours + 'h';
   const latestConversation = deal.contact?.conversations?.reduce<
     (typeof deal.contact.conversations)[number] | undefined
   >(
@@ -218,21 +232,16 @@ export function DealCard({
         <p className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 text-xs">
           <Phone className="size-3 shrink-0" />
           <span className="min-w-0 truncate">{phone}</span>
-          {layout.show_created_at && deal.contact?.created_at ? (
-            <span
-              className="ml-auto shrink-0 text-[10px] whitespace-nowrap"
-              title={`Criado em ${new Date(deal.contact.created_at).toLocaleString('pt-BR')}`}
-            >
-              {new Date(deal.contact.created_at).toLocaleString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
-          ) : null}
         </p>
+        <div className="text-muted-foreground mt-2 flex items-center justify-between gap-2 text-[10px]">
+          {layout.show_created_at && <span className="flex items-center gap-1" title="Data de entrada do lead">
+            <CalendarDays className="size-3" />
+            {new Date(deal.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>}
+          <span className="ml-auto flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-medium" title={'Nesta etapa desde ' + new Date(enteredAt).toLocaleString('pt-BR')}>
+            <Clock className="size-3" />{stageAge}
+          </span>
+        </div>
 
         {layout.show_assignee && assigneeName ? (
           <div

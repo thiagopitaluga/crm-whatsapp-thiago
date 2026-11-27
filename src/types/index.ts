@@ -398,6 +398,7 @@ export interface PipelineStage {
 export type DealStatus = 'open' | 'won' | 'lost';
 
 export interface Deal {
+  stage_entered_at?: string;
   id: string;
   user_id: string;
   pipeline_id: string;

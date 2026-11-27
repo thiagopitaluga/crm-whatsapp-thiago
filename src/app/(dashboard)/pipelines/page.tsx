@@ -257,11 +257,13 @@ export default function PipelinesPage() {
       const query = supabase
         .from('deals')
         .select(
-          '*, contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_notes(note_text,created_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
+          '*, stage_events:deal_stage_events(occurred_at), contact:contacts!inner(*, conversations(last_message_text,last_message_at), contact_notes(note_text,created_at), contact_tags(tags(*)), contact_custom_values(value, custom_field:custom_fields(id,field_name))), assignee:profiles!deals_assigned_to_fkey(*)'
         )
         .eq('pipeline_id', pipelineId)
         .eq('account_id', accountId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('occurred_at', { referencedTable: 'stage_events', ascending: false })
+        .limit(1, { referencedTable: 'stage_events' });
       const { data, error } = await query;
       if (error) {
         console.error('Failed to load Kanban deals:', error);
@@ -281,6 +283,7 @@ export default function PipelinesPage() {
           | null;
         return {
           ...row,
+          stage_entered_at: row.stage_events?.[0]?.occurred_at ?? row.created_at,
           contact: contact
             ? {
                 ...contact,
@@ -486,7 +489,7 @@ export default function PipelinesPage() {
       // Show the selected column immediately, then keep it only after the
       // database confirms the account-scoped update succeeded.
       setDeals((prev) =>
-        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d))
+        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId, stage_entered_at: new Date().toISOString() } : d))
       );
       const { data, error } = await supabase
         .from('deals')
@@ -498,7 +501,7 @@ export default function PipelinesPage() {
       if (error || !data) {
         setDeals((prev) =>
           prev.map((deal) =>
-            deal.id === dealId ? { ...deal, stage_id: previousStageId } : deal
+            deal.id === dealId ? { ...deal, stage_id: previousStageId, stage_entered_at: currentDeal.stage_entered_at } : deal
           )
         );
         toast.error(t('toastFailedMoveDeal'));
