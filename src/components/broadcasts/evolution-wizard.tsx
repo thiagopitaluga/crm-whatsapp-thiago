@@ -86,7 +86,7 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
   const [delivery, setDelivery] = useState<CampaignDelivery>({
     senderIds: [], dailyLimit: 100, windowStart: '09:00', windowEnd: '18:00', slots: [],
     weekdays: [1,2,3,4,5], minDelaySeconds: 45, maxDelaySeconds: 120,
-    batchSize: 30, batchPauseMinutes: 5, sendNow: true, scheduledAt: '', timeZone: 'America/Sao_Paulo',
+    batchSize: 30, batchPauseMinutes: 5, sendNow: true, scheduledAt: '', endAt: '', timeZone: 'America/Sao_Paulo',
   });
   const [onSent, setOnSent] = useState(emptyAction);
   const [onReply, setOnReply] = useState(emptyAction);
@@ -205,7 +205,8 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
       const response = await fetch('/api/whatsapp/evolution-campaigns', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), messages, audience,
-          delivery: { ...delivery, scheduledAt: delivery.sendNow ? '' : new Date(delivery.scheduledAt).toISOString() },
+          delivery: { ...delivery, scheduledAt: delivery.sendNow ? '' : new Date(delivery.scheduledAt).toISOString(),
+            endAt: delivery.endAt ? new Date(delivery.endAt).toISOString() : '' },
           onSent, onReply, consentConfirmed: confirmed }),
       });
       const result = await response.json() as { error?: string; campaign_id?: string; recipients?: number };
@@ -365,6 +366,7 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
         <label className="space-y-1 text-sm">Pausa após lote (minutos)<input type="number" min={1} className={control} value={delivery.batchPauseMinutes} onChange={(event) => setDelivery((current) => ({ ...current, batchPauseMinutes: Number(event.target.value) }))} /></label>
         <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={delivery.sendNow} onChange={(event) => setDelivery((current) => ({ ...current, sendNow: event.target.checked }))} /> Iniciar na próxima janela permitida</label>
         {!delivery.sendNow && <label className="space-y-1 text-sm sm:col-span-2">Agendar para<input type="datetime-local" className={control} value={delivery.scheduledAt} onChange={(event) => setDelivery((current) => ({ ...current, scheduledAt: event.target.value }))} /></label>}
+        <label className="space-y-1 text-sm sm:col-span-2">Encerrar em (opcional)<input type="datetime-local" className={control} value={delivery.endAt} onChange={(event) => setDelivery((current) => ({ ...current, endAt: event.target.value }))} /></label>
         <p className="text-xs text-muted-foreground sm:col-span-2">O agendador verifica campanhas a cada minuto. Os intervalos são mínimos; a entrega pode ocorrer depois do horário calculado.</p>
       </div>
       <ActionFields title="Ao enviar (opcional)" value={onSent} onChange={setOnSent} pipelines={pipelines} stages={stages} tags={tags} profiles={profiles} />
@@ -385,6 +387,7 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
         <p><b>Intervalo:</b> {delivery.minDelaySeconds}–{delivery.maxDelaySeconds} segundos</p>
         <p><b>Lote:</b> {delivery.batchSize} mensagens + {delivery.batchPauseMinutes} min de pausa</p>
         <p><b>Início:</b> {delivery.sendNow ? 'próxima janela permitida' : new Date(delivery.scheduledAt).toLocaleString('pt-BR')}</p>
+        <p><b>Encerramento:</b> {delivery.endAt ? new Date(delivery.endAt).toLocaleString('pt-BR') : 'ao terminar os contatos'}</p>
         <p><b>Ações ao enviar:</b> {Object.values(onSent).filter(Boolean).length || 'nenhuma'}</p>
         <p><b>Ações após resposta:</b> {Object.values(onReply).filter(Boolean).length || 'nenhuma'}</p>
       </div>

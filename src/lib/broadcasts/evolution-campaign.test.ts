@@ -38,4 +38,11 @@ describe('Evolution campaigns', () => {
     expect(validateSpintax('{Olá|}')).not.toBeNull();
     expect('error' in parseCampaignInput({ ...input, messages: [{ text: 'Olá {Oi|' }] })).toBe(true);
   });
+  it('accepts an end date and rejects a cutoff before the campaign starts', () => {
+    const endAt = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    const valid = parseCampaignInput({ ...input, delivery: { ...input.delivery, endAt } });
+    expect('value' in valid && valid.value.delivery.endAt).toBe(endAt);
+    const invalid = parseCampaignInput({ ...input, delivery: { ...input.delivery, endAt: '2020-01-01T00:00:00Z' } });
+    expect('error' in invalid).toBe(true);
+  });
 });

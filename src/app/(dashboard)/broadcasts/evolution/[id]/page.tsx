@@ -12,7 +12,7 @@ type Campaign = { id: string; name: string; status: string; total_recipients: nu
   sent_count: number; failed_count: number; last_error: string | null; scheduled_at: string | null;
   message_variants: Array<{ text: string; mediaName?: string }>;
   delivery_config: { dailyLimit: number; windowStart: string; windowEnd: string; weekdays: number[];
-    minDelaySeconds: number; maxDelaySeconds: number } };
+    minDelaySeconds: number; maxDelaySeconds: number; endAt?: string } };
 
 export default function EvolutionCampaignPage() {
   const { id } = useParams<{ id: string }>();
@@ -66,7 +66,16 @@ export default function EvolutionCampaignPage() {
     ].map(([label,value]) => <div key={label} className="rounded-xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></div>)}</div>
     <div className="rounded-xl border border-border bg-card p-4 text-sm"><p><b>Agendado:</b> {campaign.scheduled_at ? new Date(campaign.scheduled_at).toLocaleString('pt-BR') : '—'}</p>
       <p><b>Janela:</b> {campaign.delivery_config.windowStart}–{campaign.delivery_config.windowEnd} · limite de {campaign.delivery_config.dailyLimit}/dia</p>
+      <p><b>Intervalo:</b> {campaign.delivery_config.minDelaySeconds}–{campaign.delivery_config.maxDelaySeconds} segundos</p>
+      {campaign.delivery_config.endAt && <p><b>Encerramento:</b> {new Date(campaign.delivery_config.endAt).toLocaleString('pt-BR')}</p>}
       <p><b>Mensagens em rotação:</b> {campaign.message_variants.length}</p></div>
+    <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm"><h2 className="font-semibold">Mensagens para revisão</h2>
+      {campaign.message_variants.map((variant, index) => <div key={index} className="rounded-lg border border-border p-3">
+        <p className="mb-1 text-xs font-medium text-muted-foreground">Variação {index + 1}</p>
+        <p className="whitespace-pre-wrap break-words">{variant.text}</p>
+        {variant.mediaName && <p className="mt-2 text-xs text-muted-foreground">Anexo: {variant.mediaName}</p>}
+      </div>)}
+    </div>
     <div className="overflow-x-auto rounded-xl border border-border bg-card"><table className="w-full text-left text-sm">
       <thead className="border-b border-border text-muted-foreground"><tr><th className="p-3">Contato</th><th className="p-3">Telefone</th><th className="p-3">Status</th><th className="p-3">Enviado</th><th className="p-3">Resposta</th></tr></thead>
       <tbody className="divide-y divide-border">{recipients.map((recipient) => <tr key={recipient.id}>

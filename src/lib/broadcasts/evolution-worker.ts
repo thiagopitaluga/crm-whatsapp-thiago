@@ -69,6 +69,10 @@ export async function processDueEvolutionCampaign() {
       return { processed: 0, paused: 'plan' };
     }
     const config = campaign.delivery_config;
+    if (config.endAt && Date.now() >= Date.parse(config.endAt)) {
+      await expire(db, campaign);
+      return { processed: 0, expired: true };
+    }
     const local = localParts(new Date());
     if (!config.weekdays.includes(local.weekday) || local.time < config.windowStart || local.time >= config.windowEnd)
       { await defer(db, campaign.id, 60); return { processed: 0, deferred: 'window' }; }
@@ -135,6 +139,14 @@ export async function processDueEvolutionCampaign() {
         message_variant_index: null,
       }).eq('id', target.id).eq('status', 'sending');
       return { processed: 0, paused: 'user' };
+    }
+    if (config.endAt && Date.now() >= Date.parse(config.endAt)) {
+      await db.from('evolution_campaign_recipients').update({
+        status: 'pending', attempted_at: null, sender_channel_id: null,
+        message_variant_index: null,
+      }).eq('id', target.id).eq('status', 'sending');
+      await expire(db, campaign);
+      return { processed: 0, expired: true };
     }
     let result: 'sent' | 'failed' | 'uncertain' = 'uncertain';
     let providerId: string | null = null;
@@ -226,5 +238,22 @@ async function finish(db: SupabaseClient, campaign: Campaign) {
     account_id: campaign.account_id, user_id: campaign.created_by, type: 'system',
     title: `Disparo finalizado: ${campaign.name}`,
     body: `${campaign.sent_count} enviados · ${campaign.failed_count} falharam.`,
+  });
+}
+
+async function expire(db: SupabaseClient, campaign: Campaign) {
+  const { count, error } = await db.from('evolution_campaign_recipients')
+    .select('id', { count: 'exact', head: true }).eq('campaign_id', campaign.id).eq('status', 'pending');
+  if (error) throw error;
+  const remaining = count ?? 0;
+  const { data: updated, error: updateError } = await db.from('evolution_campaigns').update({
+    status: remaining ? 'partial' : 'completed', locked_at: null, next_run_at: null,
+    last_error: remaining ? `Prazo encerrado; ${remaining} contato(s) ficaram sem envio.` : null,
+  }).eq('id', campaign.id).eq('status', 'sending').select('id').maybeSingle();
+  if (updateError) throw updateError;
+  if (updated) await db.from('notifications').insert({
+    account_id: campaign.account_id, user_id: campaign.created_by, type: 'system',
+    title: `Prazo encerrado: ${campaign.name}`,
+    body: remaining ? `${campaign.sent_count} enviados · ${remaining} não enviados.` : `${campaign.sent_count} enviados.`,
   });
 }

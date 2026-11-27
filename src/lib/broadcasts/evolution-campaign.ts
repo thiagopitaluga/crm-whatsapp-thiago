@@ -36,6 +36,7 @@ export type CampaignDelivery = {
   batchPauseMinutes: number;
   sendNow: boolean;
   scheduledAt: string;
+  endAt: string;
   timeZone: string;
 };
 export type CampaignInput = {
@@ -150,6 +151,7 @@ export function parseCampaignInput(value: unknown): { value: CampaignInput } | {
     batchPauseMinutes: boundedInt(rawDelivery.batchPauseMinutes, 1, 120, 5),
     sendNow: rawDelivery.sendNow === true,
     scheduledAt: str(rawDelivery.scheduledAt),
+    endAt: str(rawDelivery.endAt),
     timeZone: 'America/Sao_Paulo',
   };
   if (!delivery.senderIds.length || !validTime(delivery.windowStart) || !validTime(delivery.windowEnd) ||
@@ -161,6 +163,9 @@ export function parseCampaignInput(value: unknown): { value: CampaignInput } | {
   if (!delivery.sendNow && (!delivery.scheduledAt || !Number.isFinite(Date.parse(delivery.scheduledAt)) ||
       Date.parse(delivery.scheduledAt) < Date.now() + 60_000))
     return { error: 'Escolha um agendamento futuro ou marque envio imediato.' };
+  if (delivery.endAt && (!Number.isFinite(Date.parse(delivery.endAt)) ||
+      Date.parse(delivery.endAt) <= (delivery.sendNow ? Date.now() : Date.parse(delivery.scheduledAt))))
+    return { error: 'O encerramento deve ser posterior ao início do disparo.' };
 
   function action(value: unknown): CampaignAction {
     const row = object(value);
