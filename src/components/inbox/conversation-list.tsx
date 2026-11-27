@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { ContactAvatar } from '@/components/contacts/contact-avatar';
 
@@ -18,24 +19,12 @@ import {
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
 import type { Conversation, ConversationStatus, Tag } from '@/types';
-import {
-  Search,
-  ChevronDown,
-  X,
-  RefreshCw,
-  SlidersHorizontal,
-} from 'lucide-react';
+import { Search, X, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { enUS, ptBR } from 'date-fns/locale';
 import { useLocale, useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   filterInboxChannel,
@@ -106,6 +95,24 @@ export function ConversationList({
   const { accountId, user } = useAuth();
   const [assignee, setAssignee] = useState(initialMineOnly ? 'mine' : '');
   const [connection, setConnection] = useState('');
+  const [pipelineId, setPipelineId] = useState('');
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(
+    []
+  );
+  const [pipelineContacts, setPipelineContacts] = useState<{
+    account: string;
+    pipeline: string;
+    ids: Set<string>;
+    error?: boolean;
+  } | null>(null);
+  const [draft, setDraft] = useState({
+    status: 'all' as InboxFilter,
+    assignee: '',
+    connection: '',
+    pipelineId: '',
+    tagIds: [] as string[],
+    company: '',
+  });
   const [members, setMembers] = useState<
     { user_id: string; full_name: string | null }[]
   >([]);
@@ -127,9 +134,15 @@ export function ConversationList({
         .from('whatsapp_channels')
         .select('channel_key,label')
         .eq('account_id', accountId),
-    ]).then(([people, channels]) => {
+      db
+        .from('pipelines')
+        .select('id,name')
+        .eq('account_id', accountId)
+        .order('name'),
+    ]).then(([people, channels, funnels]) => {
       if (!active) return;
       setMembers(people.data ?? []);
+      setPipelines(funnels.data ?? []);
       setConnectionNames(
         Object.fromEntries(
           (channels.data ?? []).map((row) => [row.channel_key, row.label])
@@ -140,6 +153,45 @@ export function ConversationList({
       active = false;
     };
   }, [accountId]);
+
+  useEffect(() => {
+    if (!accountId || !pipelineId) return;
+    let cancelled = false;
+    const db = createClient();
+    void (async () => {
+      const ids = new Set<string>();
+      for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await db
+          .from('deals')
+          .select('id,contact_id')
+          .eq('account_id', accountId)
+          .eq('pipeline_id', pipelineId)
+          .order('id')
+          .range(offset, offset + 999);
+        if (cancelled) return;
+        if (error) {
+          setPipelineContacts({
+            account: accountId,
+            pipeline: pipelineId,
+            ids: new Set(),
+            error: true,
+          });
+          return;
+        }
+        for (const row of data ?? [])
+          if (row.contact_id) ids.add(row.contact_id);
+        if (!data || data.length < 1000) break;
+      }
+      if (!cancelled)
+        setPipelineContacts({ account: accountId, pipeline: pipelineId, ids });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, pipelineId, resyncToken]);
+  const pipelineReady =
+    pipelineContacts?.account === accountId &&
+    pipelineContacts.pipeline === pipelineId;
 
   const connectionOptions = useMemo(() => {
     const options = new Map<string, string>();
@@ -288,6 +340,12 @@ export function ConversationList({
             : 'wa:' + (c.whatsapp_channel_key ?? 'unassigned'))
       );
     }
+    if (pipelineId) {
+      result =
+        pipelineReady && !pipelineContacts?.error
+          ? result.filter((c) => pipelineContacts?.ids.has(c.contact_id))
+          : [];
+    }
 
     // Contact-based filters (tags via OR logic, exact company match).
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
@@ -333,6 +391,9 @@ export function ConversationList({
     selectedTagIds,
     selectedCompany,
     tagsById,
+    pipelineId,
+    pipelineReady,
+    pipelineContacts,
   ]);
 
   const toggleTag = useCallback((id: string) => {
@@ -344,10 +405,11 @@ export function ConversationList({
   const clearContactFilters = useCallback(() => {
     setSelectedTagIds([]);
     setSelectedCompany(null);
+    setPipelineId('');
   }, []);
 
   const hasContactFilters =
-    selectedTagIds.length > 0 || selectedCompany !== null;
+    selectedTagIds.length > 0 || selectedCompany !== null || !!pipelineId;
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -363,7 +425,33 @@ export function ConversationList({
     [onSelect]
   );
 
-  const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
+  const activeFilters =
+    Number(filter !== 'all') +
+    Number(!!assignee) +
+    Number(!!activeConnection) +
+    Number(!!pipelineId) +
+    Number(selectedTagIds.length > 0) +
+    Number(!!selectedCompany);
+  function openFilters() {
+    setDraft({
+      status: filter,
+      assignee,
+      connection: activeConnection,
+      pipelineId,
+      tagIds: [...selectedTagIds],
+      company: selectedCompany ?? '',
+    });
+    setFiltersOpen(true);
+  }
+  function applyFilters() {
+    setFilter(draft.status);
+    setAssignee(draft.assignee);
+    setConnection(draft.connection);
+    setPipelineId(draft.pipelineId);
+    setSelectedTagIds(draft.tagIds);
+    setSelectedCompany(draft.company || null);
+    setFiltersOpen(false);
+  }
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
@@ -392,10 +480,18 @@ export function ConversationList({
             type="button"
             title="Filtrar conversas"
             aria-label="Filtrar conversas"
-            onClick={() => setFiltersOpen(true)}
-            className="border-border hover:bg-muted inline-flex size-9 shrink-0 items-center justify-center rounded-md border"
+            onClick={openFilters}
+            className={cn(
+              'border-border hover:bg-muted relative inline-flex size-9 shrink-0 items-center justify-center rounded-md border',
+              activeFilters > 0 && 'text-primary border-primary/50'
+            )}
           >
             <SlidersHorizontal className="size-4" />
+            {activeFilters > 0 && (
+              <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 rounded-full px-1 text-[9px]">
+                {activeFilters}
+              </span>
+            )}
           </button>
           {onRefresh && (
             <button
@@ -419,173 +515,189 @@ export function ConversationList({
         </div>
 
         <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">
+          <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Filtrar conversas</DialogTitle>
+              <DialogDescription>
+                Combine os filtros para encontrar as conversas que precisa
+                atender.
+              </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-wrap items-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs">
-                  {activeFilter?.label ?? t('filterAll')}
-                  <ChevronDown className="h-3 w-3" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="border-border bg-popover"
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-medium">
+                Status da conversa
+                <select
+                  aria-label="Status da conversa"
+                  className="bg-background mt-2 h-11 w-full rounded-lg border px-3 text-sm font-normal"
+                  value={draft.status}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      status: e.target.value as InboxFilter,
+                    }))
+                  }
                 >
-                  {FILTER_OPTIONS.map((opt) => (
-                    <DropdownMenuItem
-                      key={opt.value}
-                      onClick={() => setFilter(opt.value)}
-                      className={cn(
-                        'text-sm',
-                        filter === opt.value
-                          ? 'text-primary'
-                          : 'text-popover-foreground'
-                      )}
-                    >
-                      {opt.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <select
-                aria-label="Responsável pela conversa"
-                className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
-                value={assignee}
-                onChange={(event) => setAssignee(event.target.value)}
-              >
-                <option value="">Responsável</option>
-                {user && <option value="mine">Minhas conversas</option>}
-                <option value="unassigned">Sem responsável</option>
-                {members
-                  .filter(
-                    (member) => member.user_id !== user?.id && member.full_name
-                  )
-                  .map((member) => (
-                    <option key={member.user_id} value={member.user_id}>
-                      {member.full_name}
+                  {FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
-              </select>
-              {!!connectionOptions.size && (
+                </select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                Responsável
+                <select
+                  aria-label="Responsável pela conversa"
+                  className="bg-background mt-2 h-11 w-full rounded-lg border px-3 text-sm font-normal"
+                  value={draft.assignee}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, assignee: e.target.value }))
+                  }
+                >
+                  <option value="">Todos os responsáveis</option>
+                  {user && <option value="mine">Minhas conversas</option>}
+                  <option value="unassigned">Sem responsável</option>
+                  {members
+                    .filter((m) => m.user_id !== user?.id && m.full_name)
+                    .map((m) => (
+                      <option key={m.user_id} value={m.user_id}>
+                        {m.full_name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                Número ou perfil
                 <select
                   aria-label="Número ou perfil da conversa"
-                  className="bg-card text-muted-foreground h-7 max-w-44 rounded-md px-2 text-xs"
-                  value={activeConnection}
-                  onChange={(event) => setConnection(event.target.value)}
+                  className="bg-background mt-2 h-11 w-full rounded-lg border px-3 text-sm font-normal"
+                  value={draft.connection}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, connection: e.target.value }))
+                  }
                 >
-                  <option value="">Número ou perfil</option>
+                  <option value="">Todos os números e perfis</option>
                   {Array.from(connectionOptions, ([key, label]) => (
                     <option key={key} value={key}>
                       {label}
                     </option>
                   ))}
                 </select>
-              )}
-
-              {tags.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className={cn(
-                      'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
-                      selectedTagIds.length > 0
-                        ? 'text-primary'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                Funil de vendas
+                <select
+                  aria-label="Funil de vendas"
+                  className="bg-background mt-2 h-11 w-full rounded-lg border px-3 text-sm font-normal"
+                  value={draft.pipelineId}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, pipelineId: e.target.value }))
+                  }
+                >
+                  <option value="">Todos os funis</option>
+                  {pipelines.map((pipeline) => (
+                    <option key={pipeline.id} value={pipeline.id}>
+                      {pipeline.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!!companies.length && (
+                <label className="space-y-2 text-sm font-medium sm:col-span-2">
+                  Empresa
+                  <select
+                    aria-label="Empresa"
+                    className="bg-background mt-2 h-11 w-full rounded-lg border px-3 text-sm font-normal"
+                    value={draft.company}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, company: e.target.value }))
+                    }
                   >
-                    {t('tags')}
-                    {selectedTagIds.length > 0 && (
-                      <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
-                        {selectedTagIds.length}
-                      </span>
-                    )}
-                    <ChevronDown className="h-3 w-3" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    className="border-border bg-popover max-h-64 w-56"
-                  >
-                    {tags.map((t) => (
-                      <DropdownMenuCheckboxItem
-                        key={t.id}
-                        checked={selectedTagIds.includes(t.id)}
-                        onCheckedChange={() => toggleTag(t.id)}
-                        className="text-popover-foreground text-sm"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: t.color }}
-                          />
-                          <span className="truncate">{t.name}</span>
-                        </span>
-                      </DropdownMenuCheckboxItem>
+                    <option value="">{t('allCompanies')}</option>
+                    {companies.map((company) => (
+                      <option key={company} value={company}>
+                        {company}
+                      </option>
                     ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-
-              {companies.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className={cn(
-                      'hover:bg-muted inline-flex h-7 max-w-40 items-center justify-center gap-1 rounded-md px-2 text-xs',
-                      selectedCompany
-                        ? 'text-primary'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    <span className="truncate">
-                      {selectedCompany ?? t('company')}
-                    </span>
-                    <ChevronDown className="h-3 w-3 shrink-0" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    className="border-border bg-popover max-h-64 w-56"
-                  >
-                    <DropdownMenuItem
-                      onClick={() => setSelectedCompany(null)}
-                      className={cn(
-                        'text-sm',
-                        selectedCompany === null
-                          ? 'text-primary'
-                          : 'text-popover-foreground'
-                      )}
-                    >
-                      {t('allCompanies')}
-                    </DropdownMenuItem>
-                    {companies.map((co) => (
-                      <DropdownMenuItem
-                        key={co}
-                        onClick={() => setSelectedCompany(co)}
-                        className={cn(
-                          'text-sm',
-                          selectedCompany === co
-                            ? 'text-primary'
-                            : 'text-popover-foreground'
-                        )}
-                      >
-                        <span className="truncate">{co}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  </select>
+                </label>
               )}
             </div>
-
-            <button
-              className="bg-primary text-primary-foreground rounded-md p-2"
-              onClick={() => setFiltersOpen(false)}
-            >
-              Aplicar filtros
-            </button>
+            <fieldset className="border-t pt-4">
+              <legend className="text-sm font-medium">Etiquetas</legend>
+              <p className="text-muted-foreground mt-2 mb-3 text-xs">
+                Mostra contatos com pelo menos uma das etiquetas selecionadas.
+              </p>
+              <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto">
+                {!tags.length && (
+                  <p className="text-muted-foreground text-sm">
+                    Nenhuma etiqueta cadastrada.
+                  </p>
+                )}
+                {tags.map((tag) => (
+                  <button
+                    type="button"
+                    key={tag.id}
+                    aria-pressed={draft.tagIds.includes(tag.id)}
+                    onClick={() =>
+                      setDraft((d) => ({
+                        ...d,
+                        tagIds: d.tagIds.includes(tag.id)
+                          ? d.tagIds.filter((id) => id !== tag.id)
+                          : [...d.tagIds, tag.id],
+                      }))
+                    }
+                    className={cn(
+                      'inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-sm',
+                      draft.tagIds.includes(tag.id)
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'hover:bg-muted'
+                    )}
+                  >
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <div className="flex justify-between gap-3 border-t pt-4">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setDraft({
+                    status: 'all',
+                    assignee: '',
+                    connection: '',
+                    pipelineId: '',
+                    tagIds: [],
+                    company: '',
+                  })
+                }
+              >
+                Limpar filtros
+              </Button>
+              <Button onClick={applyFilters}>Aplicar filtros</Button>
+            </div>
           </DialogContent>
         </Dialog>
         {hasContactFilters && (
           <div className="flex flex-wrap items-center gap-1">
+            {pipelineId && (
+              <button
+                onClick={() => setPipelineId('')}
+                className="bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
+              >
+                <span className="max-w-36 truncate">
+                  Funil:{' '}
+                  {pipelines.find((p) => p.id === pipelineId)?.name ??
+                    'Selecionado'}
+                </span>
+                <X className="size-3" />
+              </button>
+            )}
             {selectedTagIds.map((id) => {
               const tag = tagsById.get(id);
               return (
@@ -633,10 +745,15 @@ export function ConversationList({
           space — the list then overflows and gets clipped by the
           parent's overflow-hidden with no scrollbar (issue #229). */}
       <ScrollArea className="min-h-0 flex-1">
-        {loading ? (
+        {loading || (pipelineId && !pipelineReady) ? (
           <div className="flex items-center justify-center py-12">
             <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
           </div>
+        ) : pipelineId && pipelineContacts?.error ? (
+          <p role="alert" className="text-destructive p-4 text-sm">
+            Não foi possível consultar os leads deste funil. Atualize as
+            conversas para tentar novamente.
+          </p>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
             <p className="text-muted-foreground text-sm">

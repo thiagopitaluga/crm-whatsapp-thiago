@@ -1235,7 +1235,7 @@ export default function PipelinesPage() {
                         type="date"
                         value={createdFrom}
                         onChange={(event) => setCreatedFrom(event.target.value)}
-                        className="h-8 pr-9"
+                        className="h-8 min-w-0 pr-9 [&::-webkit-calendar-picker-indicator]:hidden"
                       />
                       <button
                         type="button"
@@ -1263,7 +1263,7 @@ export default function PipelinesPage() {
                         type="date"
                         value={createdTo}
                         onChange={(event) => setCreatedTo(event.target.value)}
-                        className="h-8 pr-9"
+                        className="h-8 min-w-0 pr-9 [&::-webkit-calendar-picker-indicator]:hidden"
                       />
                       <button
                         type="button"
