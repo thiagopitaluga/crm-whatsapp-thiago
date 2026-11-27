@@ -500,34 +500,7 @@ async function executeStageJob(job: Job): Promise<'done' | 'skipped'> {
       }
     }
   } else if (job.kind === 'email') {
-    if (
-      !current?.email.recipients ||
-      JSON.stringify(current.email) !== JSON.stringify(job.payload)
-    )
-      return 'skipped';
-    if (!process.env.RESEND_API_KEY || !process.env.STAGE_EMAIL_FROM)
-      throw new Error('Configure RESEND_API_KEY e STAGE_EMAIL_FROM.');
-    const email = current.email;
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      signal: AbortSignal.timeout(15000),
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': `stage/${job.id}`,
-      },
-      body: JSON.stringify({
-        from: process.env.STAGE_EMAIL_FROM,
-        to: email.recipients
-          .split(',')
-          .map((v) => v.trim())
-          .filter(Boolean),
-        subject: template(email.subject),
-        html: template(email.html, true),
-      }),
-    });
-    if (!response.ok)
-      throw new Error(`Provedor de e-mail retornou ${response.status}.`);
+    return 'skipped';
   } else if (job.kind === 'meta') {
     if (!current?.metaEvent || current.metaEvent !== job.payload.event)
       return 'skipped';

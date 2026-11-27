@@ -535,62 +535,7 @@ export function StageSettingsButton({
                     Começar do zero
                   </Button>
                 </section>
-                <section className="space-y-3 border-t pt-4">
-                  <h3 className="font-semibold">
-                    E-mail ao avançar para esta etapa
-                  </h3>
-                  <p className="text-muted-foreground text-xs">
-                    Deixe os destinatários vazios para desativar.
-                  </p>
-                  <label className="block">
-                    Destinatários (separados por vírgula)
-                    <input
-                      className={field}
-                      value={settings.email.recipients}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          email: { ...s.email, recipients: e.target.value },
-                        }))
-                      }
-                      placeholder="vendas@empresa.com, gerente@empresa.com"
-                    />
-                  </label>
-                  <label className="block">
-                    Assunto
-                    <input
-                      className={field}
-                      value={settings.email.subject}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          email: { ...s.email, subject: e.target.value },
-                        }))
-                      }
-                      placeholder="Lead {contact.name} avançou para {lead.stageName}"
-                    />
-                  </label>
-                  <label className="block">
-                    Corpo do e-mail (HTML permitido)
-                    <textarea
-                      className={field}
-                      rows={5}
-                      value={settings.email.html}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          email: { ...s.email, html: e.target.value },
-                        }))
-                      }
-                    />
-                  </label>
-                  <p className="text-muted-foreground text-xs">
-                    Variáveis:{' '}
-                    {
-                      '{contact.name}, {contact.phone}, {contact.email}, {lead.stageName}, {lead.pipelineName}'
-                    }
-                  </p>
-                </section>
+
                 <section className="space-y-3 border-t pt-4">
                   <h3 className="font-semibold">Evento do Meta (pixel)</h3>
                   <p className="text-muted-foreground text-xs">

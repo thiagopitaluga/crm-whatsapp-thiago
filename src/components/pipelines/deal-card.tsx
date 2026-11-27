@@ -57,6 +57,7 @@ interface DealCardProps {
 const DEFAULT_LAYOUT: PipelineCardLayout = {
   show_value: true,
   show_created_at: true,
+  show_stage_age: true,
   show_last_message: true,
   show_notes: true,
   show_assignee: true,
@@ -107,8 +108,14 @@ export function DealCard({
     return () => clearInterval(timer);
   }, []);
   const enteredAt = deal.stage_entered_at || deal.created_at;
-  const elapsedHours = Math.max(0, Math.floor((now - new Date(enteredAt).getTime()) / 3600000));
-  const stageAge = elapsedHours >= 24 ? Math.floor(elapsedHours / 24) + 'd' : elapsedHours + 'h';
+  const elapsedHours = Math.max(
+    0,
+    Math.floor((now - new Date(enteredAt).getTime()) / 3600000)
+  );
+  const stageAge =
+    elapsedHours >= 24
+      ? Math.floor(elapsedHours / 24) + 'd'
+      : elapsedHours + 'h';
   const latestConversation = deal.contact?.conversations?.reduce<
     (typeof deal.contact.conversations)[number] | undefined
   >(
@@ -233,15 +240,37 @@ export function DealCard({
           <Phone className="size-3 shrink-0" />
           <span className="min-w-0 truncate">{phone}</span>
         </p>
-        <div className="text-muted-foreground mt-2 flex items-center justify-between gap-2 text-[10px]">
-          {layout.show_created_at && <span className="flex items-center gap-1" title="Data de entrada do lead">
-            <CalendarDays className="size-3" />
-            {new Date(deal.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </span>}
-          <span className="ml-auto flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-medium" title={'Nesta etapa desde ' + new Date(enteredAt).toLocaleString('pt-BR')}>
-            <Clock className="size-3" />{stageAge}
-          </span>
-        </div>
+        {(layout.show_created_at || layout.show_stage_age !== false) && (
+          <div className="text-muted-foreground mt-2 flex items-center justify-between gap-2 text-[10px]">
+            {layout.show_created_at && (
+              <span
+                className="flex items-center gap-1"
+                title="Data de entrada do lead"
+              >
+                <CalendarDays className="size-3" />
+                {new Date(deal.created_at).toLocaleString('pt-BR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+            )}
+            {layout.show_stage_age !== false && (
+              <span
+                className="bg-muted ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 font-medium"
+                title={
+                  'Nesta etapa desde ' +
+                  new Date(enteredAt).toLocaleString('pt-BR')
+                }
+              >
+                <Clock className="size-3" />
+                {stageAge}
+              </span>
+            )}
+          </div>
+        )}
 
         {layout.show_assignee && assigneeName ? (
           <div

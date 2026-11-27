@@ -60,6 +60,7 @@ import {
   Settings,
   Search,
   SlidersHorizontal,
+  PanelsTopLeft,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -87,6 +88,7 @@ interface DealMoveHistoryEntry {
 const DEFAULT_CARD_LAYOUT: PipelineCardLayout = {
   show_value: true,
   show_created_at: true,
+  show_stage_age: true,
   show_last_message: true,
   show_notes: true,
   show_assignee: true,
@@ -1105,13 +1107,22 @@ export default function PipelinesPage() {
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator className="bg-border" />
-              {selectedPipeline && (
+              {selectedPipeline && canEditSettings && (
                 <DropdownMenuItem
                   onClick={() => setSettingsOpen(true)}
                   className="text-popover-foreground"
                 >
                   <Settings className="mr-2 h-3.5 w-3.5" />
-                  {t('managePipelines')}
+                  {t('editPipeline')}
+                </DropdownMenuItem>
+              )}
+              {canEditSettings && (
+                <DropdownMenuItem
+                  onClick={() => setNewPipelineOpen(true)}
+                  className="text-popover-foreground"
+                >
+                  <Plus className="mr-2 size-3.5" />
+                  {t('addPipeline')}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -1130,7 +1141,7 @@ export default function PipelinesPage() {
               }}
               className="border-border bg-card text-foreground hover:bg-muted h-10 shrink-0 px-2 text-[13px] sm:px-3 sm:text-sm"
             >
-              <SlidersHorizontal className="mr-1.5 size-4" />
+              <PanelsTopLeft className="mr-1.5 size-4" />
               <span className="max-[379px]:hidden">
                 Editar layout do cartão
               </span>
@@ -1142,7 +1153,7 @@ export default function PipelinesPage() {
 
       {/* Board */}
       {pipelines.length > 0 && (
-        <div className="flex flex-col gap-2 lg:absolute lg:top-0 lg:right-[216px] lg:left-[184px] lg:flex-row lg:items-center">
+        <div className="flex flex-row items-center gap-2 lg:absolute lg:top-0 lg:right-[216px] lg:left-[184px]">
           <div className="relative min-w-0 flex-1">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
             <Input
@@ -1158,14 +1169,15 @@ export default function PipelinesPage() {
               render={
                 <button
                   type="button"
-                  className="border-border bg-muted text-foreground hover:bg-accent inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium"
+                  aria-label="Filtrar contatos"
+                  title="Filtrar contatos"
+                  className="border-border bg-muted text-foreground hover:bg-accent relative inline-flex size-10 shrink-0 items-center justify-center rounded-lg border"
                 />
               }
             >
               <SlidersHorizontal className="size-4" />
-              Filtrar contatos
               {activeFilterCount > 0 && (
-                <span className="bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-[11px]">
+                <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 rounded-full px-1 text-[10px]">
                   {activeFilterCount}
                 </span>
               )}
@@ -1426,6 +1438,7 @@ export default function PipelinesPage() {
             {[
               ['show_value', 'Valor do lead'],
               ['show_created_at', 'Data de criação do contato'],
+              ['show_stage_age', 'Tempo do lead na etapa'],
               ['show_last_message', 'Última mensagem'],
               ['show_notes', 'Notas'],
               ['show_assignee', 'Responsável pela atribuição'],
@@ -1437,6 +1450,7 @@ export default function PipelinesPage() {
                 PipelineCardLayout,
                 | 'show_value'
                 | 'show_created_at'
+                | 'show_stage_age'
                 | 'show_last_message'
                 | 'show_notes'
                 | 'show_assignee'
@@ -1626,16 +1640,15 @@ export default function PipelinesPage() {
       {/* Pipeline Settings */}
       {selectedPipeline && (
         <PipelineSettings
+          key={selectedPipeline.id}
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
           pipeline={selectedPipeline}
-          stages={stages}
+          stages={stages.filter(
+            (stage) => stage.pipeline_id === selectedPipeline.id
+          )}
           onPipelinesChanged={refreshPipelines}
           onStagesChanged={refreshStages}
-          onCreateNewPipeline={() => {
-            setSettingsOpen(false);
-            setNewPipelineOpen(true);
-          }}
         />
       )}
 

@@ -46,7 +46,10 @@ export async function GET(
           .eq('account_id', accountId),
       ]);
     return NextResponse.json({
-      settings: data.settings ?? defaultStageSettings(),
+      settings: {
+        ...(data.settings ?? defaultStageSettings()),
+        email: defaultStageSettings().email,
+      },
       jobs: jobs ?? [],
       choices: {
         stages: stages ?? [],
@@ -66,7 +69,11 @@ export async function PUT(
   try {
     const { supabase, accountId } = await requireRole('admin');
     const { id } = await context.params;
-    const settings = await request.json().catch(() => null);
+    const body = await request.json().catch(() => null);
+    const settings =
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? { ...body, email: defaultStageSettings().email }
+        : body;
     const issue = validateStageSettings(settings);
     if (issue) return NextResponse.json({ error: issue }, { status: 400 });
     const s = settings as StageSettings;

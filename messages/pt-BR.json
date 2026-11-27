@@ -625,6 +625,8 @@
       "selectPipeline": "Selecionar funil de vendas",
       "noPipelinesYet": "Ainda não há funis de vendas",
       "managePipelines": "Gerenciar funis de vendas",
+      "editPipeline": "Editar funil",
+      "addPipeline": "Adicionar novo funil",
       "addPipeline": "Adicionar funil de vendas",
       "addDeal": "Adicionar negócio",
       "createToStartTracking": "Crie um funil de vendas para começar a rastrear negócios",
@@ -729,7 +731,7 @@
       "toastDeleted": "Transação excluída"
     },
     "settings": {
-      "managePipeline": "Gerenciar funil de vendas",
+      "managePipeline": "Editar funil",
       "deletePipeline": "Excluir funil de vendas",
       "deletePipelineDesc": "Isso arquivará todos os negócios neste funil de vendas. Isto não pode ser desfeito.",
       "cancel": "Cancelar",
@@ -737,7 +739,7 @@
       "deletePipelineBtn": "Excluir funil de vendas",
       "pipelineName": "Nome do funil de vendas",
       "stages": "Etapas",
-      "newStageNamePlaceholder": "Novo nome artístico",
+      "newStageNamePlaceholder": "Nome da nova etapa",
       "add": "Adicionar",
       "createNewPipeline": "Crie um novo funil de vendas",
       "saving": "Salvando...",

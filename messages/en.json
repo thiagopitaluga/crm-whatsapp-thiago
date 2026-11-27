@@ -625,6 +625,8 @@
       "selectPipeline": "Select Pipeline",
       "noPipelinesYet": "No pipelines yet",
       "managePipelines": "Manage Pipelines",
+      "editPipeline": "Edit pipeline",
+      "addPipeline": "Add new pipeline",
       "addPipeline": "Add Pipeline",
       "addDeal": "Add Deal",
       "createToStartTracking": "Create a pipeline to start tracking deals",
@@ -729,7 +731,7 @@
       "toastDeleted": "Deal deleted"
     },
     "settings": {
-      "managePipeline": "Manage Pipeline",
+      "managePipeline": "Edit Pipeline",
       "deletePipeline": "Delete Pipeline",
       "deletePipelineDesc": "This will archive all deals in this pipeline. This cannot be undone.",
       "cancel": "Cancel",
