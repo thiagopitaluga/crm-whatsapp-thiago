@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
 import {
   Send,
+  Smile,
   LayoutTemplate,
   Paperclip,
   Image as ImageIcon,
@@ -63,17 +64,9 @@ export const MEDIA_CAPTION_MAX = 1024;
  *  transcode limits — auto-stops the recorder when reached. */
 const MAX_RECORDING_SECONDS = 5 * 60;
 
-/**
- * Attachment, interactive, template, and AI-draft actions stay mounted so
- * their existing implementation can be switched back on later. For now the
- * inbox sends through the user's WhatsApp app, where these CRM send actions
- * would be misleading.
- */
-const COMPOSER_AUXILIARY_ACTIONS_ENABLED = false;
-// Keep the attachment/template/AI implementations mounted in source while
-// the inbox is operating in the wa.me text workflow. Re-enable this flag
-// when those actions are ready to return to the composer.
-const COMPOSER_AUXILIARY_ACTIONS_VISIBLE = false;
+// Media actions use the same account-scoped send flow as the conversation.
+const COMPOSER_AUXILIARY_ACTIONS_ENABLED = true;
+const COMPOSER_AUXILIARY_ACTIONS_VISIBLE = true;
 const SESSION_EXPIRY_NOTICE_VISIBLE = false;
 
 export interface SendMediaPayload {
@@ -156,6 +149,7 @@ export function MessageComposer({
   const t = useTranslations('Inbox.composer');
 
   const [text, setText] = useState('');
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -242,7 +236,8 @@ export function MessageComposer({
     setSending(true);
     setText('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    const restoreDraft = () => setText((current) => current ? `${text}\n${current}` : text);
+    const restoreDraft = () =>
+      setText((current) => (current ? `${text}\n${current}` : text));
     try {
       const result = await onSend(trimmed, replyTo?.id);
       if (result === 'keep-draft') restoreDraft();
@@ -585,7 +580,32 @@ export function MessageComposer({
   // ---- Render --------------------------------------------------------
 
   return (
-    <div className="border-border bg-card border-t p-3">
+    <div
+      className="border-border bg-card border-t p-3"
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('Files')) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect =
+            auxiliaryActionsDisabled || busy || recording ? 'none' : 'copy';
+        }
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        if (auxiliaryActionsDisabled || busy || recording) return;
+        const file = event.dataTransfer.files[0];
+        if (event.dataTransfer.files.length > 1)
+          toast.info('Anexe um arquivo por vez.');
+        const kind: ComposerMediaKind = file.type.startsWith('image/')
+          ? 'image'
+          : file.type.startsWith('video/')
+            ? 'video'
+            : file.type.startsWith('audio/')
+              ? 'audio'
+              : 'document';
+        void stageUpload(kind, file);
+      }}
+    >
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -679,12 +699,107 @@ export function MessageComposer({
           </Button>
         </div>
       ) : (
-        <div className="flex min-w-0 items-end gap-2">
+        <div className="flex min-w-0 flex-wrap items-end gap-2">
           <div
             className={
-              COMPOSER_AUXILIARY_ACTIONS_VISIBLE ? 'contents' : 'hidden'
+              COMPOSER_AUXILIARY_ACTIONS_VISIBLE
+                ? 'flex w-full items-center gap-1'
+                : 'hidden'
             }
           >
+            <DropdownMenu open={emojiOpen} onOpenChange={setEmojiOpen}>
+              <DropdownMenuTrigger
+                aria-label="Emojis"
+                title="Emojis"
+                disabled={auxiliaryActionsDisabled}
+                className="text-muted-foreground hover:bg-muted flex size-9 items-center justify-center rounded-md"
+              >
+                <Smile className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="grid max-h-64 grid-cols-8 gap-1 overflow-y-auto p-2"
+              >
+                {[
+                  '😀',
+                  '😊',
+                  '😍',
+                  '😉',
+                  '😂',
+                  '😅',
+                  '🤔',
+                  '😎',
+                  '🙏',
+                  '👍',
+                  '👏',
+                  '🙌',
+                  '🤝',
+                  '💪',
+                  '❤️',
+                  '💜',
+                  '🔥',
+                  '✨',
+                  '⭐',
+                  '✅',
+                  '❌',
+                  '⚠️',
+                  '🎉',
+                  '🎯',
+                  '💡',
+                  '📌',
+                  '📅',
+                  '⏰',
+                  '📞',
+                  '💬',
+                  '📍',
+                  '🚀',
+                ].map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    aria-label={emoji}
+                    className="hover:bg-muted rounded p-1.5 text-xl"
+                    onClick={() => {
+                      setEmojiOpen(false);
+                      const input = textareaRef.current;
+                      const start = input?.selectionStart ?? text.length;
+                      const end = input?.selectionEnd ?? start;
+                      setText(text.slice(0, start) + emoji + text.slice(end));
+                      requestAnimationFrame(() => {
+                        input?.focus();
+                        input?.setSelectionRange(
+                          start + emoji.length,
+                          start + emoji.length
+                        );
+                        adjustHeight();
+                      });
+                    }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              type="button"
+              aria-label="Mensagens rápidas"
+              title="Mensagens rápidas"
+              disabled={auxiliaryActionsDisabled}
+              onClick={() => setQuickReplyOpen(true)}
+              className="text-muted-foreground hover:bg-muted flex size-9 items-center justify-center rounded-md"
+            >
+              <Zap className="size-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Gravar áudio"
+              title="Gravar áudio"
+              disabled={auxiliaryActionsDisabled || busy}
+              onClick={() => void startRecording()}
+              className="text-muted-foreground hover:bg-muted flex size-9 items-center justify-center rounded-md"
+            >
+              <Mic className="size-4" />
+            </button>
             {/* Attach menu — photo / video / document / voice. */}
             <DropdownMenu>
               <DropdownMenuTrigger
