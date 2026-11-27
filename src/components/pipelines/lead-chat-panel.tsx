@@ -30,12 +30,10 @@ type Chat = Conversation;
 export function LeadChatPanel({
   deal,
   onClose,
-  onEdit,
   onChanged,
 }: {
   deal: Deal;
   onClose: () => void;
-  onEdit: () => void;
   onChanged: () => void;
 }) {
   const { accountId, user, isAgent, canSendMessages } = useAuth();
@@ -68,7 +66,7 @@ export function LeadChatPanel({
       try {
         if (!deal.contact_id)
           throw Error(
-            'Este negócio não possui um contato vinculado. Use Editar negócio para vincular um contato.'
+            'Este negócio não possui um contato vinculado. Vincule um contato para iniciar a conversa.'
           );
         if (isAgent) {
           const access = await db
@@ -267,9 +265,6 @@ export function LeadChatPanel({
         <SheetHeader className="flex-row items-center justify-between gap-2 border-b py-2 pr-12 pl-4">
           <SheetTitle className="truncate text-sm">Chat do lead</SheetTitle>
           <div className="flex shrink-0 items-center gap-2">
-            <Button size="sm" variant="outline" onClick={onEdit}>
-              Editar negócio
-            </Button>
             <button
               className="text-muted-foreground hover:bg-muted rounded-md p-2 lg:hidden"
               aria-label={showInfo ? 'Voltar para o chat' : 'Ver ficha do lead'}
@@ -277,6 +272,9 @@ export function LeadChatPanel({
               onClick={() => setShowInfo((v) => !v)}
             >
               <Info className="size-4" />
+              <span className="text-xs">
+                {showInfo ? 'Voltar para a conversa' : 'Abrir ficha'}
+              </span>
             </button>
             {conversation && (
               <Link

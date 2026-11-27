@@ -66,6 +66,8 @@ export function ContactOverview({
   conversationStatusLabel?: string;
 }) {
   const { accountId, user, canSendMessages, defaultCurrency } = useAuth();
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
   const [notes, setNotes] = useState<Note[]>([]),
     [allTags, setAllTags] = useState<Tag[]>([]),
     [tags, setTags] = useState<Tag[]>([]),
@@ -114,11 +116,21 @@ export function ContactOverview({
         .eq('account_id', accountId)
         .order('name'),
       db.from('pipeline_stages').select('*').order('position'),
-      db
-        .from('profiles')
-        .select('id,full_name,email')
-        .eq('account_id', accountId)
-        .order('full_name'),
+      (async () => {
+        const membership = await db
+          .from('account_memberships')
+          .select('user_id')
+          .eq('account_id', accountId);
+        if (membership.error) return { data: [], error: membership.error };
+        const ids = (membership.data ?? []).map((row) => row.user_id);
+        return ids.length
+          ? await db
+              .from('profiles')
+              .select('id,full_name,email')
+              .in('user_id', ids)
+              .order('full_name')
+          : { data: [], error: null };
+      })(),
       db
         .from('contact_meetings')
         .select('*')
@@ -289,7 +301,80 @@ export function ContactOverview({
         </Button>
         {notes.map((note) => (
           <div key={note.id} className="bg-muted rounded-md p-2 text-xs">
-            <p className="break-words whitespace-pre-wrap">{note.note_text}</p>
+            {editingNote === note.id ? (
+              <div className="space-y-2">
+                <textarea
+                  aria-label="Editar nota"
+                  className="bg-background w-full rounded border p-2"
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  disabled={busy || !noteDraft.trim()}
+                  onClick={() =>
+                    void run(async () => {
+                      const result = await createClient()
+                        .from('contact_notes')
+                        .update({ note_text: noteDraft.trim() })
+                        .eq('id', note.id)
+                        .eq('account_id', accountId!)
+                        .eq('contact_id', contact.id)
+                        .select('id')
+                        .single();
+                      if (result.error) throw result.error;
+                      setEditingNote(null);
+                    })
+                  }
+                >
+                  Salvar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditingNote(null)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <p className="break-words whitespace-pre-wrap">
+                {note.note_text}
+              </p>
+            )}
+            {canSendMessages && editingNote !== note.id && (
+              <div className="mt-1 flex gap-3">
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    setEditingNote(note.id);
+                    setNoteDraft(note.note_text);
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  className="text-destructive"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm('Excluir esta nota?')) return;
+                    void run(async () => {
+                      const result = await createClient()
+                        .from('contact_notes')
+                        .delete()
+                        .eq('id', note.id)
+                        .eq('account_id', accountId!)
+                        .eq('contact_id', contact.id)
+                        .select('id')
+                        .single();
+                      if (result.error) throw result.error;
+                    });
+                  }}
+                >
+                  Excluir
+                </button>
+              </div>
+            )}
             <p className="text-muted-foreground mt-1 text-[10px]">
               {(
                 {
@@ -403,22 +488,6 @@ export function ContactOverview({
           {selectedDeal ? (
             <>
               <div className="grid grid-cols-[90px_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-xs">
-                <span className="text-muted-foreground">Etapa</span>
-                <select
-                  aria-label="Etapa do lead"
-                  className={control}
-                  value={selectedDeal.stage_id}
-                  disabled={busy || !canSendMessages}
-                  onChange={(e) => void run(() => stageChange(e.target.value))}
-                >
-                  {stages
-                    .filter((s) => s.pipeline_id === selectedDeal.pipeline_id)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
                 <span className="text-muted-foreground">Funil</span>
                 <select
                   aria-label="Funil do lead"
@@ -448,6 +517,22 @@ export function ContactOverview({
                       {p.name}
                     </option>
                   ))}
+                </select>
+                <span className="text-muted-foreground">Etapa</span>
+                <select
+                  aria-label="Etapa do lead"
+                  className={control}
+                  value={selectedDeal.stage_id}
+                  disabled={busy || !canSendMessages}
+                  onChange={(e) => void run(() => stageChange(e.target.value))}
+                >
+                  {stages
+                    .filter((s) => s.pipeline_id === selectedDeal.pipeline_id)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
                 </select>
               </div>
               <EditableValue

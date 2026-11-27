@@ -108,7 +108,7 @@ export function ContactSidebar({
   }
   if (!current)
     return (
-      <div className="text-muted-foreground w-80 border-l p-4 text-sm">
+      <div className="text-muted-foreground w-full border-l p-4 text-sm lg:w-80">
         Selecione uma conversa.
       </div>
     );

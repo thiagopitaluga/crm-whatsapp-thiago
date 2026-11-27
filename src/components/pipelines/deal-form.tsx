@@ -1,17 +1,10 @@
 'use client';
-
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { CURRENCIES } from '@/lib/currency';
-import type {
-  Contact,
-  Deal,
-  DealStatus,
-  PipelineStage,
-  Profile,
-} from '@/types';
+import type { Contact, PipelineStage, Profile } from '@/types';
 import {
   Dialog,
   DialogContent,
@@ -22,520 +15,251 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Check,
-  X,
-  Trash2,
-  MessageSquare,
-  DollarSign,
-  Loader2,
-  History,
-} from 'lucide-react';
+import { MessageSquare, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
-
 interface DealFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  deal?: Deal | null;
   pipelineId: string;
   stages: PipelineStage[];
   defaultStageId?: string;
   onSaved: () => void;
 }
-
-interface DealStageEvent {
-  id: string;
-  event_type: 'created' | 'moved';
-  from_stage_name: string | null;
-  to_stage_name: string;
-  changed_by_name: string | null;
-  occurred_at: string;
-}
-
-const BRAZIL_DATE_TIME = new Intl.DateTimeFormat('pt-BR', {
-  dateStyle: 'short',
-  timeStyle: 'short',
-  timeZone: 'America/Sao_Paulo',
-});
-
+/** Creation only. Existing deals are managed through the shared contact sheet. */
 export function DealForm({
   open,
   onOpenChange,
-  deal,
   pipelineId,
   stages,
   defaultStageId,
   onSaved,
 }: DealFormProps) {
   const t = useTranslations('Pipelines.form');
-  const supabase = createClient();
-  const { accountId, defaultCurrency } = useAuth();
-
-  const [title, setTitle] = useState('');
-  const [value, setValue] = useState('');
-  const [currency, setCurrency] = useState(defaultCurrency);
-  const [contactId, setContactId] = useState('');
-  const [stageId, setStageId] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
-  const [notes, setNotes] = useState('');
-
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-
-  const [saving, setSaving] = useState(false);
-  const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [stageHistory, setStageHistory] = useState<DealStageEvent[]>([]);
-  const [stageHistoryError, setStageHistoryError] = useState(false);
-  const [historyForDealId, setHistoryForDealId] = useState<string | null>(null);
-
-  // Reset the form fields every time the sheet opens or its input
-  // props change. This is a legitimate prop-driven sync; the rule is
-  // over-cautious here, hence the block-level disable.
+  const { accountId, user, defaultCurrency } = useAuth();
+  const [title, setTitle] = useState(''),
+    [value, setValue] = useState(''),
+    [currency, setCurrency] = useState(defaultCurrency),
+    [contactId, setContactId] = useState(''),
+    [stageId, setStageId] = useState(''),
+    [assignedTo, setAssignedTo] = useState(''),
+    [notes, setNotes] = useState('');
+  const [contacts, setContacts] = useState<Contact[]>([]),
+    [profiles, setProfiles] = useState<Profile[]>([]),
+    [saving, setSaving] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!open) return;
-    setConfirmDelete(false);
-    if (deal) {
-      setTitle(deal.title);
-      setValue(String(deal.value ?? ''));
-      setCurrency(deal.currency || defaultCurrency);
-      // contact_id is nullable when the contact has been deleted
-      // (migration 004: ON DELETE SET NULL). "" means "no selection".
-      setContactId(deal.contact_id ?? '');
-      setStageId(deal.stage_id);
-      setAssignedTo(deal.assigned_to ?? '');
-      setNotes(deal.notes ?? '');
-    } else {
-      setTitle('');
-      setValue('');
-      setCurrency(defaultCurrency);
-      setContactId('');
-      setStageId(defaultStageId || stages[0]?.id || '');
-      setAssignedTo('');
-      setNotes('');
-    }
-  }, [open, deal, defaultStageId, stages, defaultCurrency]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Load supporting data once the sheet is open
-  useEffect(() => {
-    if (!open) return;
+    if (!open || !accountId) return;
     let cancelled = false;
-    (async () => {
-      const [c, memberships] = await Promise.all([
-        supabase.from('contacts').select('*').order('name'),
-        supabase
+    setTitle('');
+    setValue('');
+    setCurrency(defaultCurrency);
+    setContactId('');
+    setStageId(defaultStageId || stages[0]?.id || '');
+    setAssignedTo('');
+    setNotes('');
+    setContacts([]);
+    setProfiles([]);
+    const db = createClient();
+    void (async () => {
+      const [contactsResult, membership] = await Promise.all([
+        db
+          .from('contacts')
+          .select('*')
+          .eq('account_id', accountId)
+          .order('name'),
+        db
           .from('account_memberships')
           .select('user_id')
           .eq('account_id', accountId),
       ]);
-      const userIds = (memberships.data ?? []).map((member) => member.user_id);
-      const p = userIds.length
-        ? await supabase
-            .from('profiles')
-            .select('*')
-            .in('user_id', userIds)
-            .order('full_name')
-        : { data: [], error: null };
       if (cancelled) return;
-      setContacts((c.data ?? []) as Contact[]);
-      setProfiles((p.data ?? []) as Profile[]);
+      if (contactsResult.error || membership.error) {
+        toast.error('Não foi possível carregar os dados.');
+        return;
+      }
+      setContacts(contactsResult.data ?? []);
+      const ids = (membership.data ?? []).map((row) => row.user_id);
+      if (ids.length) {
+        const result = await db
+          .from('profiles')
+          .select('*')
+          .in('user_id', ids)
+          .order('full_name');
+        if (!cancelled) setProfiles(result.data ?? []);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, accountId, supabase]);
-
-  useEffect(() => {
-    if (!open || !deal?.id || !accountId) return;
-    let cancelled = false;
-    void supabase
-      .from('deal_stage_events')
-      .select('id, event_type, from_stage_name, to_stage_name, changed_by_name, occurred_at')
-      .eq('account_id', accountId)
-      .eq('deal_id', deal.id)
-      .order('occurred_at', { ascending: false })
-      .limit(50)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        setStageHistory((data ?? []) as DealStageEvent[]);
-        setStageHistoryError(Boolean(error));
-        setHistoryForDealId(deal.id);
-      });
-    return () => { cancelled = true; };
-  }, [open, deal?.id, accountId, supabase]);
-
+  }, [open, accountId, defaultCurrency, defaultStageId, stages]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const selectedContact = contacts.find((contact) => contact.id === contactId);
   const whatsappUrl = selectedContact?.phone
-    ? `https://wa.me/${selectedContact.phone.replace(/\D/g, '')}`
+    ? 'https://wa.me/' + selectedContact.phone.replace(/\D/g, '')
     : null;
-
   async function handleSave() {
-    if (!title.trim() || !contactId || !stageId) {
+    if (saving) return;
+    if (
+      !title.trim() ||
+      !contactId ||
+      !stageId ||
+      !stages.some((stage) => stage.id === stageId)
+    ) {
       toast.error(t('toastRequired'));
       return;
     }
+    if (!user || !accountId) return;
     setSaving(true);
-
-    const payload = {
-      title: title.trim(),
-      value: parseFloat(value) || 0,
-      currency,
-      contact_id: contactId,
-      pipeline_id: pipelineId,
-      stage_id: stageId,
-      assigned_to: assignedTo || null,
-      notes: notes.trim() || null,
-    };
-
-    if (deal) {
-      const { error } = await supabase
-        .from('deals')
-        .update(payload)
-        .eq('id', deal.id);
-      if (error) {
-        toast.error(t('toastFailedSave'));
-        setSaving(false);
-        return;
-      }
-    } else {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) {
-        toast.error(t('toastNotSignedIn'));
-        setSaving(false);
-        return;
-      }
-      if (!accountId) {
-        toast.error(t('toastNotLinked'));
-        setSaving(false);
-        return;
-      }
-      const { error } = await supabase
+    try {
+      const { error } = await createClient()
         .from('deals')
         .insert({
-          ...payload,
+          title: title.trim(),
+          value: Number(value) || 0,
+          currency,
+          contact_id: contactId,
+          pipeline_id: pipelineId,
+          stage_id: stageId,
+          assigned_to: assignedTo || null,
+          notes: notes.trim() || null,
           user_id: user.id,
           account_id: accountId,
           status: 'open',
         });
-      if (error) {
-        toast.error(t('toastFailedCreate'));
-        setSaving(false);
-        return;
-      }
+      if (error) throw error;
+      toast.success(t('toastCreated'));
+      onOpenChange(false);
+      onSaved();
+    } catch {
+      toast.error(t('toastFailedCreate'));
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-    toast.success(deal ? t('toastUpdated') : t('toastCreated'));
-    onOpenChange(false);
-    onSaved();
   }
-
-  async function handleStatusChange(status: DealStatus) {
-    if (!deal) return;
-    setStatusAction(status);
-    const { error } = await supabase
-      .from('deals')
-      .update({ status })
-      .eq('id', deal.id);
-    setStatusAction(null);
-    if (error) {
-      toast.error(t('toastFailedStatus'));
-      return;
-    }
-    toast.success(
-      status === 'won'
-        ? t('toastMarkedWon')
-        : status === 'lost'
-          ? t('toastMarkedLost')
-          : t('toastReopened')
-    );
-    onOpenChange(false);
-    onSaved();
-  }
-
-  async function handleDelete() {
-    if (!deal) return;
-    setDeleting(true);
-    const { error } = await supabase.from('deals').delete().eq('id', deal.id);
-    setDeleting(false);
-    if (error) {
-      toast.error(t('toastFailedDelete'));
-      return;
-    }
-    toast.success(t('toastDeleted'));
-    setConfirmDelete(false);
-    onOpenChange(false);
-    onSaved();
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-border bg-popover text-popover-foreground flex h-[min(90vh,760px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <div className="flex h-full flex-col">
-          <DialogHeader className="border-border/50 border-b p-4 pr-12">
-            <DialogTitle className="text-popover-foreground">
-              {deal ? t('editDeal') : t('newDeal')}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">{t('title')}</Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={t('titlePlaceholder')}
-                className="border-border bg-muted text-foreground"
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">{t('contact')}</Label>
-              <select
-                value={contactId}
-                onChange={(e) => setContactId(e.target.value)}
-                className="border-border bg-muted text-foreground focus:border-primary focus:ring-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none focus:ring-1"
-              >
-                <option value="">{t('selectContact')}</option>
-                {contacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name || c.phone}
-                  </option>
-                ))}
-              </select>
-
-              {whatsappUrl && (
-                <Link
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-primary/10 text-primary hover:bg-primary/20 mt-1 inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs"
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  {t('callOnWhatsApp')}
-                </Link>
-              )}
-            </div>
-
-            <div className="grid grid-cols-[1fr_110px] gap-3">
-              <div className="grid gap-2">
-                <Label className="text-muted-foreground">{t('value')}</Label>
-                <div className="relative">
-                  <DollarSign className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
-                  <Input
-                    type="number"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    placeholder="0"
-                    className="border-border bg-muted text-foreground pl-7"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-muted-foreground">{t('currency')}</Label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="border-border bg-muted text-foreground focus:border-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none"
-                >
-                  {CURRENCIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">{t('stage')}</Label>
-              <select
-                value={stageId}
-                onChange={(e) => setStageId(e.target.value)}
-                className="border-border bg-muted text-foreground focus:border-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none"
-              >
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">{t('assignedTo')}</Label>
-              <select
-                value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
-                className="border-border bg-muted text-foreground focus:border-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none"
-              >
-                <option value="">{t('unassigned')}</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name || p.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">{t('notes')}</Label>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('notesPlaceholder')}
-                className="border-border bg-muted text-foreground min-h-[100px]"
-              />
-            </div>
-
-            {deal && (
-              <div className="border-border bg-muted/50 space-y-2 rounded-lg border p-3">
-                <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                  {t('status')}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => handleStatusChange('won')}
-                    disabled={!!statusAction || deal.status === 'won'}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 disabled:opacity-50"
-                  >
-                    {statusAction === 'won' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Check className="mr-1 h-4 w-4" />
-                        {t('markAsWon')}
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => handleStatusChange('lost')}
-                    disabled={!!statusAction || deal.status === 'lost'}
-                    className="flex-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {statusAction === 'lost' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <X className="mr-1 h-4 w-4" />
-                        {t('markAsLost')}
-                      </>
-                    )}
-                  </Button>
-                </div>
-                {deal.status && deal.status !== 'open' && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => handleStatusChange('open')}
-                    disabled={!!statusAction}
-                    className="text-muted-foreground hover:text-foreground w-full"
-                  >
-                    {t('reopenDeal')}
-                  </Button>
-                )}
-              </div>
-            )}
-            {deal && (
-              <details className="border-border bg-muted/20 rounded-xl border p-3.5">
-                <summary className="text-foreground flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
-                  <History className="text-primary size-4" /> Histórico de etapas
-                  <span className="text-muted-foreground ml-auto text-xs font-normal">
-                    {historyForDealId === deal.id ? stageHistory.length : 0} registros
-                  </span>
-                </summary>
-                {historyForDealId !== deal.id ? (
-                  <p className="text-muted-foreground mt-3 text-xs">Carregando histórico...</p>
-                ) : stageHistoryError ? (
-                  <p className="text-muted-foreground mt-3 text-xs">Histórico indisponível no momento.</p>
-                ) : stageHistory.length === 0 ? (
-                  <p className="text-muted-foreground mt-3 text-xs">Nenhuma movimentação registrada desde a ativação do histórico.</p>
-                ) : (
-                  <ol className="border-border mt-3 max-h-52 space-y-3 overflow-y-auto border-l pl-3">
-                    {stageHistory.map((event) => (
-                      <li key={event.id} className="text-xs">
-                        <p className="text-foreground">
-                          {event.event_type === 'created'
-                            ? `Criado em ${event.to_stage_name}`
-                            : `${event.from_stage_name ?? 'Etapa anterior'} → ${event.to_stage_name}`}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {BRAZIL_DATE_TIME.format(new Date(event.occurred_at))}
-                          {' · '}{event.changed_by_name ?? 'Integração ou sistema'}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </details>
-            )}
+      <DialogContent className="border-border bg-popover flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b p-4 pr-12">
+          <DialogTitle>{t('newDeal')}</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="grid gap-2">
+            <Label className="text-muted-foreground">{t('title')}</Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={t('titlePlaceholder')}
+              className="border-border bg-muted text-foreground"
+            />
           </div>
 
-          <div className="border-border/50 bg-popover/80 border-t p-4">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="border-border text-muted-foreground hover:bg-muted flex-1 bg-transparent"
-              >
-                {t('cancel')}
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={saving || !title.trim() || !contactId || !stageId}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1"
-              >
-                {saving
-                  ? t('saving')
-                  : deal
-                    ? t('saveChanges')
-                    : t('createDeal')}
-              </Button>
-            </div>
-
-            {deal &&
-              (confirmDelete ? (
-                <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">
-                  <span className="text-red-300">{t('deletePrompt')}</span>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(false)}
-                      disabled={deleting}
-                      className="text-muted-foreground hover:bg-muted rounded px-2 py-1"
-                    >
-                      {t('cancel')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      disabled={deleting}
-                      className="rounded bg-red-600 px-2 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {deleting ? t('deleting') : t('confirm')}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  className="mt-3 flex w-full items-center justify-center gap-1 text-xs text-red-400 hover:text-red-300"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  {t('deleteDeal')}
-                </button>
+          <div className="grid gap-2">
+            <Label className="text-muted-foreground">{t('contact')}</Label>
+            <select
+              value={contactId}
+              onChange={(e) => setContactId(e.target.value)}
+              className="border-border bg-muted text-foreground focus:border-primary focus:ring-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none focus:ring-1"
+            >
+              <option value="">{t('selectContact')}</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || c.phone}
+                </option>
               ))}
+            </select>
+
+            {whatsappUrl && (
+              <Link
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-primary/10 text-primary hover:bg-primary/20 mt-1 inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs"
+              >
+                <MessageSquare className="h-3 w-3" />
+                {t('callOnWhatsApp')}
+              </Link>
+            )}
           </div>
+
+          <div className="grid grid-cols-[1fr_110px] gap-3">
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">{t('value')}</Label>
+              <div className="relative">
+                <DollarSign className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+                <Input
+                  type="number"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="0"
+                  className="border-border bg-muted text-foreground pl-7"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">{t('currency')}</Label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="border-border bg-muted text-foreground focus:border-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none"
+              >
+                {CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label className="text-muted-foreground">{t('stage')}</Label>
+            <select
+              value={stageId}
+              onChange={(e) => setStageId(e.target.value)}
+              className="border-border bg-muted text-foreground focus:border-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none"
+            >
+              {stages.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label className="text-muted-foreground">{t('assignedTo')}</Label>
+            <select
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              className="border-border bg-muted text-foreground focus:border-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none"
+            >
+              <option value="">{t('unassigned')}</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.full_name || p.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label className="text-muted-foreground">{t('notes')}</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t('notesPlaceholder')}
+              className="border-border bg-muted text-foreground min-h-[100px]"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t p-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button disabled={saving} onClick={() => void handleSave()}>
+            {saving ? 'Salvando…' : 'Criar negócio'}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

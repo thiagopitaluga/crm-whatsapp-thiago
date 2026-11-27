@@ -182,7 +182,7 @@ export function MessageThread({
   const tTimer = useTranslations('Inbox.sessionTimer');
   const tQuote = useTranslations('Inbox.replyQuote');
 
-  const { user } = useAuth();
+  const { user, accountId } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -222,28 +222,32 @@ export function MessageThread({
     messageId: string;
   } | null>(null);
 
-  // Profiles are bounded by RLS to rows the current user is allowed to
-  // see — today that's just the current user, but the dropdown keeps the
-  // shape ready for shared-team workspaces without a refactor.
+  // Memberships, rather than globally visible profiles, define this roster.
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
-    supabase
-      .from('profiles')
-      .select('*')
-      .order('full_name')
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error('Failed to fetch profiles:', error);
-          return;
-        }
-        setProfiles((data as Profile[]) ?? []);
+    setProfiles([]);
+    if (!accountId) return;
+    void fetch('/api/account/members', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Falha ao carregar os membros');
+        return response.json();
+      })
+      .then((body) => {
+        if (!cancelled)
+          setProfiles(
+            (body.members ?? []).map((member: Profile) => ({
+              ...member,
+              id: member.user_id,
+            }))
+          );
+      })
+      .catch(() => {
+        if (!cancelled) setProfiles([]);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accountId]);
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
@@ -547,7 +551,9 @@ export function MessageThread({
         setReplyTo(null);
       } catch (err) {
         console.error('Failed to send message:', err);
-        toast.error('Não foi possível confirmar o envio. Confira o histórico antes de tentar novamente.');
+        toast.error(
+          'Não foi possível confirmar o envio. Confira o histórico antes de tentar novamente.'
+        );
         onUpdateMessage(tempId, { status: 'failed' });
         setReplyTo(null);
       }
@@ -885,7 +891,11 @@ export function MessageThread({
 
   const handleAssignChange = useCallback(
     async (agentId: string | null) => {
-      if (!conversation) return;
+      if (
+        !conversation ||
+        (agentId && !profiles.some((p) => p.user_id === agentId))
+      )
+        return;
 
       const supabase = createClient();
       const { error } = await supabase
@@ -901,7 +911,7 @@ export function MessageThread({
 
       onAssignChange(conversation.id, agentId);
     },
-    [conversation, onAssignChange]
+    [conversation, onAssignChange, profiles]
   );
 
   // Empty state — same WhatsApp-style doodle background as the active
@@ -999,12 +1009,13 @@ export function MessageThread({
           {onOpenContactMobile && (
             <button
               type="button"
-              className="text-primary hover:bg-muted inline-flex size-8 items-center justify-center rounded-md lg:hidden"
+              className="text-primary hover:bg-muted inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md px-1 text-xs lg:hidden"
               title="Abrir ficha do contato"
               aria-label="Abrir ficha do contato"
               onClick={onOpenContactMobile}
             >
               <PanelRightOpen className="size-4" />
+              <span>Abrir ficha</span>
             </button>
           )}
           {/* Manual refresh — forces a refetch of the messages + the
@@ -1033,7 +1044,7 @@ export function MessageThread({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
+                'hover:bg-muted hidden h-7 items-center justify-center gap-1 rounded-md px-2 text-xs md:inline-flex',
                 currentStatus?.color ?? 'text-muted-foreground'
               )}
             >

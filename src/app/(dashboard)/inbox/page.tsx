@@ -997,9 +997,18 @@ function InboxPageInner() {
           </div>
         )}
         <Sheet open={mobileContactOpen} onOpenChange={setMobileContactOpen}>
-          <SheetContent side="right" className="w-80 max-w-full gap-0 p-0">
-            <SheetHeader className="sr-only">
-              <SheetTitle>Ficha do contato</SheetTitle>
+          <SheetContent
+            side="right"
+            className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-full"
+          >
+            <SheetHeader className="shrink-0 border-b p-3 pr-12">
+              <button
+                className="text-left text-sm"
+                onClick={() => setMobileContactOpen(false)}
+              >
+                ← Voltar para a conversa
+              </button>
+              <SheetTitle className="sr-only">Ficha do contato</SheetTitle>
             </SheetHeader>
             <ContactSidebar
               key={activeContact?.id}

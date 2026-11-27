@@ -208,7 +208,6 @@ export default function PipelinesPage() {
   // Deal form state is lifted here so both the top-bar "Add Deal" and
   // the per-column "+" trigger the same Sheet.
   const [dealFormOpen, setDealFormOpen] = useState(false);
-  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [defaultStageId, setDefaultStageId] = useState<string>('');
   const [quickNoteDeal, setQuickNoteDeal] = useState<Deal | null>(null);
   const [quickNote, setQuickNote] = useState('');
@@ -269,8 +268,18 @@ export default function PipelinesPage() {
         return [];
       }
       setDealLoadError(false);
-      const { data: entries } = await supabase.rpc('get_pipeline_stage_entry_times', { p_pipeline_id: pipelineId });
-      const stageEntries = new Map<string, string>((entries ?? []).map((entry: { deal_id: string; occurred_at: string }) => [entry.deal_id, entry.occurred_at]));
+      const { data: entries } = await supabase.rpc(
+        'get_pipeline_stage_entry_times',
+        { p_pipeline_id: pipelineId }
+      );
+      const stageEntries = new Map<string, string>(
+        (entries ?? []).map(
+          (entry: { deal_id: string; occurred_at: string }) => [
+            entry.deal_id,
+            entry.occurred_at,
+          ]
+        )
+      );
       return (data ?? []).map((row) => {
         const contact = row.contact as
           | (Contact & {
@@ -489,7 +498,15 @@ export default function PipelinesPage() {
       // Show the selected column immediately, then keep it only after the
       // database confirms the account-scoped update succeeded.
       setDeals((prev) =>
-        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId, stage_entered_at: new Date().toISOString() } : d))
+        prev.map((d) =>
+          d.id === dealId
+            ? {
+                ...d,
+                stage_id: newStageId,
+                stage_entered_at: new Date().toISOString(),
+              }
+            : d
+        )
       );
       const { data, error } = await supabase
         .from('deals')
@@ -501,7 +518,13 @@ export default function PipelinesPage() {
       if (error || !data) {
         setDeals((prev) =>
           prev.map((deal) =>
-            deal.id === dealId ? { ...deal, stage_id: previousStageId, stage_entered_at: currentDeal.stage_entered_at } : deal
+            deal.id === dealId
+              ? {
+                  ...deal,
+                  stage_id: previousStageId,
+                  stage_entered_at: currentDeal.stage_entered_at,
+                }
+              : deal
           )
         );
         toast.error(t('toastFailedMoveDeal'));
@@ -579,18 +602,12 @@ export default function PipelinesPage() {
 
   const handleAddDeal = useCallback(
     (stageId?: string) => {
-      setEditingDeal(null);
       setDefaultStageId(stageId ?? stages[0]?.id ?? '');
       setDealFormOpen(true);
     },
     [stages]
   );
 
-  const handleEditDeal = useCallback((deal: Deal) => {
-    setEditingDeal(deal);
-    setDefaultStageId(deal.stage_id);
-    setDealFormOpen(true);
-  }, []);
   const [chatDeal, setChatDeal] = useState<Deal | null>(null);
 
   const handleQuickValue = useCallback(
@@ -1679,32 +1696,12 @@ export default function PipelinesPage() {
           key={chatDeal.id}
           deal={chatDeal}
           onClose={() => setChatDeal(null)}
-          onEdit={() => {
-            void (async () => {
-              const { data, error } = await supabase
-                .from('deals')
-                .select('*')
-                .eq('id', chatDeal.id)
-                .eq('account_id', accountId!)
-                .maybeSingle();
-              if (error || !data) {
-                toast.error('Não foi possível carregar o negócio para edição.');
-                return;
-              }
-              const currentStages = await loadStages(data.pipeline_id);
-              setSelectedPipelineId(data.pipeline_id);
-              setStages(currentStages);
-              setChatDeal(null);
-              handleEditDeal(data);
-            })();
-          }}
           onChanged={() => void refreshDeals()}
         />
       )}
       <DealForm
         open={dealFormOpen}
         onOpenChange={setDealFormOpen}
-        deal={editingDeal}
         pipelineId={selectedPipelineId}
         stages={stages}
         defaultStageId={defaultStageId}
