@@ -117,6 +117,12 @@ export async function dispatchNotifications() {
       let pushSent = job.push_sent,
         whatsappSent = job.whatsapp_sent;
       if (!pushSent && !(quiet && s.quietPush)) {
+        const unread = await db
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', n.user_id)
+          .eq('account_id', n.account_id)
+          .is('read_at', null);
         const subscriptions = await db
           .from('push_subscriptions')
           .select('*')
@@ -164,6 +170,7 @@ export async function dispatchNotifications() {
                       ? '/tasks'
                       : '/notifications',
                   tag: n.id,
+                  badgeCount: unread.error ? undefined : unread.count,
                 }),
                 { TTL: 3600, timeout: 5000 }
               );

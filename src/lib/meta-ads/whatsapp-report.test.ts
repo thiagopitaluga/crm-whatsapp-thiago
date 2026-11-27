@@ -95,6 +95,8 @@ describe('Meta WhatsApp report', () => {
       formLeadSpend: 120,
       formCpl: 24,
       whatsappConversations: 5,
+      whatsappConversationSpend: 150,
+      whatsappConversationCpl: 30,
       opportunities: 10,
       costPerOpportunity: 15,
     });
@@ -114,6 +116,8 @@ describe('Meta WhatsApp report', () => {
       formLeadSpend: 145.57,
       formCpl: 16.17,
       whatsappConversations: 16,
+      whatsappConversationSpend: 160,
+      whatsappConversationCpl: 10,
       opportunities: 25,
       costPerOpportunity: 12.3,
     };
@@ -125,11 +129,12 @@ describe('Meta WhatsApp report', () => {
       previous: { ...metrics, spend: 94.02, clicks: 66 },
     });
     expect(report).toContain('Bom dia, Morgana!');
-    expect(report).toContain(
-      '• Cliques: 129 (semana anterior: 66, ▲95,45%)\n• CTR:'
-    );
+    expect(report).toContain('• Cliques: 129\n• CTR:');
+    expect(report).not.toContain('semana anterior');
+    expect(report).not.toContain('mês anterior');
     expect(report).toContain('• Leads de formulário: 9');
     expect(report).toContain('• Custo por lead de formulário: R$ 16,17');
+    expect(report).toContain('• Custo por conversa no WhatsApp: R$ 10,00');
     expect(report).not.toContain('automaticamente');
     expect(report).toContain(
       '*📸 Instagram (orgânico)*\nInstagram não conectado.'

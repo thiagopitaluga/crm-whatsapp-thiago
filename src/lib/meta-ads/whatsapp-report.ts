@@ -20,16 +20,14 @@ export type MetaReportMetrics = {
   formLeadSpend: number;
   formCpl: number | null;
   whatsappConversations: number;
+  whatsappConversationSpend: number;
+  whatsappConversationCpl: number | null;
   opportunities: number;
   costPerOpportunity: number | null;
 };
 
 const WHATSAPP_CONVERSATION_ACTION =
   'onsite_conversion.messaging_conversation_started_7d';
-
-function dateAtUtc(value: string) {
-  return new Date(`${value}T00:00:00.000Z`);
-}
 
 function isoDate(value: Date) {
   return value.toISOString().slice(0, 10);
@@ -158,6 +156,14 @@ export function calculateMetaReportMetrics(
       .filter((row) => number(row.reported_leads) > 0 && row.campaign_id)
       .map((row) => row.campaign_id as string)
   );
+  const whatsappCampaigns = new Set(
+    comparedRows
+      .filter(
+        (row) =>
+          actionValue(row, WHATSAPP_CONVERSATION_ACTION) > 0 && row.campaign_id
+      )
+      .map((row) => row.campaign_id as string)
+  );
 
   const aggregate = (rangeFrom: string, rangeTo: string): MetaReportMetrics => {
     const rows = comparedRows.filter((row) => inRange(row, rangeFrom, rangeTo));
@@ -178,6 +184,11 @@ export function calculateMetaReportMetrics(
       (sum, row) => sum + actionValue(row, WHATSAPP_CONVERSATION_ACTION),
       0
     );
+    const whatsappConversationSpend = rows
+      .filter(
+        (row) => row.campaign_id && whatsappCampaigns.has(row.campaign_id)
+      )
+      .reduce((sum, row) => sum + number(row.spend), 0);
     const opportunities = formLeads + whatsappConversations;
     return {
       spend,
@@ -188,6 +199,11 @@ export function calculateMetaReportMetrics(
       formLeadSpend,
       formCpl: formLeads > 0 ? formLeadSpend / formLeads : null,
       whatsappConversations,
+      whatsappConversationSpend,
+      whatsappConversationCpl:
+        whatsappConversations > 0
+          ? whatsappConversationSpend / whatsappConversations
+          : null,
       opportunities,
       costPerOpportunity: opportunities > 0 ? spend / opportunities : null,
     };
@@ -209,16 +225,6 @@ function money(value: number | null) {
   return value === null ? '—' : `R$ ${decimal.format(value)}`;
 }
 
-function percentChange(current: number | null, previous: number | null) {
-  const left = current ?? 0;
-  const right = previous ?? 0;
-  if (left === 0 && right === 0) return '0%';
-  if (right === 0) return '▲100%';
-  const change = ((left - right) / right) * 100;
-  if (Math.abs(change) < 0.005) return '0%';
-  return `${change > 0 ? '▲' : '▼'}${decimal.format(Math.abs(change))}%`;
-}
-
 function periodLabel(from: string, to: string) {
   const format = (value: string) => {
     const [, month, day] = value.split('-');
@@ -237,18 +243,9 @@ export function renderMetaWhatsAppReport(input: {
   current: MetaReportMetrics;
   previous: MetaReportMetrics;
 }) {
-  const previousLabel =
-    input.frequency === 'weekly' ? 'semana anterior' : 'mês anterior';
-  const line = (
-    label: string,
-    currentText: string,
-    previousText: string,
-    currentValue: number | null,
-    previousValue: number | null
-  ) =>
-    `• ${label}: ${currentText} (${previousLabel}: ${previousText}, ${percentChange(currentValue, previousValue)})`;
+  const line = (label: string, currentText: string) =>
+    `• ${label}: ${currentText}`;
   const current = input.current;
-  const previous = input.previous;
   const heading =
     input.frequency === 'weekly'
       ? `Bom dia, ${input.recipientName}! Segue o resumo do Meta Ads da última semana:`
@@ -263,70 +260,23 @@ export function renderMetaWhatsAppReport(input: {
     `No período, foram registradas ${integer.format(current.opportunities)} oportunidades com investimento de ${money(current.spend)}.`,
     '',
     '*📱 Meta Ads (Instagram/Facebook)*',
-    line(
-      'Investimento',
-      money(current.spend),
-      money(previous.spend),
-      current.spend,
-      previous.spend
-    ),
-    line(
-      'Impressões',
-      integer.format(current.impressions),
-      integer.format(previous.impressions),
-      current.impressions,
-      previous.impressions
-    ),
-    line(
-      'Cliques',
-      integer.format(current.clicks),
-      integer.format(previous.clicks),
-      current.clicks,
-      previous.clicks
-    ),
-    line(
-      'CTR',
-      `${decimal.format(current.ctr)}%`,
-      `${decimal.format(previous.ctr)}%`,
-      current.ctr,
-      previous.ctr
-    ),
+    line('Investimento', money(current.spend)),
+    line('Impressões', integer.format(current.impressions)),
+    line('Cliques', integer.format(current.clicks)),
+    line('CTR', `${decimal.format(current.ctr)}%`),
     `• Custo por clique: ${money(current.clicks ? current.spend / current.clicks : null)}`,
-    line(
-      'Leads de formulário',
-      integer.format(current.formLeads),
-      integer.format(previous.formLeads),
-      current.formLeads,
-      previous.formLeads
-    ),
-    line(
-      'Custo por lead de formulário',
-      money(current.formCpl),
-      money(previous.formCpl),
-      current.formCpl,
-      previous.formCpl
-    ),
+    line('Leads de formulário', integer.format(current.formLeads)),
+    line('Custo por lead de formulário', money(current.formCpl)),
     line(
       'Conversas no WhatsApp',
-      integer.format(current.whatsappConversations),
-      integer.format(previous.whatsappConversations),
-      current.whatsappConversations,
-      previous.whatsappConversations
+      integer.format(current.whatsappConversations)
     ),
     line(
-      'Total de oportunidades',
-      integer.format(current.opportunities),
-      integer.format(previous.opportunities),
-      current.opportunities,
-      previous.opportunities
+      'Custo por conversa no WhatsApp',
+      money(current.whatsappConversationCpl)
     ),
-    line(
-      'Custo por oportunidade',
-      money(current.costPerOpportunity),
-      money(previous.costPerOpportunity),
-      current.costPerOpportunity,
-      previous.costPerOpportunity
-    ),
+    line('Total de oportunidades', integer.format(current.opportunities)),
+    line('Custo por oportunidade', money(current.costPerOpportunity)),
     ...renderSupplement(input.service, input.organic),
   ].join('\n');
 }

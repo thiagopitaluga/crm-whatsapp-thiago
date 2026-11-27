@@ -5,62 +5,93 @@
  * requests. A shared device must never expose CRM data while offline. Only
  * immutable Next.js build assets plus the offline notice live in CacheStorage.
  */
-const STATIC_CACHE = "organizap-static-v1";
-self.addEventListener('push', event => {
- let data={}; try { data=event.data.json(); } catch { /* Empty push. */ }
- const url=typeof data.url==='string' && /^\/(?!\/)/.test(data.url) ? data.url : '/notifications';
- event.waitUntil(self.registration.showNotification(data.title || 'Organizap',{body:data.body || 'Há uma nova atualização.',icon:'/pwa/icon-192.png',tag:data.tag,data:{url}}));
+const STATIC_CACHE = 'organizap-static-v1';
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch {
+    /* Empty push. */
+  }
+  const url =
+    typeof data.url === 'string' && /^\/(?!\/)/.test(data.url)
+      ? data.url
+      : '/notifications';
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(data.title || 'Organizap', {
+        body: data.body || 'Há uma nova atualização.',
+        icon: '/pwa/icon-192.png',
+        badge: '/pwa/icon-192.png',
+        tag: data.tag,
+        data: { url },
+      }),
+      Number.isInteger(data.badgeCount) &&
+      data.badgeCount >= 0 &&
+      'setAppBadge' in self.navigator
+        ? (data.badgeCount
+            ? self.navigator.setAppBadge(data.badgeCount)
+            : self.navigator.clearAppBadge()
+          ).catch(() => {})
+        : Promise.resolve(),
+    ])
+  );
 });
-self.addEventListener('notificationclick', event => {
- event.notification.close();
- event.waitUntil(self.clients.openWindow(event.notification.data?.url || '/notifications'));
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.openWindow(event.notification.data?.url || '/notifications')
+  );
 });
-const OFFLINE_URL = "/offline.html";
+const OFFLINE_URL = '/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
-  "/pwa/icon-192.png",
-  "/pwa/icon-512.png",
-  "/pwa/apple-touch-icon.png",
+  '/pwa/icon-192.png',
+  '/pwa/icon-512.png',
+  '/pwa/apple-touch-icon.png',
 ];
 
-self.addEventListener("install", (event) => {
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS)),
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
   );
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
+self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith("organizap-static-") && key !== STATIC_CACHE)
-            .map((key) => caches.delete(key)),
-        ),
+            .filter(
+              (key) =>
+                key.startsWith('organizap-static-') && key !== STATIC_CACHE
+            )
+            .map((key) => caches.delete(key))
+        )
       )
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener("fetch", (event) => {
+self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  if (request.method !== "GET" || url.origin !== self.location.origin) return;
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   // Requests for logged-in screens and routes are always fetched from the
   // network. On a genuine outage we offer only a generic, data-free notice.
-  if (request.mode === "navigate") {
+  if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)));
     return;
   }
 
   // Next.js emits content-hashed static files. Cache them for startup speed;
   // their hashes make stale application code impossible after a deployment.
-  if (!url.pathname.startsWith("/_next/static/")) return;
+  if (!url.pathname.startsWith('/_next/static/')) return;
 
   event.respondWith(
     caches.match(request).then((cached) => {
@@ -69,10 +100,12 @@ self.addEventListener("fetch", (event) => {
       return fetch(request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
-          void caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy));
+          void caches
+            .open(STATIC_CACHE)
+            .then((cache) => cache.put(request, copy));
         }
         return response;
       });
-    }),
+    })
   );
 });
