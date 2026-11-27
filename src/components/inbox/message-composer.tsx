@@ -260,10 +260,15 @@ export function MessageComposer({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      if (e.target.value === '/' && !readOnly) {
+        setText('');
+        setQuickReplyOpen(true);
+        return;
+      }
       setText(e.target.value);
       adjustHeight();
     },
-    [adjustHeight]
+    [adjustHeight, readOnly]
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the

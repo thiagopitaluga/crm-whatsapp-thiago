@@ -563,15 +563,21 @@ async function fetchEvolutionQrConnector(
     const response = await evolutionRequest(
       baseUrl,
       apiKey,
-      `message/sendMedia/${instance}`,
+      kind === 'audio'
+        ? `message/sendWhatsAppAudio/${instance}`
+        : `message/sendMedia/${instance}`,
       {
         method: 'POST',
-        body: JSON.stringify({
-          number: phone,
-          mediatype: kind,
-          media: url,
-          caption,
-        }),
+        body: JSON.stringify(
+          kind === 'audio'
+            ? { number: phone, audio: url }
+            : {
+                number: phone,
+                mediatype: kind,
+                media: url,
+                caption,
+              }
+        ),
         signal: timeout,
       }
     );

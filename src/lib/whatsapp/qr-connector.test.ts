@@ -66,6 +66,49 @@ describe('Evolution QR images', () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
+  it('sends voice recordings through the dedicated WhatsApp audio endpoint', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ key: { id: 'voice-id' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await fetchQrConnector(ACCOUNT_ID, 'messages/media', {
+      method: 'POST',
+      body: JSON.stringify({
+        phone: '5511926106858',
+        kind: 'audio',
+        url: 'https://storage.example/voice.ogg',
+      }),
+    });
+    expect(await response.json()).toEqual({ messageId: 'voice-id' });
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toContain('/message/sendWhatsAppAudio/');
+    expect(JSON.parse(String(init.body))).toEqual({
+      number: '5511926106858',
+      audio: 'https://storage.example/voice.ogg',
+    });
+  });
+  it('keeps images on the media endpoint', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ key: { id: 'image-id' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchQrConnector(ACCOUNT_ID, 'messages/media', {
+      method: 'POST',
+      body: JSON.stringify({
+        phone: '5511926106858',
+        kind: 'image',
+        url: 'https://storage.example/photo.jpg',
+        caption: 'Foto',
+      }),
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toContain('/message/sendMedia/');
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      mediatype: 'image',
+      media: 'https://storage.example/photo.jpg',
+      caption: 'Foto',
+    });
+  });
 
   it('requests a fresh QR from an existing disconnected instance without recreating it', async () => {
     const fetchMock = vi
