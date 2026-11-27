@@ -12,6 +12,7 @@ import { extensionForMime } from '@/lib/media/filename';
 import { normalizeEvolutionReferral } from '@/lib/whatsapp/evolution-referral';
 import { resolveInboundAttribution } from '@/lib/attribution/click-tracking';
 import { recordEvolutionCtwaAttribution } from '@/lib/attribution/ctwa-inbound';
+import { applyEvolutionCampaignReply } from '@/lib/broadcasts/evolution-actions';
 import {
   parseEvolutionReceipt,
   receiptPreviousStatuses,
@@ -192,6 +193,15 @@ export async function POST(request: Request) {
           .eq('id', ingested.conversationId);
       }
       if (key?.fromMe !== true && ingested?.messageInserted) {
+        try {
+          await applyEvolutionCampaignReply(
+            supabaseAdmin(), accountId, ingested.contactId,
+            phone, typeof message.pushName === 'string' ? message.pushName : null,
+            createdAt,
+          );
+        } catch (error) {
+          console.error('[evolution-webhook] campaign reply failed:', error);
+        }
         try {
           const db = supabaseAdmin();
           const referral = normalizeEvolutionReferral(message);

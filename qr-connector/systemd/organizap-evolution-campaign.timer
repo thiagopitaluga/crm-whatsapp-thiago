@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OrganiZAP Evolution campaigns every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=false
+Unit=organizap-evolution-campaign.service
+
+[Install]
+WantedBy=timers.target

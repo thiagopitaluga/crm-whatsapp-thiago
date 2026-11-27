@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Broadcast } from '@/types';
@@ -63,13 +63,17 @@ export default function BroadcastsPage() {
   const tStatus = useTranslations('Broadcasts.status');
   const canCreate = useCan('send-messages');
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+  const [evolutionCampaigns, setEvolutionCampaigns] = useState<Array<{
+    id: string; name: string; status: string; created_at: string;
+    total_recipients: number; sent_count: number; failed_count: number;
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Used to kick off polling only while something is actively sending.
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function fetchBroadcasts() {
+  const fetchBroadcasts = useCallback(async () => {
     try {
       const supabase = createClient();
       const { data, error: fetchError } = await supabase
@@ -79,20 +83,25 @@ export default function BroadcastsPage() {
 
       if (fetchError) throw fetchError;
       setBroadcasts(data ?? []);
+      const response = await fetch('/api/whatsapp/evolution-campaigns', { cache: 'no-store' });
+      if (response.ok) {
+        const result = await response.json() as { campaigns?: typeof evolutionCampaigns };
+        setEvolutionCampaigns(result.campaigns ?? []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('errorLoad'));
     } finally {
       setLoading(false);
     }
-  }
+  }, [t]);
 
   useEffect(() => {
     fetchBroadcasts();
-  }, []);
+  }, [fetchBroadcasts]);
 
   const anySending = useMemo(
-    () => broadcasts.some((b) => b.status === 'sending'),
-    [broadcasts],
+    () => broadcasts.some((b) => b.status === 'sending') || evolutionCampaigns.some((c) => c.status === 'sending'),
+    [broadcasts, evolutionCampaigns],
   );
 
   useEffect(() => {
@@ -129,7 +138,7 @@ export default function BroadcastsPage() {
       stopPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [anySending]);
+  }, [anySending, fetchBroadcasts]);
 
   if (loading) {
     return (
@@ -198,7 +207,23 @@ export default function BroadcastsPage() {
         </GatedButton>
       </div>
 
-      {broadcasts.length === 0 ? (
+      {evolutionCampaigns.length > 0 && <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Disparos via Evolution</h2>
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <Table><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Status</TableHead>
+            <TableHead>Contatos</TableHead><TableHead>Enviados</TableHead><TableHead>Falhas</TableHead><TableHead>Data</TableHead></TableRow></TableHeader>
+            <TableBody>{evolutionCampaigns.map((campaign) => <TableRow key={campaign.id} className="cursor-pointer" onClick={() => router.push(`/broadcasts/evolution/${campaign.id}`)}>
+              <TableCell className="font-medium">{campaign.name}</TableCell><TableCell>{({
+                draft: 'Rascunho', scheduled: 'Agendado', sending: 'Enviando', paused: 'Pausado',
+                completed: 'Concluído', partial: 'Parcial', failed: 'Falhou',
+              } as Record<string,string>)[campaign.status] ?? campaign.status}</TableCell>
+              <TableCell>{campaign.total_recipients}</TableCell><TableCell>{campaign.sent_count}</TableCell>
+              <TableCell>{campaign.failed_count}</TableCell><TableCell>{new Date(campaign.created_at).toLocaleDateString('pt-BR')}</TableCell>
+            </TableRow>)}</TableBody></Table>
+        </div>
+      </section>}
+
+      {broadcasts.length === 0 && evolutionCampaigns.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-border bg-card">
           <Radio className="mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">{t('noBroadcastsYet')}</p>
@@ -215,7 +240,7 @@ export default function BroadcastsPage() {
             {t('newBroadcast')}
           </GatedButton>
         </div>
-      ) : (
+      ) : broadcasts.length > 0 ? (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
@@ -285,7 +310,7 @@ export default function BroadcastsPage() {
             </TableBody>
           </Table>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

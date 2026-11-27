@@ -10,6 +10,7 @@ import { Step1ChooseTemplate } from '@/components/broadcasts/step1-choose-templa
 import { Step2SelectAudience } from '@/components/broadcasts/step2-select-audience';
 import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
 import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
+import { EvolutionWizard } from '@/components/broadcasts/evolution-wizard';
 import { useBroadcastSending } from '@/hooks/use-broadcast-sending';
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -28,6 +29,7 @@ export default function NewBroadcastPage() {
   const { createAndSendBroadcast, isProcessing, progress } = useBroadcastSending();
 
   const [currentStep, setCurrentStep] = useState(0);
+  const [method, setMethod] = useState<'cloud' | 'evolution' | null>(null);
   const [template, setTemplate] = useState<MessageTemplate | null>(null);
   const [audience, setAudience] = useState<{
     type: 'all' | 'tags' | 'custom_field' | 'csv';
@@ -128,6 +130,24 @@ export default function NewBroadcastPage() {
     toast.success(t('toastDraftSaved'));
     router.push('/broadcasts');
   }
+
+  if (!method) return <div className="mx-auto max-w-3xl space-y-5">
+    <div><h1 className="text-2xl font-bold">Novo disparo</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Escolha por qual conexão as mensagens serão enviadas.</p></div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <button type="button" onClick={() => setMethod('cloud')} className="rounded-xl border border-border bg-card p-5 text-left transition hover:border-primary">
+        <h2 className="font-semibold">Cloud API (Meta oficial)</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Envie modelos aprovados pela Meta, com métricas de entrega e leitura.</p>
+      </button>
+      <button type="button" onClick={() => setMethod('evolution')} className="rounded-xl border border-border bg-card p-5 text-left transition hover:border-primary">
+        <h2 className="font-semibold">Chip WhatsApp (Evolution)</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Crie mensagens livres, escolha o público, os números remetentes e o ritmo de envio.</p>
+      </button>
+    </div>
+    <button type="button" onClick={() => router.push('/broadcasts')} className="text-sm text-muted-foreground hover:text-foreground">Voltar aos disparos</button>
+  </div>;
+
+  if (method === 'evolution') return <EvolutionWizard onBackToMethod={() => setMethod(null)} />;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">

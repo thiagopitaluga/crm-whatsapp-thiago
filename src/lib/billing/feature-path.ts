@@ -9,7 +9,7 @@ const featurePaths: Record<string, string[]> = {
   metaAds: ['/meta-ads', '/api/meta-ads'],
   ai: ['/agents', '/api/ai'],
   automations: ['/automations', '/flows', '/api/automations', '/api/flows'],
-  broadcasts: ['/broadcasts', '/api/whatsapp/broadcast'],
+  broadcasts: ['/broadcasts', '/api/whatsapp/broadcast', '/api/whatsapp/evolution-campaigns'],
 };
 export function serviceFeatureForPath(path: string): string | undefined {
   if (

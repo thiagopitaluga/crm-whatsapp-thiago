@@ -7,6 +7,7 @@ export async function middleware(request: NextRequest) {
   // The schedulers authenticate with CRON_SECRET, not a browser session.
   if (
     request.nextUrl.pathname === '/api/whatsapp/group-broadcasts/cron' ||
+    request.nextUrl.pathname === '/api/whatsapp/evolution-campaigns/cron' ||
     request.nextUrl.pathname === '/api/meta-ads/reports/cron'
   ) {
     return NextResponse.next({ request });
