@@ -8,6 +8,7 @@ type QrConnectorSuffix =
   | 'groups'
   | 'groups/send'
   | 'groups/participants'
+  | 'groups/avatar'
   | 'messages/send'
   | 'messages/media'
   | 'messages/read'
@@ -514,6 +515,29 @@ async function fetchEvolutionQrConnector(
     return jsonResponse({ subject, participants });
   }
 
+  if (suffix === 'groups/avatar') {
+    const body = parseJsonBody(init.body);
+    const groupId = typeof body?.group_id === 'string' ? body.group_id : '';
+    if (!/^[^\s@]{1,80}@g\.us$/.test(groupId))
+      return jsonResponse({ error: 'invalid_group_id' }, 400);
+    const response = await evolutionRequest(
+      baseUrl,
+      apiKey,
+      `chat/fetchProfilePictureUrl/${instance}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ number: groupId }),
+        signal: timeout,
+      }
+    );
+    if (!response.ok) return response;
+    const data = asRecord(await response.json().catch(() => null));
+    const url = data?.profilePictureUrl ?? data?.profilePicUrl;
+    return typeof url === 'string' && url.startsWith('https://')
+      ? jsonResponse({ url })
+      : jsonResponse({ error: 'no_group_picture' }, 404);
+  }
+
   if (suffix === 'messages/send') {
     const body = parseJsonBody(init.body);
     const phone =
@@ -876,14 +900,20 @@ async function sendEvolutionGroupMessages(
           values: pollOptions,
         };
       } else if (['image', 'video', 'audio', 'document'].includes(kind)) {
-        endpoint = `message/sendMedia/${instance}`;
-        payload = {
-          number: groupId,
-          mediatype: kind,
-          media: mediaUrl,
-          fileName: mediaName,
-          caption: personalText,
-        };
+        endpoint =
+          kind === 'audio'
+            ? `message/sendWhatsAppAudio/${instance}`
+            : `message/sendMedia/${instance}`;
+        payload =
+          kind === 'audio'
+            ? { number: groupId, audio: mediaUrl }
+            : {
+                number: groupId,
+                mediatype: kind,
+                media: mediaUrl,
+                fileName: mediaName,
+                caption: personalText,
+              };
       } else {
         payload = {
           number: groupId,
@@ -1035,8 +1065,10 @@ function validEvolutionGroupMediaUrl(
     return (
       url.protocol === 'https:' &&
       url.origin === storageOrigin &&
-      url.pathname.startsWith(
-        `/storage/v1/object/public/chat-media/account-${accountId}/group-broadcast/`
+      ['group-broadcast', 'group-chat'].some((folder) =>
+        url.pathname.startsWith(
+          `/storage/v1/object/public/chat-media/account-${accountId}/${folder}/`
+        )
       )
     );
   } catch {

@@ -32,8 +32,6 @@ export async function POST(request: Request) {
     created_at: timestamp,
   }, { onConflict: 'account_id,group_jid,message_id', ignoreDuplicates: true })
   if (error) return NextResponse.json({ error: 'Could not save group message' }, { status: 500 })
-  await admin.from('whatsapp_groups').update({ last_message_at: timestamp })
-    .eq('account_id', accountId).eq('group_jid', groupJid)
   return NextResponse.json({ stored: true })
 }
 

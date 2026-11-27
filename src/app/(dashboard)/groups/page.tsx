@@ -295,7 +295,7 @@ export default function GroupsPage() {
     <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground"><UsersRound className="size-6 text-primary" />Grupos</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground"><UsersRound className="size-6 text-primary" />Grupos do WhatsApp</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Visualize os grupos do WhatsApp conectado por QR e programe mensagens para os grupos que você selecionar.</p>
         </div>
         <Button variant="outline" onClick={() => void load(true)} disabled={refreshing}>

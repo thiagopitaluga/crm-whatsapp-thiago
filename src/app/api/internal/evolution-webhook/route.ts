@@ -454,11 +454,6 @@ async function ingestGroupMessage(
       '[evolution-webhook] group message insert failed:',
       error.message
     );
-  await admin
-    .from('whatsapp_groups')
-    .update({ last_message_at: timestamp })
-    .eq('account_id', accountId)
-    .eq('group_jid', groupJid);
 }
 
 function toIsoTimestamp(value: unknown): string {

@@ -14,7 +14,7 @@ export function isAccountGroupMediaUrl(value: string, accountId: string, supabas
     const candidate = new URL(value)
     const storage = new URL(supabaseUrl)
     return candidate.protocol === 'https:' && candidate.origin === storage.origin &&
-      candidate.pathname.startsWith(`/storage/v1/object/public/chat-media/account-${accountId}/group-broadcast/`)
+      ['group-broadcast', 'group-chat'].some((folder) => candidate.pathname.startsWith(`/storage/v1/object/public/chat-media/account-${accountId}/${folder}/`))
   } catch {
     return false
   }

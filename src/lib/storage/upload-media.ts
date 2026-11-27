@@ -95,6 +95,7 @@ export async function uploadAccountMedia(
   bucket: string,
   file: File,
   subfolder?: string,
+  expectedAccountId?: string,
 ): Promise<UploadAccountMediaResult> {
   const supabase = createClient();
 
@@ -109,11 +110,12 @@ export async function uploadAccountMedia(
   // Resolve account_id so the path is account-scoped (matches the
   // bucket's RLS write policy from migration 020/023). User-scoped
   // paths would be rejected.
-  const { data: profile, error: profileErr } = await supabase
+  let profileQuery = supabase
     .from("profiles")
     .select("account_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+    .eq("user_id", user.id);
+  if (expectedAccountId) profileQuery = profileQuery.eq("account_id", expectedAccountId);
+  const { data: profile, error: profileErr } = await profileQuery.maybeSingle();
   if (profileErr || !profile?.account_id) {
     throw new Error("Could not resolve your account.");
   }

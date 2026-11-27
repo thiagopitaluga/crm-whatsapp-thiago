@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { requireRole, fetchQrConnector, upsert } = vi.hoisted(() => ({
+const { requireRole, fetchQrConnector, upsert, update } = vi.hoisted(() => ({
   requireRole: vi.fn(),
   fetchQrConnector: vi.fn(),
   upsert: vi.fn(),
+  update: vi.fn(),
 }));
 vi.mock('@/lib/auth/account', () => ({
   requireRole,
@@ -16,7 +17,7 @@ vi.mock('@/lib/rate-limit', () => ({
 }));
 vi.mock('@/lib/whatsapp/qr-connector', () => ({ fetchQrConnector }));
 vi.mock('@/lib/ai/admin-client', () => ({
-  supabaseAdmin: () => ({ from: () => ({ upsert }) }),
+  supabaseAdmin: () => ({ from: () => ({ upsert, update }) }),
 }));
 
 import { POST } from './route';
@@ -51,6 +52,9 @@ describe('group inbox send', () => {
       Response.json({ results: [{ status: 'sent', message_id: 'provider-1' }] })
     );
     upsert.mockResolvedValue({ error: null });
+    const updateQuery = { eq: vi.fn() };
+    updateQuery.eq.mockReturnValue(updateQuery);
+    update.mockReturnValue(updateQuery);
   });
 
   it('rejects an invalid group and never contacts the provider', async () => {
@@ -82,6 +86,52 @@ describe('group inbox send', () => {
         from_me: true,
       }),
       expect.objectContaining({ ignoreDuplicates: true })
+    );
+  });
+
+  it('rejects media outside this account storage before contacting the provider', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://supabase.example.com';
+    const response = await POST(
+      request({
+        groupJid,
+        kind: 'image',
+        mediaUrl: 'https://other.example.com/photo.png',
+      })
+    );
+    expect(response.status).toBe(400);
+    expect(fetchQrConnector).not.toHaveBeenCalled();
+  });
+
+  it('sends an account-owned group-chat image through the group provider', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://supabase.example.com';
+    const mediaUrl =
+      'https://supabase.example.com/storage/v1/object/public/chat-media/account-account-1/group-chat/photo.png';
+    const response = await POST(
+      request({
+        groupJid,
+        kind: 'image',
+        text: 'Legenda',
+        mediaUrl,
+        mediaName: 'photo.png',
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(fetchQrConnector).toHaveBeenCalledWith(
+      'account-1',
+      'groups/send',
+      expect.objectContaining({
+        body: JSON.stringify({
+          kind: 'image',
+          text: 'Legenda',
+          media_url: mediaUrl,
+          media_name: 'photo.png',
+          group_ids: [groupJid],
+        }),
+      })
+    );
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ message_type: 'image', media_url: mediaUrl }),
+      expect.anything()
     );
   });
 });

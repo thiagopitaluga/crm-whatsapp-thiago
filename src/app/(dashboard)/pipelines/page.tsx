@@ -67,17 +67,38 @@ import { toast } from 'sonner';
 import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 // Spec-defined seed — name and color per the product spec.
-const SPEC_DEFAULT_STAGES = [
-  { name: 'New Lead', color: '#3b82f6', position: 0 }, // blue
-  { name: 'Qualified', color: '#eab308', position: 1 }, // yellow
-  { name: 'Proposal Sent', color: '#f97316', position: 2 }, // orange
-  { name: 'Negotiation', color: '#8b5cf6', position: 3 }, // purple
-  { name: 'Won', color: '#22c55e', position: 4 }, // green
-  { name: 'Lost', color: '#ef4444', position: 5 }, // red
+const DEFAULT_STAGE_NAMES: Record<string, string[]> = {
+  'pt-BR': [
+    'Novo Lead',
+    'Qualificado',
+    'Proposta Enviada',
+    'Negociação',
+    'Ganho',
+    'Perdido',
+  ],
+  en: ['New Lead', 'Qualified', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'],
+  ko: ['새 리드', '검증 완료', '제안서 발송', '협상', '성사', '실패'],
+};
+const DEFAULT_STAGE_COLORS = [
+  '#3b82f6',
+  '#eab308',
+  '#f97316',
+  '#8b5cf6',
+  '#22c55e',
+  '#ef4444',
 ];
+
+function defaultStagesForLocale(locale: string) {
+  const names = DEFAULT_STAGE_NAMES[locale] ?? DEFAULT_STAGE_NAMES.en;
+  return names.map((name, position) => ({
+    name,
+    color: DEFAULT_STAGE_COLORS[position],
+    position,
+  }));
+}
 
 interface DealMoveHistoryEntry {
   dealId: string;
@@ -168,6 +189,7 @@ function layoutStorageKey(pipelineId: string) {
 
 export default function PipelinesPage() {
   const t = useTranslations('Pipelines.page');
+  const locale = useLocale();
   const supabase = createClient();
   const canEditSettings = useCan('edit-settings');
   const { accountId, user, profile, accountRole } = useAuth();
@@ -375,7 +397,12 @@ export default function PipelinesPage() {
         .insert({
           user_id: user.id,
           account_id: accountId,
-          name: 'Sales Pipeline',
+          name:
+            locale === 'pt-BR'
+              ? 'Funil de vendas'
+              : locale === 'ko'
+                ? '영업 파이프라인'
+                : 'Sales Pipeline',
         })
         .select()
         .single();
@@ -385,7 +412,7 @@ export default function PipelinesPage() {
         return null;
       }
 
-      const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
+      const stagesPayload = defaultStagesForLocale(locale).map((s) => ({
         pipeline_id: pipeline.id,
         name: s.name,
         color: s.color,
@@ -394,7 +421,7 @@ export default function PipelinesPage() {
       await supabase.from('pipeline_stages').insert(stagesPayload);
 
       return pipeline as Pipeline;
-    }, [supabase, accountId]);
+    }, [supabase, accountId, locale]);
 
   // Initial load + seed-if-empty
   useEffect(() => {
@@ -1016,7 +1043,7 @@ export default function PipelinesPage() {
       return;
     }
 
-    const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
+    const stagesPayload = defaultStagesForLocale(locale).map((s) => ({
       pipeline_id: pipeline.id,
       name: s.name,
       color: s.color,

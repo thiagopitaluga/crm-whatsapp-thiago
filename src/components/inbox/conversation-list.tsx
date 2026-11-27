@@ -19,12 +19,30 @@ import {
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
 import type { Conversation, ConversationStatus, Tag } from '@/types';
-import { Search, X, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import {
+  Search,
+  X,
+  RefreshCw,
+  SlidersHorizontal,
+  MoreHorizontal,
+  Check,
+} from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { enUS, ptBR } from 'date-fns/locale';
 import { useLocale, useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
+import { canSendMessages } from '@/lib/auth/roles';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   filterInboxChannel,
@@ -80,10 +98,9 @@ export function ConversationList({
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(
     () => [
       { label: t('filterAll'), value: 'all' },
-      { label: t('filterUnread'), value: 'unread' },
       { label: t('filterOpen'), value: 'open' },
-      { label: t('filterPending'), value: 'pending' },
       { label: t('filterClosed'), value: 'closed' },
+      { label: t('filterUnread'), value: 'unread' },
     ],
     [t]
   );
@@ -92,7 +109,7 @@ export function ConversationList({
   const [filter, setFilter] = useState<InboxFilter>(
     initialUnreadOnly ? 'unread' : 'all'
   );
-  const { accountId, user } = useAuth();
+  const { accountId, accountRole, user } = useAuth();
   const [assignee, setAssignee] = useState(initialMineOnly ? 'mine' : '');
   const [connection, setConnection] = useState('');
   const [pipelineId, setPipelineId] = useState('');
@@ -321,6 +338,8 @@ export function ConversationList({
 
     if (filter === 'unread') {
       result = result.filter((c) => c.unread_count > 0);
+    } else if (filter === 'open') {
+      result = result.filter((c) => c.status !== 'closed');
     } else if (filter !== 'all') {
       result = result.filter((c) => c.status === filter);
     }
@@ -451,6 +470,97 @@ export function ConversationList({
     setSelectedTagIds(draft.tagIds);
     setSelectedCompany(draft.company || null);
     setFiltersOpen(false);
+  }
+
+  async function quickStatus(conversation: Conversation) {
+    if (!accountId) return;
+    const status = conversation.status === 'closed' ? 'open' : 'closed';
+    try {
+      if (conversation.inbox_channel === 'instagram') {
+        const response = await fetch('/api/instagram/conversations', {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ conversationId: conversation.id, status }),
+        });
+        if (!response.ok) throw new Error('Falha ao alterar o status.');
+      } else {
+        const { error } = await createClient()
+          .from('conversations')
+          .update({ status })
+          .eq('account_id', accountId)
+          .eq('id', conversation.id);
+        if (error) throw error;
+      }
+      onRefresh?.();
+      toast.success(
+        status === 'closed' ? 'Conversa fechada.' : 'Conversa reaberta.'
+      );
+    } catch {
+      toast.error('Não foi possível alterar o status da conversa.');
+    }
+  }
+
+  async function quickAssign(
+    conversation: Conversation,
+    agentId: string | null
+  ) {
+    if (
+      !accountId ||
+      (agentId && !members.some((member) => member.user_id === agentId))
+    )
+      return;
+    try {
+      if (conversation.inbox_channel === 'instagram') {
+        const response = await fetch('/api/instagram/conversations', {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: conversation.id,
+            assignedAgentId: agentId,
+          }),
+        });
+        if (!response.ok) throw new Error('Falha ao atribuir conversa.');
+      } else {
+        const { error } = await createClient()
+          .from('conversations')
+          .update({ assigned_agent_id: agentId })
+          .eq('account_id', accountId)
+          .eq('id', conversation.id);
+        if (error) throw error;
+      }
+      onRefresh?.();
+      toast.success('Responsável atualizado.');
+    } catch {
+      toast.error('Não foi possível atribuir a conversa.');
+    }
+  }
+
+  async function quickTag(conversation: Conversation, tag: Tag) {
+    if (!accountId || !conversation.contact_id) {
+      toast.error('Esta conversa ainda não tem um contato vinculado.');
+      return;
+    }
+    try {
+      const db = createClient();
+      const { data: contact, error: contactError } = await db
+        .from('contacts')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('id', conversation.contact_id)
+        .maybeSingle();
+      if (contactError || !contact) throw new Error('Contato não encontrado.');
+      const { error } = await db
+        .from('contact_tags')
+        .upsert(
+          { contact_id: contact.id, tag_id: tag.id },
+          { onConflict: 'contact_id,tag_id', ignoreDuplicates: true }
+        );
+      if (error) throw error;
+      onRefresh?.();
+      toast.success('Etiqueta adicionada ao contato.');
+    } catch {
+      toast.error('Não foi possível adicionar a etiqueta.');
+    }
   }
 
   return (
@@ -769,6 +879,12 @@ export function ConversationList({
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
                 t={t}
+                canAct={Boolean(accountRole && canSendMessages(accountRole))}
+                members={members}
+                tags={tags}
+                onStatus={() => void quickStatus(conv)}
+                onAssign={(id) => void quickAssign(conv, id)}
+                onTag={(tag) => void quickTag(conv, tag)}
               />
             ))}
           </div>
@@ -783,6 +899,12 @@ interface ConversationItemProps {
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
   t: ReturnType<typeof useTranslations>;
+  canAct: boolean;
+  members: { user_id: string; full_name: string | null }[];
+  tags: Tag[];
+  onStatus: () => void;
+  onAssign: (id: string | null) => void;
+  onTag: (tag: Tag) => void;
 }
 
 function ConversationItem({
@@ -790,6 +912,12 @@ function ConversationItem({
   isActive,
   onSelect,
   t,
+  canAct,
+  members,
+  tags,
+  onStatus,
+  onAssign,
+  onTag,
 }: ConversationItemProps) {
   const locale = useLocale();
   const contact = conversation.contact;
@@ -808,81 +936,144 @@ function ConversationItem({
     : '';
 
   return (
-    <button
-      onClick={handleClick}
+    <div
       className={cn(
-        'hover:bg-muted/50 flex w-full items-start gap-3 px-3 py-3 text-left transition-colors',
+        'relative',
         isActive && 'border-primary bg-muted/70 border-l-2'
       )}
     >
-      {conversation.inbox_channel === 'instagram' ? (
-        <div className="bg-muted flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full">
-          {contact?.avatar_url ? (
-            <img
-              src={contact.avatar_url}
-              alt=""
-              className="size-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            initials
-          )}
-        </div>
-      ) : contact ? (
-        <ContactAvatar
-          id={contact.id}
-          name={displayName}
-          url={contact.avatar_url}
-          className="size-10"
-        />
-      ) : (
-        <div className="bg-muted flex size-10 shrink-0 items-center justify-center rounded-full">
-          {initials}
-        </div>
-      )}
-
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-foreground truncate text-sm font-medium">
-            {displayName}
-          </span>
-          <span className="text-muted-foreground shrink-0 text-[10px]">
-            {timeAgo}
-          </span>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="text-muted-foreground truncate text-xs">
-            {conversation.last_message_text || t('noMessagesYet')}
-          </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
-                {conversation.unread_count}
-              </span>
+      <button
+        onClick={handleClick}
+        className={cn(
+          'hover:bg-muted/50 flex w-full items-start gap-3 px-3 py-3 pr-11 text-left transition-colors'
+        )}
+      >
+        {conversation.inbox_channel === 'instagram' ? (
+          <div className="bg-muted flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full">
+            {contact?.avatar_url ? (
+              <img
+                src={contact.avatar_url}
+                alt=""
+                className="size-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              initials
             )}
-            <span
-              className={cn(
-                'h-2 w-2 rounded-full',
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
-            />
           </div>
+        ) : contact ? (
+          <ContactAvatar
+            id={contact.id}
+            name={displayName}
+            url={contact.avatar_url}
+            className="size-10"
+          />
+        ) : (
+          <div className="bg-muted flex size-10 shrink-0 items-center justify-center rounded-full">
+            {initials}
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-foreground truncate text-sm font-medium">
+              {displayName}
+            </span>
+            <span className="text-muted-foreground shrink-0 text-[10px]">
+              {timeAgo}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p className="text-muted-foreground truncate text-xs">
+              {conversation.last_message_text || t('noMessagesYet')}
+            </p>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {conversation.unread_count > 0 && (
+                <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
+                  {conversation.unread_count}
+                </span>
+              )}
+              <span
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  STATUS_COLORS[conversation.status]
+                )}
+                title={conversation.status}
+              />
+            </div>
+          </div>
+          <span
+            className={cn(
+              'mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px]',
+              conversation.inbox_channel === 'instagram'
+                ? 'bg-pink-500/10 text-pink-500'
+                : 'bg-emerald-500/10 text-emerald-500'
+            )}
+          >
+            {conversation.inbox_channel === 'instagram'
+              ? 'Instagram'
+              : 'WhatsApp'}
+          </span>
         </div>
-        <span
-          className={cn(
-            'mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px]',
-            conversation.inbox_channel === 'instagram'
-              ? 'bg-pink-500/10 text-pink-500'
-              : 'bg-emerald-500/10 text-emerald-500'
-          )}
-        >
-          {conversation.inbox_channel === 'instagram'
-            ? 'Instagram'
-            : 'WhatsApp'}
-        </span>
-      </div>
-    </button>
+      </button>
+      {canAct && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`Ações rápidas para ${displayName}`}
+            title="Ações rápidas"
+            className="text-muted-foreground hover:bg-muted absolute right-2 bottom-3 flex size-8 items-center justify-center rounded-md"
+          >
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-44">
+            <DropdownMenuItem onClick={onStatus}>
+              {conversation.status === 'closed'
+                ? 'Reabrir conversa'
+                : 'Fechar conversa'}
+            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Atribuir contato</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                <DropdownMenuItem onClick={() => onAssign(null)}>
+                  Sem responsável
+                </DropdownMenuItem>
+                {members.map((member) => (
+                  <DropdownMenuItem
+                    key={member.user_id}
+                    onClick={() => onAssign(member.user_id)}
+                  >
+                    {member.full_name ?? 'Usuário'}
+                    {conversation.assigned_agent_id === member.user_id && (
+                      <Check className="ml-auto size-3" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                Adicionar etiqueta
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                {tags.length ? (
+                  tags.map((tag) => (
+                    <DropdownMenuItem key={tag.id} onClick={() => onTag(tag)}>
+                      <span
+                        className="mr-2 size-2 rounded-full"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                      {tag.name}
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem disabled>Nenhuma etiqueta</DropdownMenuItem>
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }
