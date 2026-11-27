@@ -54,6 +54,17 @@ export const brazilPhone = (value: string) => {
   const normalized = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
   return /^\d{10,15}$/.test(normalized) ? normalized : '';
 };
+export function validateSpintax(text: string): string | null {
+  const groups = text.match(/\{[^{}]*\|[^{}]*\}/g) ?? [];
+  for (const group of groups) {
+    const choices = group.slice(1, -1).split('|');
+    if (choices.length < 2 || choices.length > 20 || choices.some((choice) => !choice.trim()))
+      return 'Cada grupo de spintax precisa ter de 2 a 20 opções preenchidas.';
+  }
+  const remainder = text.replace(/\{(?:name|first_name|phone)\}/gi, '')
+    .replace(/\{[^{}]*\|[^{}]*\}/g, '');
+  return /[{}]/.test(remainder) ? 'Revise as chaves do spintax ou das variáveis.' : null;
+}
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -82,6 +93,9 @@ export function parseCampaignInput(value: unknown): { value: CampaignInput } | {
   if (!name || messages.length < 1 || messages.length > 10 || messages.some((item) =>
     (!item.text && !item.mediaUrl) || (item.mediaUrl && !item.mediaKind) || (!item.mediaUrl && item.mediaKind)))
     return { error: 'Informe um nome e de 1 a 10 mensagens válidas.' };
+  const invalidSpintax = messages.findIndex((item) => validateSpintax(item.text));
+  if (invalidSpintax >= 0)
+    return { error: `Mensagem ${invalidSpintax + 1}: ${validateSpintax(messages[invalidSpintax].text)}` };
 
   const rawAudience = object(body.audience);
   const mode = str(rawAudience.mode);

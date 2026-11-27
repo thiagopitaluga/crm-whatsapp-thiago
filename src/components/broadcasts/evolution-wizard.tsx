@@ -8,8 +8,9 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from '@/lib/storage/upload-media';
 import type { CampaignAction, CampaignAudience, CampaignDelivery, CampaignMessage } from '@/lib/broadcasts/evolution-campaign';
-import { brazilPhone } from '@/lib/broadcasts/evolution-campaign';
+import { brazilPhone, personalizeCampaignMessage, validateSpintax } from '@/lib/broadcasts/evolution-campaign';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 type Contact = { id: string; name: string | null; phone: string };
 type Named = { id: string; name: string };
@@ -67,6 +68,11 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
   const router = useRouter();
   const { accountId } = useAuth();
   const fileInput = useRef<HTMLInputElement>(null);
+  const messageInputs = useRef<(HTMLTextAreaElement | null)[]>([]);
+  const spintaxSelection = useRef({ start: 0, end: 0 });
+  const [spintaxIndex, setSpintaxIndex] = useState<number | null>(null);
+  const [spintaxOptions, setSpintaxOptions] = useState('Olá\nOi\nBom dia');
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -129,6 +135,8 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
 
   const visibleContacts = useMemo(() => contacts.filter((contact) =>
     `${contact.name ?? ''} ${contact.phone}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))), [contacts, search]);
+  const spintaxGroups = messages.reduce((total, message) =>
+    total + (message.text.match(/\{[^{}]*\|[^{}]*\}/g)?.length ?? 0), 0);
   const steps = ['Mensagem', 'Público', 'Envio e ações', 'Resumo'];
   const updateMessage = (index: number, patch: Partial<CampaignMessage>) =>
     setMessages((items) => items.map((item, position) => position === index ? { ...item, ...patch } : item));
@@ -136,7 +144,8 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
     : audience.mode === 'csv' ? audience.csvContacts.length > 0
       : Boolean(audience.segment.pipelineId || audience.segment.tagIds.length || audience.segment.assigneeId ||
         audience.segment.createdFrom || audience.segment.createdTo);
-  const messagesReady = Boolean(name.trim()) && messages.every((message) => message.text.trim() || message.mediaUrl);
+  const messagesReady = Boolean(name.trim()) && messages.every((message) =>
+    (message.text.trim() || message.mediaUrl) && !validateSpintax(message.text));
   const deliveryReady = delivery.senderIds.length > 0 && delivery.weekdays.length > 0 &&
     delivery.windowStart < delivery.windowEnd && delivery.minDelaySeconds <= delivery.maxDelaySeconds &&
     (delivery.sendNow || Boolean(delivery.scheduledAt));
@@ -152,6 +161,41 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
       updateMessage(index, { mediaUrl: result.publicUrl, mediaKind: kind, mediaName: file.name });
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha no anexo.'); }
     finally { setUploading(null); if (fileInput.current) fileInput.current.value = ''; }
+  }
+
+  function openSpintax(index: number) {
+    const input = messageInputs.current[index];
+    spintaxSelection.current = {
+      start: input?.selectionStart ?? messages[index].text.length,
+      end: input?.selectionEnd ?? messages[index].text.length,
+    };
+    setSpintaxOptions('Olá\nOi\nBom dia');
+    setSpintaxIndex(index);
+  }
+
+  function insertSpintax() {
+    if (spintaxIndex === null) return;
+    const choices = spintaxOptions.split(/\r?\n/).map((choice) => choice.trim()).filter(Boolean);
+    if (choices.length < 2 || choices.length > 20 || choices.some((choice) => /[{}|]/.test(choice))) {
+      toast.error('Informe de 2 a 20 opções, uma por linha, sem chaves ou barras verticais.');
+      return;
+    }
+    const snippet = `{${choices.join('|')}}`;
+    const { start, end } = spintaxSelection.current;
+    const index = spintaxIndex;
+    if (messages[index].text.length - (end - start) + snippet.length > 4096) {
+      toast.error('A mensagem ultrapassaria o limite de 4.096 caracteres.');
+      return;
+    }
+    setMessages((items) => items.map((item, position) => position === index ? {
+      ...item, text: `${item.text.slice(0, start)}${snippet}${item.text.slice(end)}`,
+    } : item));
+    setSpintaxIndex(null);
+    requestAnimationFrame(() => {
+      const input = messageInputs.current[index];
+      input?.focus();
+      input?.setSelectionRange(start + snippet.length, start + snippet.length);
+    });
   }
 
   async function create() {
@@ -187,10 +231,23 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
       {messages.map((message, index) => <div key={index} className="space-y-2 rounded-xl border border-border bg-card p-4">
         <div className="flex items-center justify-between"><h2 className="font-semibold">Mensagem {index + 1}</h2>
           {messages.length > 1 && <Button variant="ghost" size="sm" aria-label={`Remover mensagem ${index + 1}`} onClick={() => setMessages((items) => items.filter((_, position) => position !== index))}><Trash2 className="size-4" /></Button>}</div>
-        <textarea className={`${control} min-h-32 resize-y`} value={message.text} maxLength={4096}
+        <textarea ref={(element) => { messageInputs.current[index] = element; }} className={`${control} min-h-32 resize-y`} value={message.text} maxLength={4096}
           onChange={(event) => updateMessage(index, { text: event.target.value })} placeholder="Escreva a mensagem…" />
-        <div className="flex flex-wrap gap-2">{['{name}','{first_name}','{phone}','{Olá|Oi}'].map((token) =>
+        {validateSpintax(message.text) && <p className="text-xs text-destructive">{validateSpintax(message.text)}</p>}
+        <div className="flex flex-wrap gap-2">{['{name}','{first_name}','{phone}'].map((token) =>
           <Button key={token} type="button" size="sm" variant="outline" onClick={() => updateMessage(index, { text: `${message.text}${message.text ? ' ' : ''}${token}` })}>{token}</Button>)}</div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => openSpintax(index)}>+ Criar spintax</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setPreviewIndex(previewIndex === index ? null : index)}>
+            {previewIndex === index ? 'Ocultar prévia' : 'Ver 3 variações'}
+          </Button>
+        </div>
+        {previewIndex === index && <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+          <p className="font-medium text-foreground">Prévia com o contato Maria Silva</p>
+          {[1, 2, 3].map((seed) => <p key={seed} className="whitespace-pre-wrap break-words text-muted-foreground">
+            {seed}. {personalizeCampaignMessage(message.text, { name: 'Maria Silva', phone: '5511999999999' }, seed)}
+          </p>)}
+        </div>}
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" disabled={uploading === index} onClick={() => { fileInput.current?.setAttribute('data-index', String(index)); fileInput.current?.click(); }}>
             <Paperclip className="size-4" /> {uploading === index ? 'Enviando…' : 'Anexar arquivo'}</Button>
@@ -201,6 +258,20 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
       <input ref={fileInput} type="file" className="hidden" accept="image/*,video/*,.pdf,.doc,.docx,.txt,.csv"
         onChange={(event) => void attach(Number(event.target.dataset.index ?? 0), event.target.files?.[0])} />
       <Button variant="outline" disabled={messages.length >= 10} onClick={() => setMessages((items) => [...items, { text: '' }])}><Plus className="size-4" /> Adicionar mensagem</Button>
+      <Dialog open={spintaxIndex !== null} onOpenChange={(open) => { if (!open) setSpintaxIndex(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Criar spintax</DialogTitle>
+          <DialogDescription>Digite uma opção por linha. Uma delas será escolhida para cada contato.</DialogDescription>
+          <label className="space-y-1 text-sm">Opções
+            <textarea className={`${control} min-h-32 resize-y`} value={spintaxOptions} onChange={(event) => setSpintaxOptions(event.target.value)} />
+          </label>
+          <p className="break-words text-xs text-muted-foreground">Resultado: {'{'}{spintaxOptions.split(/\r?\n/).map((choice) => choice.trim()).filter(Boolean).join('|')}{'}'}</p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setSpintaxIndex(null)}>Cancelar</Button>
+            <Button type="button" onClick={insertSpintax}>Inserir na mensagem</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>}
 
     {step === 1 && <section className="space-y-4">
@@ -305,6 +376,7 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
       <div className="grid gap-3 sm:grid-cols-2">
         <p><b>Nome:</b> {name}</p><p><b>Método:</b> Chip WhatsApp (Evolution)</p>
         <p><b>Mensagens:</b> {messages.length} versão(ões) em rotação</p>
+        <p><b>Spintax:</b> {spintaxGroups} grupo(s) de variações</p>
         <p><b>Público:</b> {audience.mode === 'contacts' ? `${audience.contactIds.length} contatos` : audience.mode === 'csv' ? `${audience.csvContacts.length} linhas do CSV` : 'segmento do CRM'}</p>
         <p><b>Números:</b> {delivery.senderIds.map((id) => channels.find((channel) => channel.id === id)?.label).join(', ')}</p>
         <p><b>Limite:</b> {delivery.dailyLimit} por dia</p>
