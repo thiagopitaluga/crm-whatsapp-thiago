@@ -581,7 +581,7 @@ export function MessageComposer({
 
   return (
     <div
-      className="border-border bg-card border-t p-3"
+      className="border-border bg-card shrink-0 border-t p-3"
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes('Files')) {
           event.preventDefault();

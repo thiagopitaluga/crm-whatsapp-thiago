@@ -1,13 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import {
-  ExternalLink,
-  Info,
-  Loader2,
-  ChevronsLeft,
-  ChevronsRight,
-} from 'lucide-react';
+import { Loader2, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Sheet,
@@ -260,33 +253,18 @@ export function LeadChatPanel({
     >
       <SheetContent
         side="right"
-        className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:md:w-[calc(100vw-4rem)] data-[side=right]:xl:w-[70vw] data-[side=right]:xl:max-w-[1200px]"
+        className="min-h-0 gap-0 overflow-hidden p-0 data-[side=right]:h-[100dvh] data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:md:w-[calc(100vw-4rem)] data-[side=right]:xl:w-[70vw] data-[side=right]:xl:max-w-[1200px]"
       >
-        <SheetHeader className="flex-row items-center justify-between gap-2 border-b py-2 pr-12 pl-4">
+        <SheetHeader className="shrink-0 flex-row items-center justify-between gap-2 border-b py-2 pr-12 pl-4">
           <SheetTitle className="truncate text-sm">Chat do lead</SheetTitle>
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              className="text-muted-foreground hover:bg-muted rounded-md p-2 lg:hidden"
-              aria-label={showInfo ? 'Voltar para o chat' : 'Ver ficha do lead'}
-              title="Ficha do lead"
-              onClick={() => setShowInfo((v) => !v)}
-            >
-              <Info className="size-4" />
-              <span className="text-xs">
-                {showInfo ? 'Voltar para a conversa' : 'Abrir ficha'}
-              </span>
-            </button>
-            {conversation && (
-              <Link
-                href={`/inbox?c=${conversation.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Abrir na Caixa de entrada"
-                title="Abrir na Caixa de entrada"
-                className="hover:bg-muted rounded-md p-2"
+            {showInfo && (
+              <button
+                className="text-primary inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs lg:hidden"
+                onClick={() => setShowInfo(false)}
               >
-                <ExternalLink className="size-4" />
-              </Link>
+                ← Voltar para a conversa
+              </button>
             )}
           </div>
         </SheetHeader>
@@ -311,7 +289,7 @@ export function LeadChatPanel({
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <div
               className={cn(
-                'min-w-0 flex-1 flex-col',
+                'min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
                 showInfo ? 'hidden lg:flex' : 'flex'
               )}
             >
@@ -338,6 +316,7 @@ export function LeadChatPanel({
               {conversation ? (
                 <MessageThread
                   textDeliveryMode="api"
+                  onOpenContactMobile={() => setShowInfo(true)}
                   key={conversation.id}
                   conversation={conversation}
                   contact={contact}
@@ -415,7 +394,7 @@ export function LeadChatPanel({
             {contact && (
               <div
                 className={cn(
-                  'relative shrink-0',
+                  'relative min-h-0 w-full shrink-0 lg:w-auto',
                   showInfo ? 'block' : 'hidden lg:block'
                 )}
               >
