@@ -9,7 +9,7 @@ import { useTotalUnread } from '@/hooks/use-total-unread';
 import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 import { OrganiZAPLogo } from '@/components/brand/organizap-logo';
 import {
-  Bell,
+  Smartphone,
   Bot,
   ChartNoAxesCombined,
   CalendarDays,
@@ -24,7 +24,6 @@ import {
   Zap,
   ChevronsLeft,
   ChevronsRight,
-  ArrowDownUp,
   Plug,
   Camera,
 } from 'lucide-react';
@@ -43,12 +42,11 @@ const navItems: NavItem[] = [
   { href: '/contacts', labelKey: 'contacts', icon: Users },
   { href: '/tasks', labelKey: 'tasks', icon: CalendarDays },
   { href: '/groups', labelKey: 'groups', icon: UsersRound },
-  { href: '/movimentacoes', labelKey: 'movements', icon: ArrowDownUp },
   { href: '/meta-ads', labelKey: 'metaAds', icon: ChartNoAxesCombined },
   { href: '/instagram', labelKey: 'instagram', icon: Camera },
   { href: '/broadcasts', labelKey: 'broadcasts', icon: Radio },
   { href: '/automations', labelKey: 'automations', icon: Zap },
-  { href: '/notifications', labelKey: 'notifications', icon: Bell },
+  { href: '/notifications', labelKey: 'notifications', icon: Smartphone },
   { href: '/agents', labelKey: 'aiAgents', icon: Bot },
   { href: '/connections', labelKey: 'connections', icon: Plug },
 ];

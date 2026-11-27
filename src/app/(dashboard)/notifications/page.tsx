@@ -151,7 +151,7 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-foreground text-2xl font-bold">Notificações</h1>
+          <h1 className="text-foreground text-2xl font-bold">App e avisos</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Configure os avisos no celular, lembretes por WhatsApp e horários de
             silêncio.

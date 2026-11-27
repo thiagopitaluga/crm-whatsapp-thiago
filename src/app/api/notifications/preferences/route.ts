@@ -10,7 +10,10 @@ export async function GET() {
       .eq('user_id', userId)
       .eq('account_id', accountId)
       .maybeSingle();
-    if (error) throw error;
+    if (error) {
+      console.error('[notification-preferences]', { code: error.code });
+      throw error;
+    }
     return NextResponse.json({
       settings: data?.settings ?? {},
       publicKey: process.env.VAPID_PUBLIC_KEY ?? null,
@@ -23,7 +26,9 @@ export async function PUT(request: Request) {
   try {
     const { supabase, userId, accountId } = await requireRole('agent');
     const body = await request.json();
-    const settings: Record<string, boolean | string> = {};
+    const settings: Record<string, boolean | string> = {
+      quietEnabled: body.quietEnabled !== false,
+    };
     for (const key of [
       'messages',
       'allMessages',
@@ -52,7 +57,10 @@ export async function PUT(request: Request) {
     settings.phone = phone;
     const { error } = await supabase
       .from('notification_preferences')
-      .upsert({ user_id: userId, account_id: accountId, settings });
+      .upsert(
+        { user_id: userId, account_id: accountId, settings },
+        { onConflict: 'user_id,account_id' }
+      );
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e) {

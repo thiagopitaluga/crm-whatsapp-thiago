@@ -18,6 +18,7 @@ type Settings = {
   sales: boolean;
   system: boolean;
   quietPush: boolean;
+  quietEnabled: boolean;
   weekends: boolean;
   whatsapp: boolean;
   phone: string;
@@ -31,6 +32,7 @@ const defaults: Settings = {
   sales: true,
   system: true,
   quietPush: false,
+  quietEnabled: true,
   weekends: true,
   whatsapp: false,
   phone: '',
@@ -307,6 +309,7 @@ export function NotificationSettings() {
       </div>
       <div className="bg-card space-y-3 rounded-xl border p-5">
         <h2 className="font-semibold">Modo não perturbe</h2>
+        {check('quietEnabled', 'Ativar modo não perturbe')}
         <p className="text-muted-foreground text-sm">
           Horário de Brasília. Os lembretes aguardam até a próxima janela
           permitida.
@@ -317,6 +320,7 @@ export function NotificationSettings() {
               {i ? 'Fim do silêncio' : 'Início do silêncio'}
               <input
                 type="time"
+                disabled={!settings.quietEnabled}
                 value={settings[name]}
                 onChange={(e) =>
                   setSettings((s) => ({ ...s, [name]: e.target.value }))

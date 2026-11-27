@@ -1,2 +1,4 @@
-export { default } from '../pipelines/movements/page';
-
+import { redirect } from 'next/navigation';
+export default function RemovedMovementsPage() {
+  redirect('/pipelines');
+}

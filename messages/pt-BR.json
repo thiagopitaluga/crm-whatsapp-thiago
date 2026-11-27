@@ -27,7 +27,7 @@
     "title": "OrganiZAP",
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
-    "notifications": "Notificações",
+    "notifications": "App e avisos",
     "contacts": "Contatos",
     "pipelines": "Kanban",
     "movements": "Movimentações",
@@ -60,7 +60,7 @@
   "Header": {
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
-    "notifications": "Notificações",
+    "notifications": "App e avisos",
     "contacts": "Contatos",
     "pipelines": "Kanban",
     "movements": "Movimentações",

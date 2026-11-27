@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/ai/admin-client';
 import { fetchQrConnector } from '@/lib/whatsapp/qr-connector';
 
 export function isQuiet(settings: Record<string, unknown>, now = new Date()) {
+  if (settings.quietEnabled === false) return false;
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'America/Sao_Paulo',
     weekday: 'short',
