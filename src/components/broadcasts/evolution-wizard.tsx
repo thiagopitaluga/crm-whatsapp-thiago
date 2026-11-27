@@ -229,9 +229,9 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
           <label className="space-y-1 text-sm">Responsável<select className={control} value={audience.segment.assigneeId}
             onChange={(event) => setAudience((current) => ({ ...current, segment: { ...current.segment, assigneeId: event.target.value } }))}>
             <option value="">Todos</option>{profiles.map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}</select></label>
-          <label className="space-y-1 text-sm">Criado a partir de<input type="date" className={control} value={audience.segment.createdFrom}
+          <label className="space-y-1 text-sm">Lead criado a partir de<input type="date" className={control} value={audience.segment.createdFrom}
             onChange={(event) => setAudience((current) => ({ ...current, segment: { ...current.segment, createdFrom: event.target.value } }))} /></label>
-          <label className="space-y-1 text-sm">Criado até<input type="date" className={control} value={audience.segment.createdTo}
+          <label className="space-y-1 text-sm">Lead criado até<input type="date" className={control} value={audience.segment.createdTo}
             onChange={(event) => setAudience((current) => ({ ...current, segment: { ...current.segment, createdTo: event.target.value } }))} /></label>
         </div>
         {audience.segment.pipelineId && <div><p className="mb-2 text-sm">Etapas do funil</p><div className="flex flex-wrap gap-2">

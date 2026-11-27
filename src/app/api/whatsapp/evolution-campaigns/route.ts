@@ -69,12 +69,16 @@ async function resolveAudience(db: Db, accountId: string, createdBy: string,
     const { data: pipeline } = await db.from('pipelines').select('id')
       .eq('account_id', accountId).eq('id', filter.pipelineId).maybeSingle();
     if (!pipeline) throw new Error('Funil não encontrado.');
-    const { data: deals, error } = await db.from('deals').select('contact_id,stage_id')
+    const { data: deals, error } = await db.from('deals').select('contact_id,stage_id,created_at')
       .eq('account_id', accountId).eq('pipeline_id', filter.pipelineId).limit(5001);
     if (error) throw error;
     if ((deals ?? []).length > 5000) throw new Error('O funil excede 5.000 leads. Refine o segmento.');
     const stageSet = new Set(filter.stageIds);
-    const ids = new Set((deals ?? []).filter((row) => !stageSet.size || stageSet.has(row.stage_id)).map((row) => row.contact_id));
+    const ids = new Set((deals ?? []).filter((row) =>
+      (!stageSet.size || stageSet.has(row.stage_id)) &&
+      (!filter.createdFrom || row.created_at >= `${filter.createdFrom}T00:00:00`) &&
+      (!filter.createdTo || row.created_at <= `${filter.createdTo}T23:59:59`)
+    ).map((row) => row.contact_id));
     eligible = eligible.filter((c) => ids.has(c.id));
   } else if (filter.stageIds.length) throw new Error('Escolha um funil antes das etapas.');
   if (filter.tagIds.length) {
@@ -89,8 +93,17 @@ async function resolveAudience(db: Db, accountId: string, createdBy: string,
     eligible = eligible.filter((c) => ids.has(c.id));
   }
   if (filter.assigneeId) eligible = eligible.filter((c) => c.assigned_to === filter.assigneeId);
-  if (filter.createdFrom) eligible = eligible.filter((c) => c.created_at >= `${filter.createdFrom}T00:00:00`);
-  if (filter.createdTo) eligible = eligible.filter((c) => c.created_at <= `${filter.createdTo}T23:59:59`);
+  if (!filter.pipelineId && (filter.createdFrom || filter.createdTo)) {
+    const { data: deals, error } = await db.from('deals').select('contact_id,created_at')
+      .eq('account_id', accountId).limit(5001);
+    if (error) throw error;
+    if ((deals ?? []).length > 5000) throw new Error('Há muitos leads. Escolha um funil para refinar o segmento.');
+    const ids = new Set((deals ?? []).filter((deal) =>
+      (!filter.createdFrom || deal.created_at >= `${filter.createdFrom}T00:00:00`) &&
+      (!filter.createdTo || deal.created_at <= `${filter.createdTo}T23:59:59`)
+    ).map((deal) => deal.contact_id));
+    eligible = eligible.filter((contact) => ids.has(contact.id));
+  }
   return eligible;
 }
 
@@ -162,8 +175,8 @@ export async function POST(request: Request) {
       account_id: accountId, created_by: userId, name: input.name,
       message_variants: input.messages, audience_config: input.audience,
       delivery_config: input.delivery, on_sent: input.onSent, on_reply: input.onReply,
-      sender_channel_ids: input.delivery.senderIds, status: 'scheduled',
-      scheduled_at: scheduledAt, next_run_at: scheduledAt, total_recipients: unique.length,
+      sender_channel_ids: input.delivery.senderIds, status: 'draft',
+      scheduled_at: scheduledAt, total_recipients: unique.length,
     }).select('id').single();
     if (insertError || !campaign) throw insertError ?? new Error('Falha ao criar disparo.');
     for (let offset = 0; offset < unique.length; offset += 200) {
@@ -177,6 +190,10 @@ export async function POST(request: Request) {
         throw error;
       }
     }
+    const { error: scheduleError } = await db.from('evolution_campaigns').update({
+      status: 'scheduled', next_run_at: scheduledAt,
+    }).eq('id', campaign.id).eq('account_id', accountId).eq('status', 'draft');
+    if (scheduleError) throw scheduleError;
     return NextResponse.json({ campaign_id: campaign.id, recipients: unique.length }, { status: 201 });
   } catch (error) {
     if (error instanceof UnauthorizedError || error instanceof ForbiddenError) return toErrorResponse(error);
