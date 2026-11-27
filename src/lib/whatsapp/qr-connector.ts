@@ -731,6 +731,8 @@ async function fetchEvolutionGroups(
         participant_count:
           typeof group?.size === 'number' ? group.size : participants.length,
         is_admin: ownParticipant?.is_admin === true,
+        announcement:
+          typeof group?.announce === 'boolean' ? group.announce : null,
       };
     })
     .filter((group) => group.id.endsWith('@g.us'));

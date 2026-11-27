@@ -1,6 +1,18 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw, Send, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  RefreshCw,
+  Send,
+  Users,
+  SlidersHorizontal,
+} from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -13,6 +25,8 @@ type Group = {
   subject: string;
   last_message_at: string | null;
   participant_count: number;
+  is_admin: boolean;
+  announcement: boolean | null;
 };
 type Message = {
   id: string;
@@ -37,12 +51,17 @@ export function GroupInbox({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [messageRefresh, setMessageRefresh] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [adminOnly, setAdminOnly] = useState(false);
+  const [sendFilter, setSendFilter] = useState('all');
   const load = useCallback(async () => {
     if (!accountId) return;
     const db = createClient();
     const result = await db
       .from('whatsapp_groups')
-      .select('group_jid,subject,last_message_at,participant_count')
+      .select(
+        'group_jid,subject,last_message_at,participant_count,is_admin,announcement'
+      )
       .eq('account_id', accountId)
       .order('last_message_at', { ascending: false, nullsFirst: false });
     if (result.error) setError('Não foi possível carregar os grupos.');
@@ -52,6 +71,25 @@ export function GroupInbox({
     }
     setLoading(false);
   }, [accountId]);
+  async function syncGroups() {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/whatsapp/groups', {
+        cache: 'no-store',
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || 'Falha ao sincronizar grupos.');
+      if (data.warning) toast.info(data.warning);
+      await load();
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : 'Falha ao atualizar grupos.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
   useEffect(() => {
     void load();
   }, [load]);
@@ -124,18 +162,67 @@ export function GroupInbox({
               className="bg-muted min-w-0 flex-1 rounded-md border p-2 text-sm"
             />
             <button
+              type="button"
+              title="Filtrar grupos"
+              aria-label="Filtrar grupos"
+              onClick={() => setFiltersOpen(true)}
+              className={cn(
+                'rounded-md border p-2',
+                (adminOnly || sendFilter !== 'all') &&
+                  'text-primary border-primary'
+              )}
+            >
+              <SlidersHorizontal className="size-4" />
+            </button>
+            <button
               title="Atualizar grupos"
               aria-label="Atualizar grupos"
               disabled={loading}
-              onClick={() => {
-                setLoading(true);
-                void load();
-              }}
+              onClick={() => void syncGroups()}
               className="rounded-md border p-2"
             >
               <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
             </button>
           </div>
+          <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Filtrar grupos</DialogTitle>
+              </DialogHeader>
+              <label className="flex items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={adminOnly}
+                  onChange={(e) => setAdminOnly(e.target.checked)}
+                />
+                Somente grupos que administro
+              </label>
+              <label className="space-y-2 text-sm">
+                Permissão para enviar mensagens
+                <select
+                  className="bg-background block w-full rounded-md border p-2"
+                  value={sendFilter}
+                  onChange={(e) => setSendFilter(e.target.value)}
+                >
+                  <option value="all">Todos os grupos</option>
+                  <option value="open">
+                    Abertos para todos os participantes
+                  </option>
+                  <option value="allowed">Onde meu número pode enviar</option>
+                </select>
+              </label>
+              <p className="text-muted-foreground text-xs">
+                Atualize os grupos para consultar as permissões atuais. Grupos
+                sem permissão confirmada ficam fora dos filtros de envio.
+              </p>
+              <button
+                className="bg-primary text-primary-foreground rounded-md p-2"
+                onClick={() => setFiltersOpen(false)}
+              >
+                Aplicar filtros
+              </button>
+            </DialogContent>
+          </Dialog>
         </div>
         {error && (
           <p role="alert" className="text-destructive p-3 text-sm">
@@ -144,8 +231,14 @@ export function GroupInbox({
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {groups
-            .filter((g) =>
-              g.subject.toLowerCase().includes(search.toLowerCase())
+            .filter(
+              (g) =>
+                g.subject.toLowerCase().includes(search.toLowerCase()) &&
+                (!adminOnly || g.is_admin) &&
+                (sendFilter === 'all' ||
+                  (sendFilter === 'open'
+                    ? g.announcement === false
+                    : g.is_admin || g.announcement === false))
             )
             .map((group) => (
               <button
@@ -167,6 +260,12 @@ export function GroupInbox({
                   </p>
                   <p className="text-muted-foreground text-xs">
                     {group.participant_count} participantes
+                    {group.is_admin ? ' · Administrador' : ''}
+                    {group.announcement === true
+                      ? ' · Só admins enviam'
+                      : group.announcement === false
+                        ? ' · Aberto'
+                        : ''}
                   </p>
                 </div>
               </button>
