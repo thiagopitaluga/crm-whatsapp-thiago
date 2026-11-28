@@ -9,6 +9,7 @@ type QrConnectorSuffix =
   | 'groups/send'
   | 'groups/participants'
   | 'groups/avatar'
+  | 'groups/control'
   | 'messages/send'
   | 'messages/media'
   | 'messages/read'
@@ -659,6 +660,35 @@ async function fetchEvolutionQrConnector(
       init,
       timeout
     );
+  }
+
+  if (suffix === 'groups/control') {
+    const body = parseJsonBody(init.body);
+    const groupId = typeof body?.group_id === 'string' ? body.group_id : '';
+    const action = typeof body?.action === 'string' ? body.action : '';
+    const value = typeof body?.value === 'string' ? body.value : '';
+    if (!/^[^\s@]{1,80}@g\.us$/.test(groupId) ||
+        !['subject', 'description', 'picture', 'announcement', 'not_announcement', 'invite', 'revoke_invite'].includes(action))
+      return jsonResponse({ error: 'invalid_group_action' }, 400);
+    if (!await getEvolutionGroupSubject(baseUrl, apiKey, instance, groupId, timeout))
+      return jsonResponse({ error: 'group_not_available' }, 404);
+    if (action === 'picture' && !validEvolutionGroupMediaUrl(value, accountId))
+      return jsonResponse({ error: 'invalid_group_picture' }, 400);
+    const endpoint = action === 'invite' ? `group/inviteCode/${instance}?groupJid=${encodeURIComponent(groupId)}` :
+      action === 'revoke_invite' ? `group/revokeInviteCode/${instance}` :
+      action === 'subject' ? `group/updateGroupSubject/${instance}` :
+      action === 'description' ? `group/updateGroupDescription/${instance}` :
+      action === 'picture' ? `group/updateGroupPicture/${instance}` : `group/updateSetting/${instance}`;
+    const payload = { groupJid: groupId, ...(action === 'subject' ? { subject: value } :
+      action === 'description' ? { description: value } : action === 'picture' ? { image: value } :
+      action === 'announcement' || action === 'not_announcement' ? { action } : {}) };
+    const response = await evolutionRequest(baseUrl, apiKey, endpoint, {
+      method: action === 'invite' ? 'GET' : 'POST',
+      ...(action === 'invite' ? {} : { body: JSON.stringify(payload) }), signal: timeout,
+    });
+    if (!response.ok) return jsonResponse({ error: `Evolution respondeu ${response.status}` }, response.status);
+    const result = await response.json().catch(() => null) as Record<string, unknown> | null;
+    return jsonResponse({ result: typeof result?.inviteUrl === 'string' ? result.inviteUrl : null });
   }
 
   return jsonResponse({ error: 'unsupported_operation' }, 404);

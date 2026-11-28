@@ -31,6 +31,9 @@ export function parseGroupBroadcastInput(body: Record<string, unknown>) {
     ? body.recurrence as GroupRecurrence : 'none'
   const mediaUrl = typeof body.media_url === 'string' ? body.media_url.trim() : ''
   const mediaName = typeof body.media_name === 'string' ? body.media_name.trim().slice(0, 255) : ''
+  const senderChannelId = body.sender_channel_id == null || body.sender_channel_id === '' ? null : body.sender_channel_id
+  if (senderChannelId !== null && (typeof senderChannelId !== 'string' || !/^[0-9a-f-]{36}$/i.test(senderChannelId)))
+    return { error: 'Número remetente inválido.' } as const
   const pollOptions = Array.isArray(body.poll_options)
     ? body.poll_options.filter((option): option is string => typeof option === 'string')
       .map((option) => option.trim().slice(0, 100)).filter(Boolean).slice(0, 12)
@@ -77,7 +80,7 @@ export function parseGroupBroadcastInput(body: Record<string, unknown>) {
   return { value: {
     name, message, scheduledAt: date.toISOString(), groups,
     kind, recurrence, mediaUrl: mediaUrl || null, mediaName: mediaName || null,
-    pollOptions, sendNow,
+    pollOptions, sendNow, senderChannelId,
   } } as const
 }
 

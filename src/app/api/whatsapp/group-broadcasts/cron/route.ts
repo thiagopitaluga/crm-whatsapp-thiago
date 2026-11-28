@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { fetchQrConnector } from '@/lib/whatsapp/qr-connector'
+import { executeGroupAction, type GroupAction } from '@/lib/whatsapp/group-actions'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -12,6 +13,7 @@ type Broadcast = {
   content_kind: string; media_url: string | null; media_name: string | null
   poll_options: string[]; recurrence: string; series_id: string | null
   occurrence_no: number; scheduled_at: string; status: string
+  sender_channel_id: string | null
 }
 type Target = { id: string; group_jid: string; group_subject: string }
 type Admin = ReturnType<typeof supabaseAdmin>
@@ -25,6 +27,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const admin = supabaseAdmin()
+  await processDueGroupAction(admin)
   const staleBefore = new Date(Date.now() - 90_000).toISOString()
   const { data: stale } = await admin.from('group_broadcasts').select('id')
     .eq('status', 'sending').lt('delivery_locked_at', staleBefore).limit(5)
@@ -36,7 +39,7 @@ export async function GET(request: Request) {
   }
 
   const { data: campaigns, error } = await admin.from('group_broadcasts')
-    .select('id, account_id, created_by, name, message_text, content_kind, media_url, media_name, poll_options, recurrence, series_id, occurrence_no, scheduled_at, status')
+    .select('id, account_id, created_by, name, message_text, content_kind, media_url, media_name, poll_options, sender_channel_id, recurrence, series_id, occurrence_no, scheduled_at, status')
     .in('status', ['scheduled', 'sending']).lte('scheduled_at', new Date().toISOString())
     .is('delivery_locked_at', null).order('scheduled_at').limit(1)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -50,6 +53,18 @@ export async function GET(request: Request) {
     status: 'sending', delivery_locked_at: new Date().toISOString(),
   }).eq('id', campaign.id).eq('status', campaign.status).is('delivery_locked_at', null).select('id').maybeSingle()
   if (!claimed) return NextResponse.json({ processed: 0 })
+  let senderInstance: string | undefined
+  if (campaign.sender_channel_id) {
+    const { data: sender } = await admin.from('whatsapp_channels').select('evolution_instance_name')
+      .eq('id', campaign.sender_channel_id).eq('account_id', campaign.account_id).eq('provider', 'evolution').maybeSingle()
+    if (!sender) {
+      await admin.from('group_broadcast_targets').update({ status: 'failed', error_message: 'Número remetente indisponível.' })
+        .eq('broadcast_id', campaign.id).eq('status', 'pending')
+      await finalize(admin, campaign, 'Número remetente indisponível.')
+      return NextResponse.json({ processed: 1, error: 'sender_unavailable' })
+    }
+    senderInstance = sender.evolution_instance_name
+  }
 
   const { data: settings } = await admin.from('group_delivery_settings')
     .select('daily_group_cap, min_interval_ms, pause_on_error').eq('account_id', campaign.account_id).maybeSingle()
@@ -92,7 +107,7 @@ export async function GET(request: Request) {
         method: 'POST', body: JSON.stringify({ text: campaign.message_text, group_ids: [target.group_jid],
           kind: campaign.content_kind, media_url: campaign.media_url, media_name: campaign.media_name,
           poll_options: campaign.poll_options }), signal: AbortSignal.timeout(15_000),
-      })
+      }, senderInstance ? { instanceName: senderInstance } : {})
       const payload = await response.json().catch(() => null) as { results?: Array<{ status?: string; message_id?: string; error?: string }> } | null
       const result = payload?.results?.[0]
       resultStatus = result?.status === 'sent' ? 'sent' : result?.status === 'failed' || response.status === 409 ? 'failed' : 'uncertain'
@@ -117,6 +132,34 @@ export async function GET(request: Request) {
   if (remaining) await admin.from('group_broadcasts').update({ delivery_locked_at: null }).eq('id', campaign.id)
   else await finalize(admin, campaign)
   return NextResponse.json({ processed: 1, targets: processed, remaining: remaining ?? 0 })
+}
+
+async function processDueGroupAction(admin: Admin) {
+  const { data: stale } = await admin.from('whatsapp_group_actions').select('id')
+    .eq('status', 'running').lt('scheduled_at', new Date(Date.now() - 5 * 60_000).toISOString()).limit(5)
+  for (const row of stale ?? []) await admin.from('whatsapp_group_actions').update({
+    status: 'failed', error_message: 'Execução interrompida; confira o grupo antes de reagendar.', executed_at: new Date().toISOString(),
+  }).eq('id', row.id).eq('status', 'running')
+  const { data: due } = await admin.from('whatsapp_group_actions')
+    .select('id,account_id,sender_channel_id,group_jid,action,value')
+    .eq('status', 'scheduled').lte('scheduled_at', new Date().toISOString())
+    .order('scheduled_at').limit(1).maybeSingle()
+  if (!due) return
+  const { data: claimed } = await admin.from('whatsapp_group_actions').update({ status: 'running' })
+    .eq('id', due.id).eq('status', 'scheduled').select('id').maybeSingle()
+  if (!claimed) return
+  try {
+    if (!await serviceEnabled(admin, due.account_id, 'groupAutomation')) throw new Error('Automação de grupos desabilitada.')
+    const { data: channel } = await admin.from('whatsapp_channels').select('evolution_instance_name')
+      .eq('id', due.sender_channel_id).eq('account_id', due.account_id).eq('provider', 'evolution').maybeSingle()
+    if (!channel) throw new Error('Número remetente não encontrado.')
+    const result = await executeGroupAction(due.account_id, channel.evolution_instance_name, due.group_jid, due.action as GroupAction, due.value)
+    await admin.from('whatsapp_group_actions').update({ status: 'done', result, executed_at: new Date().toISOString() }).eq('id', due.id)
+  } catch (error) {
+    await admin.from('whatsapp_group_actions').update({ status: 'failed',
+      error_message: error instanceof Error ? error.message.slice(0, 300) : 'Falha na ação do grupo.', executed_at: new Date().toISOString(),
+    }).eq('id', due.id)
+  }
 }
 
 async function finalize(admin: Admin, campaign: Broadcast, override?: string) {
@@ -145,6 +188,7 @@ async function finalize(admin: Admin, campaign: Broadcast, override?: string) {
     account_id: campaign.account_id, created_by: campaign.created_by, name: campaign.name,
     message_text: campaign.message_text, content_kind: campaign.content_kind,
     media_url: campaign.media_url, media_name: campaign.media_name, poll_options: campaign.poll_options,
+    sender_channel_id: campaign.sender_channel_id,
     recurrence: campaign.recurrence, series_id: campaign.series_id, occurrence_no: campaign.occurrence_no + 1,
     scheduled_at: next.toISOString(), status: 'scheduled', total_groups: targets?.length ?? 0,
   }).select('id').maybeSingle()

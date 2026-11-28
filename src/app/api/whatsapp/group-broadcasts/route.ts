@@ -13,7 +13,7 @@ export async function GET() {
     const { supabase, accountId } = await requireRole('agent')
     const { data, error } = await supabase
       .from('group_broadcasts')
-      .select('id, name, message_text, content_kind, media_url, media_name, poll_options, recurrence, series_id, occurrence_no, retry_of, status, scheduled_at, sent_at, total_groups, sent_count, failed_count, last_error, created_at, group_broadcast_targets:group_broadcast_targets!group_broadcast_targets_broadcast_account_fkey(group_jid, group_subject, status, sent_at, error_message)')
+      .select('id, name, message_text, content_kind, media_url, media_name, poll_options, sender_channel_id, recurrence, series_id, occurrence_no, retry_of, status, scheduled_at, sent_at, total_groups, sent_count, failed_count, last_error, created_at, group_broadcast_targets:group_broadcast_targets!group_broadcast_targets_broadcast_account_fkey(group_jid, group_subject, status, sent_at, error_message)')
       .eq('account_id', accountId)
       .order('created_at', { ascending: false })
       .limit(100)
@@ -48,7 +48,12 @@ export async function POST(request: Request) {
 
     const parsed = parseGroupBroadcastInput(await request.json() as Record<string, unknown>)
     if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
-    const { name, message, scheduledAt, groups, kind, recurrence, mediaUrl, mediaName, pollOptions } = parsed.value
+    const { name, message, scheduledAt, groups, kind, recurrence, mediaUrl, mediaName, pollOptions, senderChannelId } = parsed.value
+    if (senderChannelId) {
+      const { data: sender } = await supabase.from('whatsapp_channels').select('id').eq('id', senderChannelId)
+        .eq('account_id', accountId).eq('provider', 'evolution').maybeSingle()
+      if (!sender) return NextResponse.json({ error: 'Número remetente não pertence a esta conta.' }, { status: 400 })
+    }
     if (hasGroupMentionAll(message) && !await canMentionAllInGroups(accountId, groups.map((group) => group.group_jid))) {
       return NextResponse.json({ error: 'Para marcar todos, selecione somente grupos que você administra e atualize a conexão.' }, { status: 403 })
     }
@@ -73,6 +78,7 @@ export async function POST(request: Request) {
         media_url: mediaUrl,
         media_name: mediaName,
         poll_options: pollOptions,
+        sender_channel_id: senderChannelId,
         recurrence,
         series_id: recurrence === 'none' ? null : randomUUID(),
         scheduled_at: scheduledAt,

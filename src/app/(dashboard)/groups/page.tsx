@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarClock, Check, ChevronDown, Download, Loader2, Pencil, RefreshCw, Search, Send, Trash2, UsersRound } from 'lucide-react'
+import { CalendarClock, Check, ChevronDown, Download, Loader2, Pencil, RefreshCw, Search, Send, Trash2, UsersRound, LayoutDashboard, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,16 +10,19 @@ import { MEDIA_MAX_BYTES_BY_KIND, uploadAccountMedia } from '@/lib/storage/uploa
 import { MAX_BROADCAST_GROUPS, type GroupContentKind, type GroupRecurrence } from '@/lib/whatsapp/group-broadcast-input'
 import { composeGroupMessage, hasGroupMentionAll, stripGroupMentionAll, supportsGroupMentionAll } from '@/lib/whatsapp/group-mention-all'
 import { GroupMonitorPanel } from './group-monitor-panel'
+import { GroupActionsPanel } from './group-actions-panel'
 
 type Group = { group_jid: string; subject: string; participant_count: number; is_admin: boolean; folder?: string; labels?: string[]; last_message_at?: string | null }
 type Audience = { id: string; name: string; group_jids: string[] }
 type Template = { id: string; name: string; message_text: string }
 type Settings = { daily_group_cap: number; min_interval_ms: number; pause_on_error: boolean }
+type Channel = { id: string; label: string; phone: string | null; status: string }
 type Broadcast = {
   id: string; name: string; message_text: string; status: string; scheduled_at: string; sent_at: string | null; created_at: string
   total_groups: number; sent_count: number; failed_count: number; last_error: string | null
   content_kind: GroupContentKind; media_url: string | null; media_name: string | null
   poll_options: string[]; recurrence: GroupRecurrence; retry_of: string | null
+  sender_channel_id: string | null
   group_broadcast_targets: Array<{ group_jid: string; group_subject: string; status: string; sent_at: string | null; error_message: string | null }>
 }
 
@@ -45,6 +48,9 @@ const statusLabels: Record<string, string> = { scheduled: 'Agendado', sending: '
 export default function GroupsPage() {
   const canSchedule = useCan('edit-settings')
   const [groups, setGroups] = useState<Group[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [senderChannelId, setSenderChannelId] = useState('')
+  const [activeTab, setActiveTab] = useState<'overview' | 'groups' | 'broadcasts' | 'automations'>('overview')
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([])
   const [schedulerEnabled, setSchedulerEnabled] = useState(false)
   const [audiences, setAudiences] = useState<Audience[]>([])
@@ -79,17 +85,20 @@ export default function GroupsPage() {
   const load = useCallback(async (withDirectory = false) => {
     if (withDirectory) setRefreshing(true)
     try {
-      const [groupResponse, broadcastResponse, centerResponse] = await Promise.all([
-        fetch('/api/whatsapp/groups', { cache: 'no-store' }),
+      const [groupResponse, broadcastResponse, centerResponse, channelResponse] = await Promise.all([
+        fetch(`/api/whatsapp/groups${senderChannelId ? `?channel_id=${encodeURIComponent(senderChannelId)}` : ''}`, { cache: 'no-store' }),
         fetch('/api/whatsapp/group-broadcasts', { cache: 'no-store' }),
         fetch('/api/whatsapp/group-center', { cache: 'no-store' }),
+        fetch('/api/whatsapp/evolution-campaigns/channels', { cache: 'no-store' }),
       ])
       const groupData = await groupResponse.json() as { groups?: Group[]; admin_filter_available?: boolean; member_tools_available?: boolean; error?: string; warning?: string }
       const broadcastData = await broadcastResponse.json() as { broadcasts?: Broadcast[]; scheduler_enabled?: boolean; error?: string }
       const centerData = await centerResponse.json() as { audiences?: Audience[]; templates?: Template[]; settings?: Settings; error?: string }
+      const channelData = await channelResponse.json() as { channels?: Channel[] }
       if (!broadcastResponse.ok) throw new Error(broadcastData.error ?? 'Não foi possível carregar os agendamentos.')
       if (!centerResponse.ok) throw new Error(centerData.error ?? 'Não foi possível carregar as preferências.')
       setGroups(groupResponse.ok ? groupData.groups ?? [] : [])
+      if (channelResponse.ok) setChannels(channelData.channels ?? [])
       setAdminFilterAvailable(groupResponse.ok && groupData.admin_filter_available === true)
       setMemberToolsAvailable(groupResponse.ok && groupData.member_tools_available === true)
       if (groupData.admin_filter_available !== true) setAdminOnly(false)
@@ -105,7 +114,7 @@ export default function GroupsPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [senderChannelId])
 
   useEffect(() => { void load() }, [load])
 
@@ -223,7 +232,7 @@ export default function GroupsPage() {
         body: JSON.stringify({ name, message_text: composedMessage, scheduled_at: new Date(scheduledAt).toISOString(),
           groups: selectedGroups, content_kind: kind, media_url: mediaUrl, media_name: mediaName,
           poll_options: pollOptions.split('\n').map((option) => option.trim()).filter(Boolean),
-          recurrence, send_now: !editingId && sendNow }),
+          recurrence, send_now: !editingId && sendNow, sender_channel_id: senderChannelId || null }),
       })
       const data = await response.json() as { error?: string }
       if (!response.ok) throw new Error(data.error ?? 'Não foi possível agendar o disparo.')
@@ -254,6 +263,8 @@ export default function GroupsPage() {
     setKind(broadcast.content_kind ?? 'text'); setMediaUrl(broadcast.media_url); setMediaName(broadcast.media_name)
     setPollOptions((broadcast.poll_options ?? []).join('\n')); setRecurrence(broadcast.recurrence ?? 'none'); setSendNow(false)
     setSelected(new Set(broadcast.group_broadcast_targets.map((target) => target.group_jid)))
+    setSenderChannelId(broadcast.sender_channel_id ?? '')
+    setActiveTab('broadcasts')
     document.getElementById('group-broadcast-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
   function duplicateBroadcast(broadcast: Broadcast) {
@@ -303,18 +314,28 @@ export default function GroupsPage() {
         </Button>
       </header>
 
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">
-        Use somente grupos que você administra e cujos participantes esperam receber comunicações. A conexão por QR depende do WhatsApp Web e pode exigir uma nova leitura do QR.
-      </div>
+      <nav aria-label="Seções de grupos" className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-2">
+        {([['overview', 'Visão geral', LayoutDashboard], ['groups', 'Grupos', UsersRound], ['broadcasts', 'Disparos', Send], ['automations', 'Automações', Settings2]] as const).map(([id, label, Icon]) =>
+          <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? 'page' : undefined}
+            className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${activeTab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}><Icon className="size-4" />{label}</button>)}
+      </nav>
+      {activeTab !== 'overview' ? <label className="block max-w-md text-sm font-medium">Número de WhatsApp
+        <select aria-label="Número de WhatsApp para grupos" value={senderChannelId} disabled={!!editingId}
+          onChange={(event) => { setSenderChannelId(event.target.value); setSelected(new Set()) }}
+          className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+          <option value="">Conexão padrão</option>
+          {channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.label}{channel.phone ? ` · ${channel.phone}` : ''}{channel.status !== 'connected' ? ' · desconectado' : ''}</option>)}
+        </select>
+      </label> : null}
       {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div> : null}
       {!schedulerEnabled ? <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-200">Os disparos em grupos ainda não estão ativos: o agendador do servidor precisa ser configurado. Você pode consultar e organizar grupos, mas não agendar envios agora.</div> : null}
 
-      <section aria-label="Visão geral dos grupos" className="grid grid-cols-2 gap-3 md:grid-cols-4">{[
+      {activeTab === 'overview' ? <section aria-label="Visão geral dos grupos" className="grid grid-cols-2 gap-3 md:grid-cols-4">{[
         ['Grupos ativos em 7 dias', report.active], ['Disparos agendados', report.scheduled],
         ['Entregas confirmadas', report.sent], ['Falhas ou incertas', report.failed],
-      ].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>)}</section>
+      ].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>)}</section> : null}
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      {activeTab === 'groups' || activeTab === 'broadcasts' ? <div className={`grid min-w-0 gap-6 ${activeTab === 'broadcasts' ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]' : ''}`}>
         <section className="min-w-0 rounded-xl border border-border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
             <div className="min-w-0"><h2 className="font-semibold">Grupos disponíveis</h2><p className="text-xs text-muted-foreground">{visibleGroups.length !== groups.length ? `${visibleGroups.length} de ` : ''}{groups.length} grupo{groups.length === 1 ? '' : 's'} na conta conectada</p></div>
@@ -345,7 +366,7 @@ export default function GroupsPage() {
           </div>
         </section>
 
-        <section id="group-broadcast-form" className="min-w-0 rounded-xl border border-border bg-card p-5">
+        {activeTab === 'broadcasts' ? <section id="group-broadcast-form" className="min-w-0 rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 font-semibold"><CalendarClock className="size-4 text-primary" />{editingId ? 'Editar disparo agendado' : 'Programar disparo'}</h2>
             {editingId ? <Button variant="ghost" size="sm" onClick={resetForm}>Cancelar edição</Button> : null}
@@ -372,19 +393,21 @@ export default function GroupsPage() {
             </Button>
             {!canSchedule ? <p className="text-center text-xs text-muted-foreground">Somente administradores podem programar disparos.</p> : null}
           </div>
-        </section>
-      </div>
+        </section> : null}
+      </div> : null}
 
-      {canSchedule ? <section className="rounded-xl border border-border bg-card p-4"><h2 className="font-semibold">Segurança do envio</h2><p className="mt-1 text-xs text-muted-foreground">Limites por conta. O disparo para ao encontrar um erro se a pausa estiver ativada.</p><div className="mt-3 flex flex-wrap items-end gap-3">
+      {canSchedule && activeTab === 'broadcasts' ? <section className="rounded-xl border border-border bg-card p-4"><h2 className="font-semibold">Segurança do envio</h2><p className="mt-1 text-xs text-muted-foreground">Limites por conta. O disparo para ao encontrar um erro se a pausa estiver ativada.</p><div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-xs">Máximo de grupos por dia<Input type="number" min={1} max={300} value={settings.daily_group_cap} onChange={(event) => setSettings((current) => ({ ...current, daily_group_cap: Number(event.target.value) }))} className="mt-1 w-28" /></label>
         <label className="text-xs">Intervalo entre envios (ms)<Input type="number" min={1250} max={10000} step={250} value={settings.min_interval_ms} onChange={(event) => setSettings((current) => ({ ...current, min_interval_ms: Number(event.target.value) }))} className="mt-1 w-32" /></label>
         <label className="flex h-9 items-center gap-2 text-xs"><input type="checkbox" checked={settings.pause_on_error} onChange={(event) => setSettings((current) => ({ ...current, pause_on_error: event.target.checked }))} /> Pausar após erro</label>
         <Button variant="outline" size="sm" onClick={() => void saveCenter({ action: 'settings', ...settings }, 'Limites atualizados.')}>Salvar limites</Button>
       </div></section> : null}
 
-      <GroupMonitorPanel groups={groups} />
+      {activeTab === 'groups' ? <GroupMonitorPanel groups={groups} /> : null}
 
-      <section className="rounded-xl border border-border bg-card">
+      {activeTab === 'automations' ? <GroupActionsPanel groups={groups} channels={channels} senderChannelId={senderChannelId} canSchedule={canSchedule} /> : null}
+
+      {activeTab === 'broadcasts' ? <section className="rounded-xl border border-border bg-card">
         <div className="border-b border-border p-4"><h2 className="font-semibold">Agendados e histórico</h2><p className="text-xs text-muted-foreground">Abra um disparo para ver a mensagem e o resultado em cada grupo.</p></div>
         {broadcasts.length === 0 ? <p className="p-8 text-center text-sm text-muted-foreground">Nenhum disparo para grupos foi programado.</p> : <div className="divide-y divide-border">{broadcasts.map((broadcast) => {
           const expanded = expandedId === broadcast.id
@@ -411,7 +434,7 @@ export default function GroupsPage() {
             </div> : null}
           </div>
         })}</div>}
-      </section>
+      </section> : null}
     </div>
   )
 }

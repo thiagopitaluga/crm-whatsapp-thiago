@@ -16,9 +16,37 @@ type ConnectorGroup = {
 };
 
 /** Lists only metadata for groups available to this account's QR session. */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { accountId, supabase } = await requireRole('agent');
+    const channelId = new URL(request.url).searchParams.get('channel_id');
+    if (channelId) {
+      const { data: channel } = await supabase.from('whatsapp_channels')
+        .select('evolution_instance_name,channel_key').eq('id', channelId)
+        .eq('account_id', accountId).eq('provider', 'evolution').maybeSingle();
+      if (!channel) return NextResponse.json({ error: 'Número não encontrado nesta conta.' }, { status: 404 });
+      const response = await fetchQrConnector(accountId, 'groups', {},
+        { instanceName: channel.evolution_instance_name, channelKey: channel.channel_key });
+      if (!response.ok) return unavailable(response.status);
+      const payload = await response.json() as { groups?: ConnectorGroup[]; admin_detection_version?: number; member_tools_version?: number };
+      const groups = (payload.groups ?? []).filter((row): row is ConnectorGroup & { id: string; subject: string } =>
+        typeof row.id === 'string' && row.id.endsWith('@g.us') && typeof row.subject === 'string').map((row) => ({
+          group_jid: row.id, subject: row.subject.trim().slice(0, 255) || 'Grupo sem nome',
+          participant_count: typeof row.participant_count === 'number' ? row.participant_count : 0,
+          is_admin: row.is_admin === true, announcement: typeof row.announcement === 'boolean' ? row.announcement : null,
+        }));
+      if (groups.length) await supabase.from('whatsapp_groups').upsert(groups.map((group) => ({
+        ...group, account_id: accountId, last_seen_at: new Date().toISOString(),
+      })), { onConflict: 'account_id,group_jid' });
+      const { data: details } = groups.length ? await supabase.from('whatsapp_groups').select('group_jid,folder,labels,last_message_at')
+        .eq('account_id', accountId).in('group_jid', groups.map((group) => group.group_jid)) : { data: [] };
+      const byJid = new Map((details ?? []).map((row) => [row.group_jid, row]));
+      return NextResponse.json({ groups: groups.map((group) => ({ ...group,
+        folder: byJid.get(group.group_jid)?.folder ?? '', labels: byJid.get(group.group_jid)?.labels ?? [],
+        last_message_at: byJid.get(group.group_jid)?.last_message_at ?? null,
+      })), admin_filter_available: payload.admin_detection_version === 2,
+        member_tools_available: payload.member_tools_version === 1 }, { headers: { 'cache-control': 'no-store' } });
+    }
     const { data: claimed, error: claimError } = await supabase.rpc(
       'claim_whatsapp_group_sync',
       { p_account_id: accountId }

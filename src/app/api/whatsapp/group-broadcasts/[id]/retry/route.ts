@@ -9,7 +9,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     const { supabase, accountId, userId } = await requireRole('admin')
     const { id } = await context.params
     const { data: source, error } = await supabase.from('group_broadcasts')
-      .select('id, name, message_text, content_kind, media_url, media_name, poll_options, status')
+      .select('id, name, message_text, content_kind, media_url, media_name, poll_options, sender_channel_id, status')
       .eq('id', id).eq('account_id', accountId).single()
     if (error || !source || !['failed', 'partial'].includes(source.status)) {
       return NextResponse.json({ error: 'Somente disparos concluídos com falha podem ser reenviados.' }, { status: 409 })
@@ -22,6 +22,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       account_id: accountId, created_by: userId, name: `Reenvio: ${source.name}`.slice(0, 120),
       message_text: source.message_text, content_kind: source.content_kind,
       media_url: source.media_url, media_name: source.media_name, poll_options: source.poll_options,
+      sender_channel_id: source.sender_channel_id,
       scheduled_at: new Date().toISOString(), status: 'scheduled', total_groups: targets.length,
       retry_of: id,
     }).select('id').single()
