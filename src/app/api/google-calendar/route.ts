@@ -33,6 +33,7 @@ export async function GET() {
     const connected = data?.status === "connected";
     return NextResponse.json({
       connected,
+      calendar_id: data?.calendar_id || 'primary',
       available: Boolean(
         process.env.GOOGLE_CALENDAR_CLIENT_ID && process.env.GOOGLE_CALENDAR_CLIENT_SECRET,
       ),

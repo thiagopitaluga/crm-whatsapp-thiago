@@ -124,13 +124,6 @@ export function TaskForm({
       return;
     }
 
-    const { data: sessionResult } = await supabase.auth.getSession();
-    const userId = sessionResult.session?.user.id;
-    if (!userId) {
-      toast.error(t('notSignedIn'));
-      return;
-    }
-
     setSaving(true);
     const payload = {
       contact_id: contactId,
@@ -141,21 +134,27 @@ export function TaskForm({
       due_at: dueDate.toISOString(),
     };
 
-    const { error } = task
-      ? await supabase.from('tasks').update(payload).eq('id', task.id)
-      : await supabase.from('tasks').insert({
-          ...payload,
-          account_id: accountId,
-          user_id: userId,
-          status: 'open',
-        });
+    let response: Response;
+    try {
+      response = await fetch('/api/tasks', {
+        method: task ? 'PATCH' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...payload, id: task?.id }),
+      });
+    } catch {
+      setSaving(false);
+      toast.error(t('saveFailed'));
+      return;
+    }
     setSaving(false);
 
-    if (error) {
+    if (!response.ok) {
       toast.error(t('saveFailed'));
       return;
     }
 
+    const result = (await response.json()) as { calendarSync?: string };
+    if (result.calendarSync === 'error') toast.warning('Tarefa salva, mas não sincronizada com o Google Agenda.');
     toast.success(task ? t('updated') : t('created'));
     onOpenChange(false);
     onSaved();

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 import { encrypt } from "@/lib/whatsapp/encryption";
+import { getCurrentAccount } from '@/lib/auth/account';
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const ctx = await getCurrentAccount();
+    if (ctx.accountId !== state.accountId || ctx.userId !== state.userId) {
+      return NextResponse.redirect(`${origin}/tasks?google_calendar=error`);
+    }
     const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID?.trim();
     const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET?.trim();
     if (!clientId || !clientSecret) throw new Error("Google OAuth credentials are not configured");
@@ -77,6 +82,9 @@ export async function GET(request: NextRequest) {
       .select("refresh_token_encrypted")
       .eq("account_id", state.accountId)
       .maybeSingle();
+    if (!tokens.refresh_token && !existing?.refresh_token_encrypted) {
+      throw new Error('Google did not provide an offline refresh token');
+    }
     const { error } = await db.from("google_calendar_connections").upsert(
       {
         account_id: state.accountId,

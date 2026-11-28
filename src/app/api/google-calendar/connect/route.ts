@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     authorization.searchParams.set("client_id", clientId);
     authorization.searchParams.set("redirect_uri", `${origin}/api/google-calendar/callback`);
     authorization.searchParams.set("response_type", "code");
-    authorization.searchParams.set("scope", "https://www.googleapis.com/auth/calendar.events");
+    authorization.searchParams.set("scope", "https://www.googleapis.com/auth/calendar");
     authorization.searchParams.set("access_type", "offline");
     authorization.searchParams.set("prompt", "consent");
     authorization.searchParams.set("state", state);

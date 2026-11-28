@@ -15,7 +15,9 @@ import { createClient } from "@/lib/supabase/client";
 import type { Contact, Deal, PipelineStage, Profile, Tag, Task, TaskStatus } from "@/types";
 
 type TaskFilter = "open" | "completed" | "all";
-type CalendarConnection = { connected: boolean; available: boolean; calendar_url: string | null };
+type CalendarConnection = { connected: boolean; available: boolean; calendar_url: string | null; calendar_id: string };
+type GoogleCalendar = { id: string; name: string; primary: boolean };
+type GoogleEvent = { id: string; title: string; starts_at: string | null; url: string | null };
 type TaskRow = Omit<Task, "contact" | "deal" | "assignee"> & {
   contact?: Pick<Contact, "id" | "name" | "phone"> & { contact_tags?: { tags: Tag | null }[] };
   deal?: (Pick<Deal, "id" | "title" | "stage_id"> & { stage?: Pick<PipelineStage, "id" | "name"> | null }) | null;
@@ -67,6 +69,9 @@ export default function TasksPage() {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [calendar, setCalendar] = useState<CalendarConnection | null>(null);
   const [calendarLoading, setCalendarLoading] = useState(true);
+  const [googleCalendars, setGoogleCalendars] = useState<GoogleCalendar[]>([]);
+  const [googleEvents, setGoogleEvents] = useState<GoogleEvent[]>([]);
+  const [syncingCalendar, setSyncingCalendar] = useState(false);
 
   const loadTasks = useCallback(async () => {
     if (!accountId) return;
@@ -96,7 +101,7 @@ export default function TasksPage() {
       const response = await fetch("/api/google-calendar", { cache: "no-store" });
       if (!response.ok) throw new Error("status request failed");
       setCalendar((await response.json()) as CalendarConnection);
-    } catch { setCalendar({ connected: false, available: false, calendar_url: null }); }
+    } catch { setCalendar({ connected: false, available: false, calendar_url: null, calendar_id: 'primary' }); }
     finally { setCalendarLoading(false); }
   }, []);
 
@@ -106,6 +111,20 @@ export default function TasksPage() {
     void Promise.all([loadTasks(), loadOptions()]).finally(() => setLoading(false));
   }, [accountId, loadOptions, loadTasks]);
   useEffect(() => { void loadCalendarConnection(); }, [loadCalendarConnection]);
+  useEffect(() => {
+    if (!calendar?.connected) { setGoogleCalendars([]); setGoogleEvents([]); return; }
+    let cancelled = false;
+    const from = new Date(month.getFullYear(), month.getMonth(), 1);
+    from.setDate(from.getDate() - from.getDay());
+    const to = new Date(from); to.setDate(to.getDate() + 42);
+    void Promise.all([
+      fetch('/api/google-calendar/calendars', { cache: 'no-store' }).then((response) => response.json()),
+      fetch(`/api/google-calendar/events?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`, { cache: 'no-store' }).then((response) => response.json()),
+    ]).then(([calendarsResult, eventsResult]) => {
+      if (!cancelled) { setGoogleCalendars(calendarsResult.calendars ?? []); setGoogleEvents(eventsResult.events ?? []); }
+    }).catch(() => { if (!cancelled) setGoogleEvents([]); });
+    return () => { cancelled = true; };
+  }, [calendar?.connected, calendar?.calendar_id, month]);
   useEffect(() => {
     const result = searchParams.get("google_calendar");
     if (result === "connected") toast.success(t("googleConnected"));
@@ -138,22 +157,43 @@ export default function TasksPage() {
   function closeForm(open: boolean) { setFormOpen(open); if (!open) { setEditingTask(null); setDefaultDueAt(null); } }
   async function updateStatus(task: Task, status: TaskStatus) {
     const completedAt = status === "completed" ? new Date().toISOString() : null;
-    const { error } = await supabase.from("tasks").update({ status, completed_at: completedAt }).eq("id", task.id);
-    if (error) { toast.error(t("saveFailed")); return; }
+    const response = await fetch('/api/tasks', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: task.id, status }) }).catch(() => null);
+    if (!response?.ok) { toast.error(t("saveFailed")); return; }
+    const result = (await response.json()) as { calendarSync?: string };
+    if (result.calendarSync === 'error') toast.warning('Tarefa salva, mas não sincronizada com o Google Agenda.');
     setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status, completed_at: completedAt } : item));
     toast.success(status === "completed" ? t("completedSuccess") : t("reopenedSuccess"));
   }
   async function deleteTask(task: Task) {
-    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
-    if (error) { toast.error(t("saveFailed")); return; }
+    const response = await fetch('/api/tasks', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: task.id }) }).catch(() => null);
+    if (!response?.ok) { toast.error(t("saveFailed")); return; }
     setTasks((current) => current.filter((item) => item.id !== task.id)); toast.success(t("deleted"));
   }
   function connectGoogleCalendar() {
     if (!calendar?.available) { toast.error(t("googleUnavailable")); return; }
     window.location.assign("/api/google-calendar/connect");
   }
+  async function changeGoogleCalendar(calendarId: string) {
+    const response = await fetch('/api/google-calendar/calendars', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ calendar_id: calendarId }) });
+    if (!response.ok) { const result = await response.json(); toast.error(result.error || 'Não foi possível escolher a agenda'); return; }
+    setCalendar((current) => current ? { ...current, calendar_id: calendarId } : current);
+    toast.success('Agenda selecionada');
+  }
+  async function syncExistingTasks() {
+    setSyncingCalendar(true);
+    try {
+      const response = await fetch('/api/google-calendar/sync', { method: 'POST' });
+      const result = await response.json() as { synced?: number; failed?: number; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Falha ao sincronizar');
+      toast[result.failed ? 'warning' : 'success'](`${result.synced ?? 0} tarefas sincronizadas${result.failed ? `, ${result.failed} com falha` : ''}`);
+      await loadTasks();
+    } catch { toast.error('Não foi possível sincronizar as tarefas'); }
+    finally { setSyncingCalendar(false); }
+  }
 
   const calendarDays = monthDays(month);
+  const googleEventsByDay = new Map<string, GoogleEvent[]>();
+  googleEvents.forEach((event) => { if (event.starts_at) { const key = /^\d{4}-\d{2}-\d{2}$/.test(event.starts_at) ? event.starts_at : dateKey(event.starts_at); googleEventsByDay.set(key, [...(googleEventsByDay.get(key) ?? []), event]); } });
   return <div className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl font-semibold text-foreground">{t("title")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("description")}</p></div><GatedButton canAct={canScheduleTasks} gateReason="schedule tasks" onClick={() => openNewTask()}><Plus className="size-4" />{t("newTask")}</GatedButton></div>
 
@@ -165,7 +205,32 @@ export default function TasksPage() {
     <section className="rounded-xl border border-border bg-card p-3 sm:p-4"><div className="mb-3 flex items-center justify-between gap-2"><Button type="button" size="icon" variant="ghost" aria-label={t("previousMonth")} onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}><ChevronLeft className="size-4" /></Button><div className="text-center"><p className="font-semibold text-foreground">{new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(month)}</p><button type="button" className="text-xs text-primary hover:underline" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>{t("goToToday")}</button></div><Button type="button" size="icon" variant="ghost" aria-label={t("nextMonth")} onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}><ChevronRight className="size-4" /></Button></div><div className="grid grid-cols-7 border-l border-t border-border">{Array.from({ length: 7 }, (_, index) => <div key={index} className="border-b border-r border-border px-1 py-2 text-center text-xs font-medium text-muted-foreground">{new Intl.DateTimeFormat(undefined, { weekday: "narrow" }).format(new Date(2023, 0, index + 1))}</div>)}{calendarDays.map((day) => { const key = dateKey(day); const dayTasks = tasksByDay.get(key) ?? []; const currentMonth = day.getMonth() === month.getMonth(); const isToday = key === dateKey(new Date()); return <button key={key} type="button" disabled={!canScheduleTasks || !currentMonth} onClick={() => openNewTask(day)} className={`min-h-20 border-b border-r border-border p-1.5 text-left transition-colors hover:bg-muted disabled:cursor-default ${currentMonth ? "bg-card" : "bg-muted/30 text-muted-foreground"}`}><span className={`inline-flex size-6 items-center justify-center rounded-full text-xs ${isToday ? "bg-primary font-semibold text-primary-foreground" : ""}`}>{day.getDate()}</span><div className="mt-1 space-y-1">{dayTasks.slice(0, 2).map((task) => <div key={task.id} className={`truncate rounded px-1 py-0.5 text-[11px] ${task.status === "completed" ? "bg-emerald-500/10 text-emerald-600 line-through dark:text-emerald-400" : "bg-primary/10 text-primary"}`}>{task.title}</div>)}{dayTasks.length > 2 ? <p className="px-1 text-[11px] text-muted-foreground">{t("moreTasks", { count: dayTasks.length - 2 })}</p> : null}</div></button>; })}</div><p className="mt-3 text-xs text-muted-foreground">{t("calendarHint")}</p></section>
 
     {loading ? <div className="space-y-3">{[0, 1, 2].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-muted" />)}</div> : filteredTasks.length === 0 ? <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center"><CalendarClock className="size-10 text-muted-foreground" /><h3 className="mt-4 font-medium text-foreground">{t("emptyTitle")}</h3><p className="mt-1 max-w-sm text-sm text-muted-foreground">{t("emptyDescription")}</p></div> : <div className="space-y-3">{filteredTasks.map((task) => { const overdue = task.status === "open" && new Date(task.due_at).getTime() < now; const isCompleted = task.status === "completed"; return <article key={task.id} className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center"><Button type="button" size="sm" variant={isCompleted ? "outline" : "default"} className={`self-start ${isCompleted ? "" : "bg-emerald-600 hover:bg-emerald-700"}`} onClick={() => void updateStatus(task, isCompleted ? "open" : "completed")} disabled={!canScheduleTasks}><CheckCircle2 className="size-4" />{isCompleted ? t("reopen") : t("complete")}</Button><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><h3 className={`font-semibold ${isCompleted ? "text-muted-foreground line-through" : "text-foreground"}`}>{task.title}</h3><span className={`text-sm ${overdue ? "font-medium text-red-500" : "text-muted-foreground"}`}>{formatDueAt(task.due_at)}</span>{isCompleted ? <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t("completed")}</span> : null}</div><p className="mt-1 text-sm text-muted-foreground">{task.contact?.name || task.contact?.phone || t("unknownContact")}{task.deal?.title ? ` · ${task.deal.title}` : ""}{task.deal?.stage?.name ? ` · ${task.deal.stage.name}` : ""}</p>{task.contact?.tags?.length ? <div className="mt-2 flex flex-wrap gap-1">{task.contact.tags.map((tag) => <span key={tag.id} className="rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: `${tag.color}22`, color: tag.color }}>{tag.name}</span>)}</div> : null}{task.description ? <p className="mt-2 text-sm text-muted-foreground">{task.description}</p> : null}</div><div className="flex shrink-0 flex-wrap items-center gap-1">{task.assignee ? <span className="mr-2 inline-flex items-center gap-1 text-xs text-muted-foreground"><UserRound className="size-3.5" />{task.assignee.full_name || task.assignee.email}</span> : null}<Button type="button" variant="ghost" size="icon" title={t("edit")} onClick={() => { setEditingTask(task); setDefaultDueAt(null); setFormOpen(true); }} disabled={!canScheduleTasks}><Pencil className="size-4" /></Button><Button type="button" variant="ghost" size="icon" title={t("delete")} onClick={() => void deleteTask(task)} disabled={!canScheduleTasks} className="text-red-500 hover:text-red-600"><Trash2 className="size-4" /></Button></div></article>; })}</div>}
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"><Link2 className="size-4 text-muted-foreground" /><p className="mr-auto text-sm font-medium text-foreground">{t("googleCalendarTitle")}</p>{calendar?.connected ? <><span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">{t("googleConnectedStatus")}</span><Button type="button" size="sm" variant="outline" onClick={() => window.open(calendar.calendar_url ?? "https://calendar.google.com/", "_blank", "noopener,noreferrer")}><ExternalLink className="size-3.5" />{t("openGoogleCalendar")}</Button></> : <><span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{t("googleDisconnected")}</span><Button type="button" size="sm" variant="outline" onClick={connectGoogleCalendar} disabled={calendarLoading}><Link2 className="size-3.5" />{t("connectGoogleCalendar")}</Button></>}</div>
+    {calendar?.connected && googleEvents.length > 0 ? (
+      <section className="rounded-xl border border-border bg-card p-4">
+        <h3 className="mb-3 font-semibold text-foreground">Eventos do Google Agenda</h3>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from(googleEventsByDay).slice(0, 12).flatMap(([day, events]) => events.slice(0, 3).map((event) => (
+            <a key={event.id} href={event.url || undefined} target="_blank" rel="noopener noreferrer" className="min-w-0 rounded-lg border border-border p-2 text-sm hover:bg-muted">
+              <span className="block truncate font-medium">{event.title}</span>
+              <span className="text-xs text-muted-foreground">{/^\d{4}-\d{2}-\d{2}$/.test(event.starts_at || '') ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(`${day}T12:00:00`)) : new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(event.starts_at || day))}</span>
+            </a>
+          )))}
+        </div>
+      </section>
+    ) : null}
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+      <Link2 className="size-4 text-muted-foreground" />
+      <p className="mr-auto text-sm font-medium text-foreground">{t('googleCalendarTitle')}</p>
+      {calendar?.connected ? <>
+        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">{t('googleConnectedStatus')}</span>
+        {googleCalendars.length > 0 ? <select aria-label="Agenda para sincronização" value={calendar.calendar_id === 'primary' ? (googleCalendars.find((item) => item.primary)?.id ?? 'primary') : calendar.calendar_id} onChange={(event) => void changeGoogleCalendar(event.target.value)} className="h-9 max-w-56 rounded-lg border border-border bg-background px-2 text-sm text-foreground">{googleCalendars.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select> : null}
+        <Button type="button" size="sm" variant="outline" onClick={() => void syncExistingTasks()} disabled={syncingCalendar}>{syncingCalendar ? 'Sincronizando...' : 'Sincronizar tarefas'}</Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => window.open(calendar.calendar_url ?? 'https://calendar.google.com/', '_blank', 'noopener,noreferrer')}><ExternalLink className="size-3.5" />{t('openGoogleCalendar')}</Button>
+      </> : <>
+        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{t('googleDisconnected')}</span>
+        <Button type="button" size="sm" variant="outline" onClick={connectGoogleCalendar} disabled={calendarLoading}><Link2 className="size-3.5" />{t('connectGoogleCalendar')}</Button>
+      </>}
+    </div>
     <TaskForm open={formOpen} onOpenChange={closeForm} task={editingTask} defaultDueAt={defaultDueAt} onSaved={() => void loadTasks()} />
   </div>;
 }
