@@ -6,14 +6,14 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "OrganiZAP — CRM para WhatsApp",
+    name: "OrganiZAP",
     short_name: "OrganiZAP",
     description: "CRM para atendimento, vendas e automação pelo WhatsApp.",
     start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     orientation: "any",
-    background_color: "#ffffff",
+    background_color: "#020617",
     theme_color: "#020617",
     icons: [
       {

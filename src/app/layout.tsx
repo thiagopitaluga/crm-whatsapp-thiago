@@ -118,6 +118,12 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-full bg-background text-foreground font-sans">
+        <div className="pwa-launch-screen" aria-hidden="true">
+          <div className="pwa-launch-emblem"><span className="pwa-launch-mark" /></div>
+          <p className="pwa-launch-brand">Organi<span>ZAP</span></p>
+          <p className="pwa-launch-tagline">Transforme conversas em resultados.</p>
+          <span className="pwa-launch-track" />
+        </div>
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ThemeProvider>
             <PwaRegistration />
