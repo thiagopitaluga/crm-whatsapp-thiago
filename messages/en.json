@@ -838,7 +838,7 @@
   "Broadcasts": {
     "page": {
       "title": "Broadcasts",
-      "subtitle": "Send bulk messages to your contacts using approved templates.",
+      "subtitle": "Track your campaigns and the results of each send.",
       "newBroadcast": "New Broadcast",
       "noBroadcastsYet": "No broadcasts yet",
       "createFirst": "Create your first broadcast to reach your contacts at scale.",

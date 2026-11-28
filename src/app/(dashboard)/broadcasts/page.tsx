@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Radio, Plus, Loader2 } from 'lucide-react';
+import { Radio, Plus, Loader2, ArrowUpRight } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
@@ -24,7 +24,26 @@ import { useTranslations } from 'next-intl';
  * beat on Supabase — the aggregate trigger in migration 003 keeps
  * counts consistent; we just need to surface the freshest snapshot.
  */
-const POLL_INTERVAL_MS = 5_000;
+const POLL_INTERVAL_MS = 30_000;
+
+type EvolutionCampaignSummary = {
+  id: string; name: string; status: string; created_at: string; scheduled_at: string | null;
+  total_recipients: number; sent_count: number; failed_count: number;
+};
+
+function evolutionStatus(campaign: EvolutionCampaignSummary) {
+  if (campaign.status === 'scheduled') {
+    return campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now()
+      ? { label: 'Programado', classes: 'border-blue-500/30 bg-blue-500/10 text-blue-400' }
+      : { label: 'Em andamento', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' };
+  }
+  if (campaign.status === 'sending') return { label: 'Em andamento', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' };
+  if (campaign.status === 'paused') return { label: 'Pausado', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-400' };
+  if (campaign.status === 'completed') return { label: 'Concluído', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' };
+  if (campaign.status === 'partial') return { label: 'Encerrado com pendências', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-400' };
+  if (campaign.status === 'failed') return { label: 'Falhou', classes: 'border-red-500/30 bg-red-500/10 text-red-400' };
+  return { label: 'Rascunho', classes: 'border-border bg-muted text-muted-foreground' };
+}
 
 function percent(numerator: number, denominator: number): number {
   if (!denominator) return 0;
@@ -63,10 +82,7 @@ export default function BroadcastsPage() {
   const tStatus = useTranslations('Broadcasts.status');
   const canCreate = useCan('send-messages');
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
-  const [evolutionCampaigns, setEvolutionCampaigns] = useState<Array<{
-    id: string; name: string; status: string; created_at: string;
-    total_recipients: number; sent_count: number; failed_count: number;
-  }>>([]);
+  const [evolutionCampaigns, setEvolutionCampaigns] = useState<EvolutionCampaignSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,6 +119,11 @@ export default function BroadcastsPage() {
     () => broadcasts.some((b) => b.status === 'sending') || evolutionCampaigns.some((c) => c.status === 'sending'),
     [broadcasts, evolutionCampaigns],
   );
+  const shouldPoll = useMemo(
+    () => broadcasts.some((b) => b.status === 'sending') ||
+      evolutionCampaigns.some((c) => ['scheduled', 'sending'].includes(c.status)),
+    [broadcasts, evolutionCampaigns],
+  );
 
   useEffect(() => {
     function startPolling() {
@@ -119,7 +140,7 @@ export default function BroadcastsPage() {
     // the user is away, and ensures a fresh fetch the moment they
     // refocus so they don't see stale data on return.
     function handleVisibilityChange() {
-      if (!anySending) return;
+      if (!shouldPoll) return;
       if (document.visibilityState === 'hidden') {
         stopPolling();
       } else {
@@ -128,7 +149,7 @@ export default function BroadcastsPage() {
       }
     }
 
-    if (anySending && document.visibilityState === 'visible') {
+    if (shouldPoll && document.visibilityState === 'visible') {
       startPolling();
     } else {
       stopPolling();
@@ -138,7 +159,7 @@ export default function BroadcastsPage() {
       stopPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [anySending, fetchBroadcasts]);
+  }, [shouldPoll, fetchBroadcasts]);
 
   if (loading) {
     return (
@@ -189,13 +210,9 @@ export default function BroadcastsPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t('subtitle')}
-          </p>
-        </div>
         <GatedButton
           canAct={canCreate}
           gateReason="create broadcasts"
@@ -205,21 +222,43 @@ export default function BroadcastsPage() {
           <Plus className="h-4 w-4" />
           {t('newBroadcast')}
         </GatedButton>
+        </div>
+        <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
       {evolutionCampaigns.length > 0 && <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Disparos via Evolution</h2>
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <Table><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Status</TableHead>
-            <TableHead>Contatos</TableHead><TableHead>Enviados</TableHead><TableHead>Falhas</TableHead><TableHead>Data</TableHead></TableRow></TableHeader>
-            <TableBody>{evolutionCampaigns.map((campaign) => <TableRow key={campaign.id} className="cursor-pointer" onClick={() => router.push(`/broadcasts/evolution/${campaign.id}`)}>
-              <TableCell className="font-medium">{campaign.name}</TableCell><TableCell>{({
-                draft: 'Rascunho', scheduled: 'Agendado', sending: 'Enviando', paused: 'Pausado',
-                completed: 'Concluído', partial: 'Parcial', failed: 'Falhou',
-              } as Record<string,string>)[campaign.status] ?? campaign.status}</TableCell>
-              <TableCell>{campaign.total_recipients}</TableCell><TableCell>{campaign.sent_count}</TableCell>
-              <TableCell>{campaign.failed_count}</TableCell><TableCell>{new Date(campaign.created_at).toLocaleDateString('pt-BR')}</TableCell>
-            </TableRow>)}</TableBody></Table>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Disparos via Evolution</h2>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">{evolutionCampaigns.length}</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {evolutionCampaigns.map((campaign) => {
+            const progress = percent(campaign.sent_count, campaign.total_recipients);
+            const status = evolutionStatus(campaign);
+            return <button key={campaign.id} type="button"
+              onClick={() => router.push(`/broadcasts/evolution/${campaign.id}`)}
+              className="group min-w-0 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Abrir disparo ${campaign.name}`}>
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <p className="min-w-0 break-words text-sm font-semibold text-foreground">{campaign.name}</p>
+                <ArrowUpRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+              </div>
+              <span className={`mt-3 inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-medium ${status.classes}`}>{status.label}</span>
+              <div className="mt-4 flex items-baseline justify-between gap-2">
+                <span className="text-xs text-muted-foreground">Mensagens enviadas</span>
+                <span className="text-sm font-semibold tabular-nums">{campaign.sent_count} <span className="font-normal text-muted-foreground">/ {campaign.total_recipients}</span></span>
+              </div>
+              <div role="progressbar" aria-label={`Progresso do disparo ${campaign.name}`}
+                aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}
+                className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>{progress}% concluído · {campaign.failed_count} {campaign.failed_count === 1 ? 'falha' : 'falhas'}</span>
+                <span>{new Date(campaign.created_at).toLocaleDateString('pt-BR')}</span>
+              </div>
+            </button>;
+          })}
         </div>
       </section>}
 
