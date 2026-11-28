@@ -14,6 +14,7 @@ export type CampaignAudience = {
     assigneeId: string;
     createdFrom: string;
     createdTo: string;
+    excludedContactIds: string[];
   };
   csvContacts: { phone: string; name: string }[];
 };
@@ -112,6 +113,7 @@ export function parseCampaignInput(value: unknown): { value: CampaignInput } | {
       assigneeId: str(rawSegment.assigneeId),
       createdFrom: str(rawSegment.createdFrom),
       createdTo: str(rawSegment.createdTo),
+      excludedContactIds: ids(rawSegment.excludedContactIds).slice(0, 5000),
     },
     csvContacts: Array.isArray(rawAudience.csvContacts)
       ? rawAudience.csvContacts.slice(0, 5000).map((row) => ({

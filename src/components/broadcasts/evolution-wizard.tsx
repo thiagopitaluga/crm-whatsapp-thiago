@@ -16,7 +16,7 @@ type Contact = { id: string; name: string | null; phone: string };
 type Named = { id: string; name: string };
 type Stage = Named & { pipeline_id: string };
 type Profile = { id: string; full_name: string };
-type Channel = { id: string; label: string; channel_key: string; evolution_instance_name: string };
+type Channel = { id: string; label: string; channel_key: string; evolution_instance_name: string; phone: string | null; status: string };
 const emptyAction = (): CampaignAction => ({ pipelineId: '', stageId: '', tagId: '', assigneeId: '' });
 const control = 'min-h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary';
 const weekDays = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
@@ -37,8 +37,8 @@ function ActionFields({ title, value, onChange, pipelines, stages, tags, profile
   title: string; value: CampaignAction; onChange: (value: CampaignAction) => void;
   pipelines: Named[]; stages: Stage[]; tags: Named[]; profiles: Profile[];
 }) {
-  return <fieldset className="space-y-3 rounded-xl border border-border bg-card p-4">
-    <legend className="px-1 text-sm font-semibold">{title}</legend>
+  return <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+    <h2 className="text-sm font-semibold">{title}</h2>
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="space-y-1 text-xs text-muted-foreground">Mover para funil
         <select className={control} value={value.pipelineId} onChange={(event) => onChange({ ...value, pipelineId: event.target.value, stageId: '' })}>
@@ -61,7 +61,7 @@ function ActionFields({ title, value, onChange, pipelines, stages, tags, profile
         </select>
       </label>
     </div>
-  </fieldset>;
+  </section>;
 }
 
 export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void }) {
@@ -81,7 +81,7 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
   const [messages, setMessages] = useState<CampaignMessage[]>([{ text: '' }]);
   const [audience, setAudience] = useState<CampaignAudience>({
     mode: 'contacts', contactIds: [], csvContacts: [],
-    segment: { pipelineId: '', stageIds: [], tagIds: [], assigneeId: '', createdFrom: '', createdTo: '' },
+    segment: { pipelineId: '', stageIds: [], tagIds: [], assigneeId: '', createdFrom: '', createdTo: '', excludedContactIds: [] },
   });
   const [delivery, setDelivery] = useState<CampaignDelivery>({
     senderIds: [], dailyLimit: 100, windowStart: '09:00', windowEnd: '18:00', slots: [],
@@ -98,6 +98,10 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
   const [tags, setTags] = useState<Named[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [segmentMatches, setSegmentMatches] = useState<Contact[]>([]);
+  const [segmentLoading, setSegmentLoading] = useState(false);
+  const [segmentError, setSegmentError] = useState('');
+  const [segmentSearch, setSegmentSearch] = useState('');
 
   useEffect(() => {
     if (!accountId) return;
@@ -110,7 +114,10 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
           db.from('pipeline_stages').select('id,name,pipeline_id').order('position'),
           db.from('tags').select('id,name').eq('account_id', accountId!),
           db.from('profiles').select('id,full_name').eq('account_id', accountId!),
-          db.from('whatsapp_channels').select('id,label,channel_key,evolution_instance_name').eq('account_id', accountId!).eq('provider', 'evolution'),
+          fetch('/api/whatsapp/evolution-campaigns/channels').then(async (response) => {
+            if (!response.ok) throw new Error('Falha ao consultar os números Evolution.');
+            return response.json() as Promise<{ channels: Channel[] }>;
+          }),
         ]);
         const loadedContacts: Contact[] = [];
         for (let offset = 0; offset <= 5000; offset += 1000) {
@@ -120,12 +127,12 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
           loadedContacts.push(...(result.data ?? []));
           if ((result.data ?? []).length < 1000) break;
         }
-        for (const result of [pipelineResult, stageResult, tagResult, profileResult, channelResult])
+        for (const result of [pipelineResult, stageResult, tagResult, profileResult])
           if (result.error) throw result.error;
         if (!active) return;
         setContacts(loadedContacts.slice(0, 5000)); setPipelines(pipelineResult.data ?? []);
         setStages(stageResult.data ?? []); setTags(tagResult.data ?? []);
-        setProfiles(profileResult.data ?? []); setChannels(channelResult.data ?? []);
+        setProfiles(profileResult.data ?? []); setChannels(channelResult.channels ?? []);
       } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao carregar opções.'); }
       finally { if (active) setLoading(false); }
     }
@@ -135,6 +142,39 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
 
   const visibleContacts = useMemo(() => contacts.filter((contact) =>
     `${contact.name ?? ''} ${contact.phone}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))), [contacts, search]);
+  const filteredSegmentMatches = useMemo(() => segmentMatches.filter((contact) =>
+    `${contact.name ?? ''} ${contact.phone}`.toLocaleLowerCase('pt-BR').includes(segmentSearch.toLocaleLowerCase('pt-BR'))), [segmentMatches, segmentSearch]);
+  const selectedSegmentCount = segmentMatches.filter((contact) => !audience.segment.excludedContactIds.includes(contact.id)).length;
+  const allVisibleContactsSelected = visibleContacts.length > 0 && visibleContacts.every((contact) => audience.contactIds.includes(contact.id));
+  const allVisibleSegmentSelected = filteredSegmentMatches.length > 0 && filteredSegmentMatches.every((contact) => !audience.segment.excludedContactIds.includes(contact.id));
+  const segmentFilterKey = JSON.stringify({ pipelineId: audience.segment.pipelineId, stageIds: audience.segment.stageIds,
+    tagIds: audience.segment.tagIds, assigneeId: audience.segment.assigneeId,
+    createdFrom: audience.segment.createdFrom, createdTo: audience.segment.createdTo });
+  useEffect(() => {
+    if (audience.mode !== 'segment' || step !== 1) return;
+    const segment = audience.segment;
+    if (!segment.pipelineId && !segment.tagIds.length && !segment.assigneeId && !segment.createdFrom && !segment.createdTo) {
+      setSegmentMatches([]); setSegmentError('Escolha ao menos um filtro para ver os contatos.'); setSegmentLoading(false); return;
+    }
+    const controller = new AbortController();
+    setSegmentLoading(true); setSegmentError('');
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/whatsapp/evolution-campaigns', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ previewSegment: segment }), signal: controller.signal,
+        });
+        const result = await response.json() as { contacts?: Contact[]; error?: string };
+        if (!response.ok) throw new Error(result.error ?? 'Falha ao consultar contatos.');
+        setSegmentMatches(result.contacts ?? []);
+      } catch (error) {
+        if (!controller.signal.aborted) { setSegmentMatches([]); setSegmentError(error instanceof Error ? error.message : 'Falha ao consultar contatos.'); }
+      } finally { if (!controller.signal.aborted) setSegmentLoading(false); }
+    }, 300);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  // Individual selection does not change the filters or re-fetch the audience.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audience.mode, segmentFilterKey, step]);
   const spintaxGroups = messages.reduce((total, message) =>
     total + (message.text.match(/\{[^{}]*\|[^{}]*\}/g)?.length ?? 0), 0);
   const steps = ['Mensagem', 'Público', 'Envio e ações', 'Resumo'];
@@ -142,8 +182,7 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
     setMessages((items) => items.map((item, position) => position === index ? { ...item, ...patch } : item));
   const audienceReady = audience.mode === 'contacts' ? audience.contactIds.length > 0
     : audience.mode === 'csv' ? audience.csvContacts.length > 0
-      : Boolean(audience.segment.pipelineId || audience.segment.tagIds.length || audience.segment.assigneeId ||
-        audience.segment.createdFrom || audience.segment.createdTo);
+      : Boolean(!segmentLoading && !segmentError && selectedSegmentCount > 0);
   const messagesReady = Boolean(name.trim()) && messages.every((message) =>
     (message.text.trim() || message.mediaUrl) && !validateSpintax(message.text));
   const deliveryReady = delivery.senderIds.length > 0 && delivery.weekdays.length > 0 &&
@@ -219,10 +258,13 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
 
   if (loading) return <div className="p-8 text-sm text-muted-foreground">Carregando contatos e conexões…</div>;
   return <div className="mx-auto max-w-4xl space-y-5 pb-10">
-    <div className="flex flex-wrap items-center gap-2 text-sm">{steps.map((label, index) =>
-      <span key={label} className={`rounded-full border px-3 py-1.5 ${step === index ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
-        {index + 1}. {label}
-      </span>)}</div>
+    <nav aria-label="Etapas do disparo" className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-card p-2 sm:gap-3">
+      {steps.map((label, index) => <div key={label} aria-current={step === index ? 'step' : undefined}
+        className={`min-w-0 rounded-lg px-1 py-2 text-center sm:px-3 ${step === index ? 'bg-primary/15 text-primary' : index < step ? 'text-primary' : 'text-muted-foreground'}`}>
+        <div className={`mx-auto flex size-7 items-center justify-center rounded-full border text-xs font-bold ${index <= step ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background'}`}>{index + 1}</div>
+        <span className="mt-1 block text-[10px] font-medium leading-tight sm:text-xs">{label}</span>
+      </div>)}
+    </nav>
 
     {step === 0 && <section className="space-y-4">
       <label className="block space-y-1 text-sm font-medium">Nome do disparo
@@ -283,8 +325,10 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
         <input className={control} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou telefone" />
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
           <span>{audience.contactIds.length} selecionados · {visibleContacts.length} encontrados</span>
-          <Button variant="outline" size="sm" onClick={() => setAudience((current) => ({ ...current,
-            contactIds: [...new Set([...current.contactIds, ...visibleContacts.map((contact) => contact.id)])] }))}>Selecionar todos os resultados</Button>
+          <Button variant="outline" size="sm" disabled={!visibleContacts.length} onClick={() => setAudience((current) => ({ ...current,
+            contactIds: allVisibleContactsSelected ? current.contactIds.filter((id) => !visibleContacts.some((contact) => contact.id === id))
+              : [...new Set([...current.contactIds, ...visibleContacts.map((contact) => contact.id)])] }))}>
+            {allVisibleContactsSelected ? 'Desmarcar resultados' : 'Selecionar todos os resultados'}</Button>
         </div>
         <div className="max-h-80 divide-y divide-border overflow-y-auto rounded-xl border border-border">{visibleContacts.map((contact) =>
           <label key={contact.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-muted/40">
@@ -315,7 +359,33 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
           <input type="checkbox" checked={audience.segment.tagIds.includes(item.id)} onChange={() => setAudience((current) => ({ ...current,
             segment: { ...current.segment, tagIds: current.segment.tagIds.includes(item.id)
               ? current.segment.tagIds.filter((id) => id !== item.id) : [...current.segment.tagIds, item.id] } }))} />{item.name}</label>)}</div></div>
-        <p className="text-xs text-muted-foreground">Os filtros escolhidos são combinados. O total exato será confirmado ao criar o disparo.</p>
+        <div className="space-y-3 border-t border-border pt-4">
+          <h3 className="text-sm font-semibold">Contatos do segmento</h3>
+          <p className="text-xs text-muted-foreground">Os filtros são combinados. Confira e ajuste quem receberá a mensagem.</p>
+          <input className={control} value={segmentSearch} onChange={(event) => setSegmentSearch(event.target.value)} placeholder="Buscar nos resultados por nome ou telefone" />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{segmentLoading ? 'Buscando contatos…' : `${selectedSegmentCount} selecionados · ${segmentMatches.length} encontrados`}</span>
+            <Button variant="outline" size="sm" disabled={segmentLoading || !filteredSegmentMatches.length}
+              onClick={() => setAudience((current) => ({ ...current, segment: { ...current.segment,
+                excludedContactIds: allVisibleSegmentSelected
+                  ? [...new Set([...current.segment.excludedContactIds, ...filteredSegmentMatches.map((contact) => contact.id)])]
+                  : current.segment.excludedContactIds.filter((id) => !filteredSegmentMatches.some((contact) => contact.id === id)),
+              } }))}>{allVisibleSegmentSelected ? 'Desmarcar resultados' : 'Selecionar todos os resultados'}</Button>
+          </div>
+          {segmentError && <p className="text-xs text-destructive">{segmentError}</p>}
+          <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+            {filteredSegmentMatches.map((contact) => <label key={contact.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-muted/40">
+              <input type="checkbox" checked={!audience.segment.excludedContactIds.includes(contact.id)}
+                onChange={() => setAudience((current) => ({ ...current, segment: { ...current.segment,
+                  excludedContactIds: current.segment.excludedContactIds.includes(contact.id)
+                    ? current.segment.excludedContactIds.filter((id) => id !== contact.id)
+                    : [...current.segment.excludedContactIds, contact.id],
+                } }))} />
+              <span className="min-w-0 truncate">{contact.name || contact.phone}</span><span className="ml-auto text-xs text-muted-foreground">{contact.phone}</span>
+            </label>)}
+            {!segmentLoading && !filteredSegmentMatches.length && !segmentError && <p className="p-3 text-xs text-muted-foreground">Nenhum contato encontrado.</p>}
+          </div>
+        </div>
       </div>}
       {audience.mode === 'csv' && <div className="space-y-3 rounded-xl border border-border bg-card p-4">
         <p className="text-sm text-muted-foreground">Arquivo CSV com as colunas telefone e nome. Telefones com DDD; o código 55 é adicionado quando necessário.</p>
@@ -340,7 +410,9 @@ export function EvolutionWizard({ onBackToMethod }: { onBackToMethod: () => void
         {channels.length ? channels.map((channel) => <label key={channel.id} className="flex items-center gap-2 rounded-lg border border-border p-2 text-sm">
           <input type="checkbox" checked={delivery.senderIds.includes(channel.id)} onChange={() => setDelivery((current) => ({ ...current,
             senderIds: current.senderIds.includes(channel.id) ? current.senderIds.filter((id) => id !== channel.id) : [...current.senderIds, channel.id] }))} />
-          {channel.label}</label>) : <p className="text-sm text-muted-foreground">Conecte um número Evolution em Conexões.</p>}
+          <span className="min-w-0"><span className="block font-medium">{channel.label}</span>
+            <span className="block text-xs text-muted-foreground">{channel.phone ? `+${channel.phone}` : 'Número indisponível'} · {channel.status === 'connected' ? 'Conectado' : 'Desconectado'}</span>
+          </span></label>) : <p className="text-sm text-muted-foreground">Conecte um número Evolution em Conexões.</p>}
       </div>
       <div className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2">
         <label className="space-y-1 text-sm">Limite diário<input type="number" min={1} max={5000} className={control} value={delivery.dailyLimit}

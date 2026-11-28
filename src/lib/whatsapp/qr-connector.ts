@@ -108,7 +108,7 @@ export async function fetchQrConnector(
   accountId: string,
   suffix: QrConnectorSuffix,
   init: RequestInit = {},
-  options: { instanceName?: string; channelKey?: string } = {}
+  options: { instanceName?: string; channelKey?: string; includePhone?: boolean } = {}
 ): Promise<Response> {
   if (process.env.WHATSAPP_QR_PROVIDER === 'evolution') {
     return fetchEvolutionQrConnector(accountId, suffix, init, options);
@@ -160,7 +160,7 @@ async function fetchEvolutionQrConnector(
   accountId: string,
   suffix: QrConnectorSuffix,
   init: RequestInit,
-  options: { instanceName?: string; channelKey?: string } = {}
+  options: { instanceName?: string; channelKey?: string; includePhone?: boolean } = {}
 ): Promise<Response> {
   if (!/^[0-9a-f-]{36}$/i.test(accountId)) {
     throw new Error('Invalid account id');
@@ -282,6 +282,10 @@ async function fetchEvolutionQrConnector(
         }
       }
     }
+    const ownerJid = state === 'open' && options.includePhone
+      ? await getEvolutionOwnerJid(baseUrl, apiKey, instance, timeout).catch(() => null)
+      : null;
+    const phone = ownerJid?.split('@')[0].replace(/\D/g, '') || null;
     return jsonResponse({
       status:
         state === 'open'
@@ -294,6 +298,7 @@ async function fetchEvolutionQrConnector(
       qr_available: state === 'connecting' && qrVersion !== null,
       qr_version: qrVersion,
       last_error: null,
+      phone,
     });
   }
 

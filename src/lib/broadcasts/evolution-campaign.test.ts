@@ -45,4 +45,11 @@ describe('Evolution campaigns', () => {
     const invalid = parseCampaignInput({ ...input, delivery: { ...input.delivery, endAt: '2020-01-01T00:00:00Z' } });
     expect('error' in invalid).toBe(true);
   });
+  it('keeps individual exclusions from a CRM segment', () => {
+    const result = parseCampaignInput({ ...input, audience: {
+      mode: 'segment', segment: { pipelineId: id, stageIds: [], tagIds: [],
+        assigneeId: '', createdFrom: '', createdTo: '', excludedContactIds: [id] },
+    } });
+    expect('value' in result && result.value.audience.segment.excludedContactIds).toEqual([id]);
+  });
 });

@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Pause, Play, RefreshCw, Search } from 'lucide-react';
+import { ArrowLeft, Pause, Play, RefreshCw, Search, Copy, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { personalizeCampaignMessage } from '@/lib/broadcasts/evolution-campaign';
 
 type Recipient = { id: string; phone: string; contact_name: string | null; status: string;
-  sequence_no: number; message_variant_index: number | null;
+  sequence_no: number; message_variant_index: number | null; sent_text: string | null;
   sent_at: string | null; replied_at: string | null; error_message: string | null };
 type Campaign = { id: string; name: string; status: string; total_recipients: number;
   sent_count: number; failed_count: number; last_error: string | null; scheduled_at: string | null;
@@ -29,7 +29,7 @@ function sentMessage(recipient: Recipient, campaign: Campaign) {
   const variant = campaign.message_variants[recipient.message_variant_index];
   if (!variant) return null;
   const seed = recipient.sequence_no + recipient.phone.split('').reduce((sum, digit) => sum + Number(digit), 0);
-  return { text: personalizeCampaignMessage(variant.text, {
+  return { text: recipient.sent_text ?? personalizeCampaignMessage(variant.text, {
     phone: recipient.phone, name: recipient.contact_name ?? '',
   }, seed), mediaName: variant.mediaName };
 }
@@ -76,7 +76,7 @@ export default function EvolutionCampaignPage() {
     const timer = setInterval(() => void load(), 15_000);
     return () => clearInterval(timer);
   }, [campaign?.status, load]);
-  async function change(status: 'paused' | 'scheduled') {
+  async function change(status: 'paused' | 'scheduled'): Promise<boolean> {
     setChanging(true);
     try {
       const response = await fetch(`/api/whatsapp/evolution-campaigns/${id}`, {
@@ -85,8 +85,26 @@ export default function EvolutionCampaignPage() {
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error ?? 'Falha ao alterar disparo.');
       await load();
-      toast.success(status === 'paused' ? 'Disparo pausado.' : 'Disparo retomado.');
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao alterar disparo.'); }
+      toast.success(status === 'paused' ? 'Disparo pausado.' : 'Disparo iniciado.');
+      return true;
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao alterar disparo.'); return false; }
+    finally { setChanging(false); }
+  }
+  async function edit() {
+    if (changing || !campaign) return;
+    if (['scheduled', 'sending'].includes(campaign.status) && !await change('paused')) return;
+    router.push(`/broadcasts/evolution/${id}/edit`);
+  }
+  async function duplicate() {
+    if (changing) return;
+    setChanging(true);
+    try {
+      const response = await fetch(`/api/whatsapp/evolution-campaigns/${id}`, { method: 'POST' });
+      const data = await response.json() as { campaign_id?: string; error?: string };
+      if (!response.ok || !data.campaign_id) throw new Error(data.error ?? 'Falha ao duplicar disparo.');
+      toast.success('Cópia criada como rascunho. Revise antes de iniciar.');
+      router.push(`/broadcasts/evolution/${data.campaign_id}/edit`);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao duplicar disparo.'); }
     finally { setChanging(false); }
   }
   const search = recipientSearch.trim().toLocaleLowerCase('pt-BR');
@@ -108,9 +126,11 @@ export default function EvolutionCampaignPage() {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><Button variant="ghost" size="sm" onClick={() => router.push('/broadcasts')}><ArrowLeft className="size-4" /> Voltar</Button>
         <h1 className="mt-2 text-2xl font-bold">{campaign.name}</h1><p className="text-sm text-muted-foreground">Disparo por chip WhatsApp (Evolution) · {campaignStatus(campaign.status)}</p></div>
-      <div className="flex gap-2"><Button variant="outline" onClick={() => void load()}><RefreshCw className="size-4" /> Atualizar</Button>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void load()}><RefreshCw className="size-4" /> Atualizar</Button>
         {['scheduled','sending'].includes(campaign.status) && <Button variant="outline" disabled={changing} onClick={() => void change('paused')}><Pause className="size-4" /> Pausar</Button>}
-        {campaign.status === 'paused' && <Button disabled={changing} onClick={() => void change('scheduled')}><Play className="size-4" /> Retomar</Button>}</div>
+        {['paused','draft'].includes(campaign.status) && <Button disabled={changing} onClick={() => void change('scheduled')}><Play className="size-4" /> {campaign.status === 'draft' ? 'Iniciar' : 'Retomar'}</Button>}
+        {['scheduled','sending','paused','draft'].includes(campaign.status) && <Button variant="outline" disabled={changing} onClick={() => void edit()}><Pencil className="size-4" /> Editar</Button>}
+        <Button variant="outline" disabled={changing} onClick={() => void duplicate()}><Copy className="size-4" /> Duplicar</Button></div>
     </div>
     {campaign.last_error && <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{campaign.last_error}</p>}
     <div className="grid gap-3 sm:grid-cols-4">{[

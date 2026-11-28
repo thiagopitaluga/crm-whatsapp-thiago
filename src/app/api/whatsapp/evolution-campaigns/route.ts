@@ -104,7 +104,10 @@ async function resolveAudience(db: Db, accountId: string, createdBy: string,
     ).map((deal) => deal.contact_id));
     eligible = eligible.filter((contact) => ids.has(contact.id));
   }
-  return eligible;
+  const excluded = new Set(filter.excludedContactIds);
+  const excludedPhones = new Set(contacts.filter((contact) => excluded.has(contact.id))
+    .map((contact) => brazilPhone(contact.phone)).filter(Boolean));
+  return eligible.filter((contact) => !excluded.has(contact.id) && !excludedPhones.has(brazilPhone(contact.phone)));
 }
 
 async function validateAction(db: Db, accountId: string, action: import('@/lib/broadcasts/evolution-campaign').CampaignAction) {
@@ -143,7 +146,30 @@ export async function POST(request: Request) {
     const db = supabaseAdmin();
     if (!await serviceEnabled(db, accountId, 'broadcasts'))
       return NextResponse.json({ error: 'Disparos não estão habilitados neste plano.' }, { status: 403 });
-    const parsed = parseCampaignInput(await request.json().catch(() => null));
+    const body = await request.json().catch(() => null);
+    if (body && typeof body === 'object' && 'previewSegment' in body) {
+      const raw = (body as { previewSegment?: unknown }).previewSegment;
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+        return NextResponse.json({ error: 'Filtros inválidos.' }, { status: 400 });
+      const segment = raw as CampaignAudience['segment'];
+      if ([segment.pipelineId, segment.assigneeId].some((id) => id && (typeof id !== 'string' || !uuidPattern.test(id))) ||
+        !Array.isArray(segment.stageIds) || !Array.isArray(segment.tagIds) ||
+        [...segment.stageIds, ...segment.tagIds].some((id) => typeof id !== 'string' || !uuidPattern.test(id)) ||
+        [segment.createdFrom, segment.createdTo].some((date) => date && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date))) ||
+        (segment.createdFrom && segment.createdTo && segment.createdFrom > segment.createdTo))
+        return NextResponse.json({ error: 'Revise os filtros do segmento.' }, { status: 400 });
+      const preview = await resolveAudience(db, accountId, userId, {
+        mode: 'segment', contactIds: [], csvContacts: [],
+        segment: { pipelineId: segment.pipelineId || '', stageIds: segment.stageIds,
+          tagIds: segment.tagIds, assigneeId: segment.assigneeId || '',
+          createdFrom: segment.createdFrom || '', createdTo: segment.createdTo || '', excludedContactIds: [] },
+      });
+      const unique = [...new Map(preview.map((contact) => [brazilPhone(contact.phone), contact])).entries()]
+        .filter(([phone]) => Boolean(phone)).map(([, { id, name, phone }]) => ({ id, name, phone }));
+      return NextResponse.json({ contacts: unique },
+        { headers: { 'cache-control': 'no-store' } });
+    }
+    const parsed = parseCampaignInput(body);
     if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
     const input = parsed.value;
     for (const message of input.messages) if (message.mediaUrl &&

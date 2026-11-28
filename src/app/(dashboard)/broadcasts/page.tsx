@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { Broadcast } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Radio, Plus, Loader2, ArrowUpRight } from 'lucide-react';
+import { Radio, Plus, Loader2, ArrowUpRight, Pause, Play, Copy, Pencil } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
@@ -85,6 +86,7 @@ export default function BroadcastsPage() {
   const [evolutionCampaigns, setEvolutionCampaigns] = useState<EvolutionCampaignSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   // Used to kick off polling only while something is actively sending.
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -110,6 +112,38 @@ export default function BroadcastsPage() {
       setLoading(false);
     }
   }, [t]);
+
+  async function campaignAction(campaign: EvolutionCampaignSummary, action: 'pause' | 'resume' | 'edit' | 'duplicate') {
+    if (busyId) return;
+    setBusyId(campaign.id);
+    try {
+      const url = `/api/whatsapp/evolution-campaigns/${campaign.id}`;
+      if (action === 'duplicate') {
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json() as { campaign_id?: string; error?: string };
+        if (!response.ok || !data.campaign_id) throw new Error(data.error ?? 'Não foi possível duplicar o disparo.');
+        toast.success('Cópia criada como rascunho. Revise antes de iniciar.');
+        router.push(`/broadcasts/evolution/${data.campaign_id}/edit`);
+        return;
+      }
+      if (action === 'edit' && ['draft','paused'].includes(campaign.status)) {
+        router.push(`/broadcasts/evolution/${campaign.id}/edit`);
+        return;
+      }
+      const status = action === 'pause' || action === 'edit' ? 'paused' : 'scheduled';
+      const response = await fetch(url, { method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? 'Não foi possível alterar o disparo.');
+      if (action === 'edit') {
+        router.push(`/broadcasts/evolution/${campaign.id}/edit`);
+      } else {
+        await fetchBroadcasts();
+        toast.success(status === 'paused' ? 'Disparo pausado.' : 'Disparo iniciado.');
+      }
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao alterar o disparo.'); }
+    finally { setBusyId(null); }
+  }
 
   useEffect(() => {
     fetchBroadcasts();
@@ -235,10 +269,10 @@ export default function BroadcastsPage() {
           {evolutionCampaigns.map((campaign) => {
             const progress = percent(campaign.sent_count, campaign.total_recipients);
             const status = evolutionStatus(campaign);
-            return <button key={campaign.id} type="button"
-              onClick={() => router.push(`/broadcasts/evolution/${campaign.id}`)}
-              className="group min-w-0 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={`Abrir disparo ${campaign.name}`}>
+            return <article key={campaign.id} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/50">
+              <button type="button" onClick={() => router.push(`/broadcasts/evolution/${campaign.id}`)}
+                className="group w-full min-w-0 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Abrir disparo ${campaign.name}`}>
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <p className="min-w-0 break-words text-sm font-semibold text-foreground">{campaign.name}</p>
                 <ArrowUpRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
@@ -257,7 +291,18 @@ export default function BroadcastsPage() {
                 <span>{progress}% concluído · {campaign.failed_count} {campaign.failed_count === 1 ? 'falha' : 'falhas'}</span>
                 <span>{new Date(campaign.created_at).toLocaleDateString('pt-BR')}</span>
               </div>
-            </button>;
+              </button>
+              <div className="flex flex-wrap gap-1 border-t border-border px-3 py-2">
+                {['scheduled','sending','paused','draft'].includes(campaign.status) && <Button size="sm" variant="ghost" disabled={busyId === campaign.id}
+                  onClick={() => void campaignAction(campaign, ['scheduled','sending'].includes(campaign.status) ? 'pause' : 'resume')}>
+                  {['scheduled','sending'].includes(campaign.status) ? <><Pause className="size-4" /> Pausar</> : <><Play className="size-4" /> {campaign.status === 'draft' ? 'Iniciar' : 'Retomar'}</>}
+                </Button>}
+                {['scheduled','sending','paused','draft'].includes(campaign.status) && <Button size="sm" variant="ghost" disabled={busyId === campaign.id} onClick={() => void campaignAction(campaign, 'edit')}>
+                  <Pencil className="size-4" /> Editar</Button>}
+                <Button size="sm" variant="ghost" disabled={busyId === campaign.id} onClick={() => void campaignAction(campaign, 'duplicate')}>
+                  <Copy className="size-4" /> Duplicar</Button>
+              </div>
+            </article>;
           })}
         </div>
       </section>}

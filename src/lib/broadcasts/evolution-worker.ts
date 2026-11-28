@@ -128,7 +128,7 @@ export async function processDueEvolutionCampaign() {
     }, target.sequence_no + target.phone.split('').reduce((sum, digit) => sum + Number(digit), 0));
     const { data: locked } = await db.from('evolution_campaign_recipients').update({
       status: 'sending', attempted_at: new Date().toISOString(),
-      sender_channel_id: channel.id, message_variant_index: variantIndex,
+      sender_channel_id: channel.id, message_variant_index: variantIndex, sent_text: text,
     }).eq('id', target.id).eq('status', 'pending').select('id').maybeSingle();
     if (!locked) { await defer(db, campaign.id, 60); return { processed: 0 }; }
     const { data: current } = await db.from('evolution_campaigns').select('status')
