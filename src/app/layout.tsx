@@ -121,7 +121,7 @@ export default async function RootLayout({
         <div className="pwa-launch-screen" aria-hidden="true">
           <div className="pwa-launch-emblem"><span className="pwa-launch-mark" /></div>
           <p className="pwa-launch-brand">Organi<span>ZAP</span></p>
-          <p className="pwa-launch-tagline">Transforme conversas em resultados.</p>
+          <p className="pwa-launch-tagline">Conversas que vendem.</p>
           <span className="pwa-launch-track" />
         </div>
         <NextIntlClientProvider messages={messages} locale={locale}>

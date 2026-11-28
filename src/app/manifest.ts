@@ -6,7 +6,7 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "OrganiZAP",
+    name: "OrganiZAP — Conversas que vendem",
     short_name: "OrganiZAP",
     description: "CRM para atendimento, vendas e automação pelo WhatsApp.",
     start_url: "/dashboard",
