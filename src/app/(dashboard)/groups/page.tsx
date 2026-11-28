@@ -51,6 +51,7 @@ export default function GroupsPage() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [senderChannelId, setSenderChannelId] = useState('')
   const [activeTab, setActiveTab] = useState<'overview' | 'groups' | 'broadcasts' | 'automations'>('overview')
+  const [composing, setComposing] = useState(false)
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([])
   const [schedulerEnabled, setSchedulerEnabled] = useState(false)
   const [audiences, setAudiences] = useState<Audience[]>([])
@@ -238,6 +239,7 @@ export default function GroupsPage() {
       if (!response.ok) throw new Error(data.error ?? 'Não foi possível agendar o disparo.')
       toast.success(editingId ? 'Agendamento atualizado.' : 'Disparo para grupos agendado.')
       resetForm()
+      setComposing(false)
       await load()
     } catch (scheduleError) {
       toast.error(scheduleError instanceof Error ? scheduleError.message : 'Não foi possível agendar o disparo.')
@@ -265,7 +267,7 @@ export default function GroupsPage() {
     setSelected(new Set(broadcast.group_broadcast_targets.map((target) => target.group_jid)))
     setSenderChannelId(broadcast.sender_channel_id ?? '')
     setActiveTab('broadcasts')
-    document.getElementById('group-broadcast-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setComposing(true)
   }
   function duplicateBroadcast(broadcast: Broadcast) {
     startEdit(broadcast)
@@ -335,7 +337,8 @@ export default function GroupsPage() {
         ['Entregas confirmadas', report.sent], ['Falhas ou incertas', report.failed],
       ].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>)}</section> : null}
 
-      {activeTab === 'groups' || activeTab === 'broadcasts' ? <div className={`grid min-w-0 gap-6 ${activeTab === 'broadcasts' ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]' : ''}`}>
+      {activeTab === 'broadcasts' && !composing ? <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Disparos para grupos</h2><p className="text-sm text-muted-foreground">Acompanhe os agendamentos e resultados em um só lugar.</p></div>{canSchedule ? <Button onClick={() => { resetForm(); setComposing(true) }}><Send className="size-4" />Novo disparo</Button> : null}</div> : null}
+      {activeTab === 'groups' || (activeTab === 'broadcasts' && composing) ? <div className={`grid min-w-0 gap-6 ${activeTab === 'broadcasts' ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]' : ''}`}>
         <section className="min-w-0 rounded-xl border border-border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
             <div className="min-w-0"><h2 className="font-semibold">Grupos disponíveis</h2><p className="text-xs text-muted-foreground">{visibleGroups.length !== groups.length ? `${visibleGroups.length} de ` : ''}{groups.length} grupo{groups.length === 1 ? '' : 's'} na conta conectada</p></div>
@@ -369,7 +372,7 @@ export default function GroupsPage() {
         {activeTab === 'broadcasts' ? <section id="group-broadcast-form" className="min-w-0 rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 font-semibold"><CalendarClock className="size-4 text-primary" />{editingId ? 'Editar disparo agendado' : 'Programar disparo'}</h2>
-            {editingId ? <Button variant="ghost" size="sm" onClick={resetForm}>Cancelar edição</Button> : null}
+            <Button variant="ghost" size="sm" onClick={() => { resetForm(); setComposing(false) }}>Cancelar</Button>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">A mensagem será enviada uma vez para cada grupo selecionado na data marcada.</p>
           <div className="mt-5 space-y-4">
@@ -396,7 +399,7 @@ export default function GroupsPage() {
         </section> : null}
       </div> : null}
 
-      {canSchedule && activeTab === 'broadcasts' ? <section className="rounded-xl border border-border bg-card p-4"><h2 className="font-semibold">Segurança do envio</h2><p className="mt-1 text-xs text-muted-foreground">Limites por conta. O disparo para ao encontrar um erro se a pausa estiver ativada.</p><div className="mt-3 flex flex-wrap items-end gap-3">
+      {canSchedule && activeTab === 'broadcasts' && composing ? <section className="rounded-xl border border-border bg-card p-4"><h2 className="font-semibold">Segurança do envio</h2><p className="mt-1 text-xs text-muted-foreground">Limites por conta. O disparo para ao encontrar um erro se a pausa estiver ativada.</p><div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-xs">Máximo de grupos por dia<Input type="number" min={1} max={300} value={settings.daily_group_cap} onChange={(event) => setSettings((current) => ({ ...current, daily_group_cap: Number(event.target.value) }))} className="mt-1 w-28" /></label>
         <label className="text-xs">Intervalo entre envios (ms)<Input type="number" min={1250} max={10000} step={250} value={settings.min_interval_ms} onChange={(event) => setSettings((current) => ({ ...current, min_interval_ms: Number(event.target.value) }))} className="mt-1 w-32" /></label>
         <label className="flex h-9 items-center gap-2 text-xs"><input type="checkbox" checked={settings.pause_on_error} onChange={(event) => setSettings((current) => ({ ...current, pause_on_error: event.target.checked }))} /> Pausar após erro</label>
@@ -407,7 +410,7 @@ export default function GroupsPage() {
 
       {activeTab === 'automations' ? <GroupActionsPanel groups={groups} channels={channels} senderChannelId={senderChannelId} canSchedule={canSchedule} /> : null}
 
-      {activeTab === 'broadcasts' ? <section className="rounded-xl border border-border bg-card">
+      {activeTab === 'broadcasts' && !composing ? <section className="rounded-xl border border-border bg-card">
         <div className="border-b border-border p-4"><h2 className="font-semibold">Agendados e histórico</h2><p className="text-xs text-muted-foreground">Abra um disparo para ver a mensagem e o resultado em cada grupo.</p></div>
         {broadcasts.length === 0 ? <p className="p-8 text-center text-sm text-muted-foreground">Nenhum disparo para grupos foi programado.</p> : <div className="divide-y divide-border">{broadcasts.map((broadcast) => {
           const expanded = expandedId === broadcast.id
@@ -415,7 +418,7 @@ export default function GroupsPage() {
             <div className="flex flex-wrap items-center gap-3">
               <button type="button" onClick={() => setExpandedId(expanded ? null : broadcast.id)} aria-expanded={expanded} className="min-w-40 flex-1 text-left hover:text-primary">
                 <span className="block font-medium">{broadcast.name}</span>
-                <span className="text-xs text-muted-foreground">{new Date(broadcast.scheduled_at).toLocaleString('pt-BR')} · {broadcast.total_groups} grupo{broadcast.total_groups === 1 ? '' : 's'}</span>
+                <span className="text-xs text-muted-foreground">{new Date(broadcast.scheduled_at).toLocaleString('pt-BR')} · {broadcast.total_groups} grupo{broadcast.total_groups === 1 ? '' : 's'} · {channels.find((channel) => channel.id === broadcast.sender_channel_id)?.label ?? 'Conexão padrão'}</span>
               </button>
               <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClasses[broadcast.status] ?? statusClasses.cancelled}`}>{statusLabels[broadcast.status] ?? broadcast.status}</span>
               <span className="text-sm text-muted-foreground">{broadcast.sent_count} enviados · {broadcast.failed_count} falharam</span>

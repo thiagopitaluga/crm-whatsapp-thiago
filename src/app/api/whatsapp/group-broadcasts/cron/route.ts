@@ -19,6 +19,7 @@ type Target = { id: string; group_jid: string; group_subject: string }
 type Admin = ReturnType<typeof supabaseAdmin>
 
 export async function GET(request: Request) {
+  const startedAt = Date.now()
   const expected = process.env.CRON_SECRET ?? process.env.AUTOMATION_CRON_SECRET
   if (!expected) return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
   const supplied = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? request.headers.get('x-cron-secret') ?? ''
@@ -94,7 +95,11 @@ export async function GET(request: Request) {
   }
 
   let processed = 0
-  for (const target of (pending as Target[]).slice(0, allowance)) {
+  // Reserve time for the provider request and final database updates.
+  const interval = Math.max(1250, settings?.min_interval_ms ?? 1500)
+  const batchSize = Math.max(1, Math.min(12, Math.floor(35_000 / (interval + 1000))))
+  for (const target of (pending as Target[]).slice(0, Math.min(allowance, batchSize))) {
+    if (Date.now() - startedAt > 35_000) break
     const { data: locked } = await admin.from('group_broadcast_targets').update({
       status: 'sending', attempted_at: new Date().toISOString(), attempt_count: 1,
     }).eq('id', target.id).eq('status', 'pending').select('id').maybeSingle()
@@ -125,7 +130,7 @@ export async function GET(request: Request) {
       break
     }
     allowance--
-    await new Promise((resolve) => setTimeout(resolve, settings?.min_interval_ms ?? 1500))
+    await new Promise((resolve) => setTimeout(resolve, interval))
   }
   const { count: remaining } = await admin.from('group_broadcast_targets').select('id', { count: 'exact', head: true })
     .eq('broadcast_id', campaign.id).eq('status', 'pending')
@@ -136,7 +141,7 @@ export async function GET(request: Request) {
 
 async function processDueGroupAction(admin: Admin) {
   const { data: stale } = await admin.from('whatsapp_group_actions').select('id')
-    .eq('status', 'running').lt('scheduled_at', new Date(Date.now() - 5 * 60_000).toISOString()).limit(5)
+    .eq('status', 'running').lt('executed_at', new Date(Date.now() - 5 * 60_000).toISOString()).limit(5)
   for (const row of stale ?? []) await admin.from('whatsapp_group_actions').update({
     status: 'failed', error_message: 'Execução interrompida; confira o grupo antes de reagendar.', executed_at: new Date().toISOString(),
   }).eq('id', row.id).eq('status', 'running')
@@ -145,7 +150,7 @@ async function processDueGroupAction(admin: Admin) {
     .eq('status', 'scheduled').lte('scheduled_at', new Date().toISOString())
     .order('scheduled_at').limit(1).maybeSingle()
   if (!due) return
-  const { data: claimed } = await admin.from('whatsapp_group_actions').update({ status: 'running' })
+  const { data: claimed } = await admin.from('whatsapp_group_actions').update({ status: 'running', executed_at: new Date().toISOString() })
     .eq('id', due.id).eq('status', 'scheduled').select('id').maybeSingle()
   if (!claimed) return
   try {
@@ -154,11 +159,11 @@ async function processDueGroupAction(admin: Admin) {
       .eq('id', due.sender_channel_id).eq('account_id', due.account_id).eq('provider', 'evolution').maybeSingle()
     if (!channel) throw new Error('Número remetente não encontrado.')
     const result = await executeGroupAction(due.account_id, channel.evolution_instance_name, due.group_jid, due.action as GroupAction, due.value)
-    await admin.from('whatsapp_group_actions').update({ status: 'done', result, executed_at: new Date().toISOString() }).eq('id', due.id)
+    await admin.from('whatsapp_group_actions').update({ status: 'done', result, executed_at: new Date().toISOString() }).eq('id', due.id).eq('status', 'running')
   } catch (error) {
     await admin.from('whatsapp_group_actions').update({ status: 'failed',
       error_message: error instanceof Error ? error.message.slice(0, 300) : 'Falha na ação do grupo.', executed_at: new Date().toISOString(),
-    }).eq('id', due.id)
+    }).eq('id', due.id).eq('status', 'running')
   }
 }
 
