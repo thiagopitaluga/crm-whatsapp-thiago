@@ -512,7 +512,7 @@ async function fetchEvolutionQrConnector(
       !ownerJid ||
       !participants.some(
         (participant) =>
-          participant.is_admin && sameJid(participant.jid, ownerJid)
+          participant.is_admin && participant.is_self
       )
     ) {
       return jsonResponse({ error: 'group_admin_required' }, 403);
@@ -750,7 +750,7 @@ async function fetchEvolutionGroups(
         .map((participant) =>
           normalizeEvolutionParticipant(participant, ownerJid)
         )
-        .find((participant) => sameJid(participant.jid, ownerJid));
+        .find((participant) => participant.is_self);
       return {
         id: typeof group?.id === 'string' ? group.id : '',
         subject:
@@ -881,7 +881,7 @@ async function sendEvolutionGroupMessages(
         !ownerJid ||
         !participants.some(
           (participant) =>
-            participant.is_admin && sameJid(participant.jid, ownerJid)
+            participant.is_admin && participant.is_self
         )
       ) {
         results.push({
@@ -1033,6 +1033,8 @@ function normalizeEvolutionParticipant(
         ? row.jid
         : '';
   const digits = jid.split('@')[0].replace(/\D/g, '');
+  const phoneJid = typeof row?.phoneNumber === 'string' ? row.phoneNumber : '';
+  const phoneDigits = phoneJid.split('@')[0].replace(/\D/g, '');
   const admin =
     row?.admin === 'admin' ||
     row?.admin === 'superadmin' ||
@@ -1043,9 +1045,10 @@ function normalizeEvolutionParticipant(
       ([row?.name, row?.notify, row?.verifiedName].find(
         (candidate) => typeof candidate === 'string' && candidate.trim()
       ) as string | undefined) ?? '',
-    phone: digits ? `+${digits}` : '',
+    phone: phoneDigits ? `+${phoneDigits}` : digits ? `+${digits}` : '',
     jid,
-    is_admin: admin || Boolean(ownerJid && sameJid(jid, ownerJid)),
+    is_admin: admin,
+    is_self: sameJid(phoneJid, ownerJid) || sameJid(jid, ownerJid),
   };
 }
 

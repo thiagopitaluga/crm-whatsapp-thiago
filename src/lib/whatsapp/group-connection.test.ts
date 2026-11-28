@@ -27,6 +27,7 @@ const old = 'organizap' + account.replaceAll('-', '');
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  state.filters = {};
 });
 
 describe('conexão de grupos após novo QR', () => {
@@ -79,5 +80,31 @@ describe('conexão de grupos após novo QR', () => {
         .status
     ).toBe(409);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it('identifica o administrador pelo phoneNumber quando o grupo usa LID', async () => {
+    vi.stubEnv('WHATSAPP_QR_PROVIDER', 'evolution');
+    vi.stubEnv('EVOLUTION_API_URL', 'https://evolution.example.com');
+    vi.stubEnv('EVOLUTION_API_KEY', 'test-key');
+    state.channels = [{ evolution_instance_name: old }];
+    vi.stubGlobal('fetch', vi.fn(async (url: URL) => {
+      if (url.pathname.includes('/connectionState/'))
+        return Response.json({ instance: { state: 'open' } });
+      if (url.pathname.includes('/fetchInstances'))
+        return Response.json([{ name: old, ownerJid: '5511999988889@s.whatsapp.net' }]);
+      if (url.pathname.includes('/fetchAllGroups'))
+        return Response.json([
+          { id: '123@g.us', subject: 'Grupo admin', participants: [
+            { id: '4925@lid', phoneNumber: '5511999988889@s.whatsapp.net', admin: 'admin' },
+          ] },
+          { id: '456@g.us', subject: 'Grupo não admin', participants: [
+            { id: '4925@lid', phoneNumber: '5511999988889@s.whatsapp.net', admin: null },
+          ] },
+        ]);
+      return Response.json([]);
+    }));
+    const response = await fetchQrConnector(account, 'groups');
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.groups.map((group: { is_admin: boolean }) => group.is_admin)).toEqual([true, false]);
   });
 });
