@@ -279,11 +279,22 @@ html[data-theme='rose'] {
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: radial-gradient(circle at 50% 43%, rgba(31, 214, 103, 0.16), transparent 48%), #020617;
+    isolation: isolate;
+    background: #020617;
     color: #f8fafc;
     text-align: center;
     pointer-events: none;
     animation: pwa-launch-exit 1.2s ease-in-out forwards;
+  }
+
+  .pwa-launch-screen::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background: radial-gradient(circle at 50% 43%, rgba(31, 214, 103, 0.12), transparent 48%);
+    content: '';
+    opacity: 0;
+    animation: pwa-launch-glow 0.7s 0.12s ease-out forwards;
   }
 
   .pwa-launch-emblem {
@@ -291,17 +302,13 @@ html[data-theme='rose'] {
     width: 116px;
     height: 116px;
     place-items: center;
-    border: 1px solid rgba(74, 222, 128, 0.28);
-    border-radius: 32px;
-    background: rgba(15, 23, 42, 0.8);
-    box-shadow: 0 0 0 12px rgba(34, 197, 94, 0.04), 0 24px 75px rgba(22, 163, 74, 0.25);
-    animation: pwa-launch-rise 0.6s cubic-bezier(0.2, 1.2, 0.3, 1) both;
+    animation: pwa-launch-emblem-enter 0.6s ease-out both;
   }
 
   .pwa-launch-mark {
-    width: 78px;
-    height: 78px;
-    background: url('/pwa/icon-192.png') center / contain no-repeat;
+    width: 108px;
+    height: 108px;
+    background: url('/pwa/icon-512.png') center / contain no-repeat;
   }
 
   .pwa-launch-brand {
@@ -351,6 +358,15 @@ html[data-theme='rose'] {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes pwa-launch-emblem-enter {
+  from { opacity: 0.8; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pwa-launch-glow {
+  to { opacity: 1; }
+}
+
 @keyframes pwa-launch-progress {
   to { transform: translateX(0); }
 }
@@ -362,5 +378,5 @@ html[data-theme='rose'] {
 
 @media (display-mode: standalone) and (prefers-reduced-motion: reduce) {
   .pwa-launch-screen { animation-duration: 0.45s; }
-  .pwa-launch-emblem, .pwa-launch-brand, .pwa-launch-tagline, .pwa-launch-track::before { animation: none; }
+  .pwa-launch-screen::before, .pwa-launch-emblem, .pwa-launch-brand, .pwa-launch-tagline, .pwa-launch-track::before { animation: none; }
 }
